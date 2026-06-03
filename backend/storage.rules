@@ -1,0 +1,15 @@
+// ============================================================
+//  storage.rules
+//  انسخ هذا إلى Firebase Console → Storage → Rules
+// ============================================================
+
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      // لا أحد يستطيع الرفع أو التنزيل مباشرة
+      // كل العمليات تمر من الـ Backend
+      allow read, write: if false;
+    }
+  }
+}
