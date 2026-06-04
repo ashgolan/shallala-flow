@@ -14,6 +14,12 @@ const plain = (doc) => {
   return o;
 };
 
+// ✅ helper آمن لتحويل float مع منع NaN
+const safeFloat = (v) => {
+  const f = parseFloat(v);
+  return (!isNaN(f) && v !== '' && v !== null && v !== undefined) ? f : null;
+};
+
 // ════════════════════════════════════════
 //  FARMERS
 // ════════════════════════════════════════
@@ -44,7 +50,6 @@ const createFarmer = async (req, res) => {
     if (!name || !idNumber)
       return res.status(400).json({ error: 'الاسم ورقم الهوية مطلوبان' });
 
-    // توليد كود تلقائي فريد
     const code = await generateUniqueCode();
 
     const farmer = await Farmer.create({
@@ -57,7 +62,6 @@ const createFarmer = async (req, res) => {
       area: area || '',
     });
 
-    // إرجاع الكود للعرض للمشرف
     return res.status(201).json({ success: true, id: farmer._id.toString(), code });
   } catch (err) {
     if (err.code === 11000) return res.status(409).json({ error: 'رقم الهوية موجود مسبقاً' });
@@ -103,7 +107,7 @@ const getLands = async (req, res) => {
   try {
     const filter = {};
     if (req.query.farmerId) filter.farmerId = req.query.farmerId;
-    const lands = await Land.find(filter).sort({ name: 1 }).lean();
+    const lands = await Land.find(filter).sort({ stationNumber: 1 }).lean();
     return res.json({ lands: lands.map(l => ({
       ...l,
       id:            l._id.toString(),
@@ -112,23 +116,24 @@ const getLands = async (req, res) => {
       stationNumber: l.stationNumber || '',
       stationLat:    l.stationLat    || null,
       stationLng:    l.stationLng    || null,
+      description:   l.description   || '',
     })) });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
 
 const createLand = async (req, res) => {
   try {
-    const { farmerId, regionId, name, nameHeb, area, stationNumber, stationLat, stationLng } = req.body;
-    if (!name) return res.status(400).json({ error: 'اسم الأرض مطلوب' });
+    const { farmerId, regionId, name, nameHeb, stationNumber, stationLat, stationLng, description } = req.body;
+    if (!stationNumber) return res.status(400).json({ error: 'رقم المحطة مطلوب' });
     const land = await Land.create({
       farmerId:      farmerId || null,
       regionId:      regionId || null,
-      name,
-      nameHeb:       nameHeb || name,
-      area:          area || '',
-      stationNumber: stationNumber || '',
-      stationLat:    stationLat    || null,
-      stationLng:    stationLng    || null,
+      name:          name || stationNumber,
+      nameHeb:       nameHeb || stationNumber,
+      description:   description || '',
+      stationNumber: stationNumber,
+      stationLat:    safeFloat(stationLat),
+      stationLng:    safeFloat(stationLng),
     });
     return res.status(201).json({ success: true, id: land._id.toString() });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
@@ -136,15 +141,15 @@ const createLand = async (req, res) => {
 
 const updateLand = async (req, res) => {
   try {
-    const { regionId, name, nameHeb, area, stationNumber, stationLat, stationLng } = req.body;
+    const { regionId, name, nameHeb, stationNumber, stationLat, stationLng, description } = req.body;
     await Land.findByIdAndUpdate(req.params.landId, {
       regionId:      regionId || null,
-      name:          name || '',
-      nameHeb:       nameHeb || name || '',
-      area:          area || '',
+      name:          name || stationNumber || '',
+      nameHeb:       nameHeb || stationNumber || '',
+      description:   description || '',
       stationNumber: stationNumber || '',
-      stationLat:    stationLat    || null,
-      stationLng:    stationLng    || null,
+      stationLat:    safeFloat(stationLat),
+      stationLng:    safeFloat(stationLng),
     });
     return res.json({ success: true });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
@@ -195,7 +200,7 @@ const createReading = async (req, res) => {
     if (readings.length < 2)
       return res.status(400).json({ error: 'يجب إدخال قراءتين على الأقل' });
 
-    // ── جلب بيانات المحطة من الأرض تلقائياً ──────────────
+    // جلب بيانات المحطة من الأرض تلقائياً
     const land = await Land.findById(landId).lean();
     const stationNumber = land?.stationNumber || '';
     const stationLat    = land?.stationLat    || null;
@@ -268,7 +273,6 @@ const getPrices = async (req, res) => {
 const updatePrices = async (req, res) => {
   try {
     const { globalPrice, yearPrices, landPrices } = req.body;
-    // استخدام findOneAndUpdate مع markModified للـ Mixed type
     const doc = await Prices.findOneAndUpdate(
       { key: 'prices' },
       { $set: { globalPrice: parseFloat(globalPrice) || 0 } },
@@ -420,30 +424,25 @@ const createRegion = async (req, res) => {
     if (!name) return res.status(400).json({ error: 'اسم المنطقة مطلوب' });
     const region = await Region.create({ name, nameHeb: nameHeb || '', notes: notes || '' });
     return res.status(201).json({ success: true, id: region._id.toString() });
-  } catch (err) {
-    if (err.code === 11000) return res.status(409).json({ error: 'المنطقة موجودة مسبقاً' });
-    return res.status(500).json({ error: 'خطأ في الخادم' });
-  }
+  } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
 
 const updateRegion = async (req, res) => {
   try {
-    await Region.findByIdAndUpdate(req.params.regionId, req.body);
+    const { name, nameHeb, notes } = req.body;
+    await Region.findByIdAndUpdate(req.params.regionId, { name, nameHeb: nameHeb || '', notes: notes || '' });
     return res.json({ success: true });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
 
 const deleteRegion = async (req, res) => {
   try {
-    const id = req.params.regionId;
-    // إزالة المنطقة من الأراضي المرتبطة بها
-    await Land.updateMany({ regionId: id }, { regionId: null });
-    await Region.findByIdAndDelete(id);
+    await Region.findByIdAndDelete(req.params.regionId);
     return res.json({ success: true });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
 
-module.exports.getRegions    = getRegions;
-module.exports.createRegion  = createRegion;
-module.exports.updateRegion  = updateRegion;
-module.exports.deleteRegion  = deleteRegion;
+module.exports = {
+  ...module.exports,
+  getRegions, createRegion, updateRegion, deleteRegion,
+};

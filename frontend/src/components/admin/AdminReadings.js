@@ -4,8 +4,6 @@ import { useLang } from '../../contexts/LangContext';
 import { t } from '../../i18n/translations';
 import ReadingsTable from './ReadingsTable';
 
-// تحويل DMS الصحيح إلى Decimal
-// مثال: 33°14'17.96"N → 33.238322
 const dmsToDecimal = (deg, min, sec, dir) => {
   let dd = parseFloat(deg) + parseFloat(min)/60 + parseFloat(sec)/3600;
   if (/[SW]/i.test(dir)) dd = -dd;
@@ -15,55 +13,51 @@ const dmsToDecimal = (deg, min, sec, dir) => {
 const parseGoogleCoords = (raw) => {
   if (!raw || raw.trim().length < 3) return null;
   const s = raw.trim();
-
-  // 1. تنسيق Decimal: "33.238322, 35.711053" أو "33.238322 35.711053"
   const decMatch = s.match(/^(-?\d{1,3}\.\d+)[,\s]+(-?\d{1,3}\.\d+)$/);
-  if (decMatch) {
-    return { lat: parseFloat(decMatch[1]), lng: parseFloat(decMatch[2]) };
-  }
-
-  // 2. تنسيق DMS: 33°14'17.96"N 35°42'39.79"E
-  // يدعم: ° ' " أو unicode variants أو مسافات
-  const dmsPattern = /(\d{1,3})[°\u00b0]\s*(\d{1,2})['\'\u2032]\s*(\d{1,2}(?:\.\d+)?)["\"\u2033]?\s*([NS])/i;
+  if (decMatch) return { lat: parseFloat(decMatch[1]), lng: parseFloat(decMatch[2]) };
+  const dmsPattern  = /(\d{1,3})[°\u00b0]\s*(\d{1,2})['\'\u2032]\s*(\d{1,2}(?:\.\d+)?)["\"\u2033]?\s*([NS])/i;
   const dmsPattern2 = /(\d{1,3})[°\u00b0]\s*(\d{1,2})['\'\u2032]\s*(\d{1,2}(?:\.\d+)?)["\"\u2033]?\s*([EW])/i;
-
   const latM = s.match(dmsPattern);
   const lngM = s.match(dmsPattern2);
-
-  if (latM && lngM) {
-    return {
-      lat: dmsToDecimal(latM[1], latM[2], latM[3], latM[4]),
-      lng: dmsToDecimal(lngM[1], lngM[2], lngM[3], lngM[4]),
-    };
-  }
-
+  if (latM && lngM) return {
+    lat: dmsToDecimal(latM[1], latM[2], latM[3], latM[4]),
+    lng: dmsToDecimal(lngM[1], lngM[2], lngM[3], lngM[4]),
+  };
   return null;
 };
-
 
 export default function AdminReadings({ adminRole='admin' }) {
   const isViewer = adminRole === 'viewer';
   const { lang } = useLang();
-  const [farmers, setFarmers]   = useState([]);
-  const [lands, setLands]       = useState([]);
-  const [regions, setRegions]   = useState([]);
-  const [readings, setReadings] = useState([]);
-  const [prices, setPrices]     = useState({ globalPrice:0, yearPrices:{}, landPrices:{} });
-  const [loading, setLoading]   = useState(true);
-  const [showRForm, setShowRForm] = useState(false);
-  const [showLForm, setShowLForm] = useState(false);
-  const [editR, setEditR]       = useState(null);
-  const [rForm, setRForm]       = useState({ farmerId:'', landId:'', year:new Date().getFullYear(), readings:['',''], extra:'', extraPaid:'', extraNote:'' });
-  const [lForm, setLForm] = useState({ regionId:"", name:"" });
-  const [editLand, setEditLand] = useState(null);
-  const [filterF, setFilterF]   = useState('');
-  const [filterPaid, setFilterPaid] = useState('');
   const ar = lang === 'ar';
-  const [filterY, setFilterY]   = useState('');
-  const [filterR, setFilterR]   = useState('');
-  const [error, setError]       = useState('');
-  const [saving, setSaving]     = useState(false);
 
+  const [farmers,  setFarmers]  = useState([]);
+  const [lands,    setLands]    = useState([]);   // كل الأراضي المركزية
+  const [regions,  setRegions]  = useState([]);
+  const [readings, setReadings] = useState([]);
+  const [prices,   setPrices]   = useState({ globalPrice:0, yearPrices:{}, landPrices:{} });
+  const [loading,  setLoading]  = useState(true);
+
+  // reading form
+  const [showRForm, setShowRForm] = useState(false);
+  const [editR,     setEditR]     = useState(null);
+  const [rForm,     setRForm]     = useState({
+    farmerId:'', landId:'', year: new Date().getFullYear(),
+    readings:['',''], extra:'', extraPaid:'', extraNote:'',
+  });
+
+  // filters
+  const [filterF,    setFilterF]    = useState('');
+  const [filterY,    setFilterY]    = useState('');
+  const [filterR,    setFilterR]    = useState('');
+  const [filterPaid, setFilterPaid] = useState('');
+  const [farmerSearch, setFarmerSearch] = useState(''); // ✅ بحث في المزارعين
+  const [showFarmerList, setShowFarmerList] = useState(false);
+
+  const [error,  setError]  = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // ── Load ──────────────────────────────────────────────────
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -85,13 +79,30 @@ export default function AdminReadings({ adminRole='admin' }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const farmerName = id => farmers.find(f => String(f.id) === String(id))?.name || '—';
-  const landName   = id => lands.find(l => String(l.id) === String(id))?.name || '—';
+  // ── Helpers ───────────────────────────────────────────────
+  const farmerName = id => farmers.find(f => String(f.id) === String(id))?.nameHeb
+                        || farmers.find(f => String(f.id) === String(id))?.name || '—';
+  // ✅ يعرض اسم المنطقة بدل اسم الأرض
+  const landName = id => {
+    const land = lands.find(l => String(l.id) === String(id));
+    if (!land) return '—';
+    const reg = regions.find(r => String(r.id) === String(land.regionId));
+    return (reg?.nameHeb && reg.nameHeb !== reg.name) ? reg.nameHeb : (reg?.name || land.stationNumber || '—');
+  };
   const regionName = id => id ? (regions.find(r => String(r.id) === String(id))?.name || '') : '';
-  const landRegion = lid => { const l = lands.find(x => String(x.id) === String(lid)); return l?.regionId ? regionName(l.regionId) : ''; };
+  const landRegion = lid => {
+    const l = lands.find(x => String(x.id) === String(lid));
+    return l?.regionId ? regionName(l.regionId) : '';
+  };
   const years = [...new Set(readings.map(r => r.year))].sort((a,b) => b-a);
 
-  // ── Reading form ──
+  // ── أراضي المزارع المختار (المحطات التابعة له) ────────────
+  // عند اختيار مزارع في النموذج، تظهر فقط أراضيه
+  const farmerLands = rForm.farmerId
+    ? lands.filter(l => String(l.farmerId) === String(rForm.farmerId))
+    : lands;
+
+  // ── Reading CRUD ──────────────────────────────────────────
   const openAddR = () => {
     setEditR(null);
     setRForm({ farmerId:'', landId:'', year:new Date().getFullYear(), readings:['',''], extra:'', extraPaid:'', extraNote:'' });
@@ -99,67 +110,40 @@ export default function AdminReadings({ adminRole='admin' }) {
   };
   const openEditR = r => {
     setEditR(r);
-    setRForm({ farmerId:r.farmerId, landId:r.landId, year:r.year, readings:[...r.readings.map(String)], extra:r.extra||'', extraPaid:r.extraPaid||'', extraNote:r.extraNote||'' });
+    setRForm({
+      farmerId: r.farmerId, landId: r.landId, year: r.year,
+      readings: [...r.readings.map(String)],
+      extra: r.extra||'', extraPaid: r.extraPaid||'', extraNote: r.extraNote||'',
+    });
     setError(''); setShowRForm(true);
   };
   const submitR = async e => {
     e.preventDefault();
-    if (!rForm.farmerId || !rForm.landId) { setError(lang==='ar'?'اختر المزارع والأرض':'בחר חקלאי וקרקע'); return; }
-    if (rForm.readings.some(r => r === '')) { setError(lang==='ar'?'أدخل جميع القراءات':'הזן את כל הקריאות'); return; }
+    if (!rForm.farmerId || !rForm.landId) { setError(ar ? 'اختر المزارع والأرض' : 'בחר חקלאי וקרקע'); return; }
+    if (rForm.readings.some(r => r === '')) { setError(ar ? 'أدخل جميع القراءات' : 'הזן את כל הקריאות'); return; }
     setSaving(true); setError('');
     try {
       if (editR) await adminAPI.updateReading(editR.id, rForm);
-      else await adminAPI.createReading(rForm);
+      else       await adminAPI.createReading(rForm);
       setShowRForm(false); load();
     } catch(e) { setError(e.message); }
     finally { setSaving(false); }
   };
   const delR = async id => {
-    if (!window.confirm(lang==='ar'?'حذف هذه القراءة؟':'למחוק קריאה זו?')) return;
+    if (!window.confirm(ar ? 'حذف هذه القراءة؟' : 'למחוק קריאה זו?')) return;
     await adminAPI.deleteReading(id); load();
   };
 
-  // ── Land form — اسم عبري فقط، بدون ربط بمزارع ──
-  const openEditLand = l => {
-    setEditLand(l);
-    setLForm({ regionId: l.regionId||'', name: l.name||'' });
-    setShowLForm(true);
-    setError('');
-  };
-
-  const submitL = async e => {
-    e.preventDefault();
-    if (!lForm.name.trim()) { setError(lang==='ar'?'أدخل اسم الأرض':'הזן שם קרקע'); return; }
-    setSaving(true); setError('');
-    try {
-      if (editLand) {
-        await adminAPI.updateLand(editLand.id, {
-          regionId: lForm.regionId || null,
-          name: lForm.name.trim(),
-          nameHeb: lForm.name.trim(),
-        });
-      } else {
-        await adminAPI.createLand({
-          regionId: lForm.regionId || null,
-          name: lForm.name.trim(),
-          nameHeb: lForm.name.trim(),
-        });
-      }
-      setLForm({ regionId:'', name:'' });
-      setEditLand(null);
-      setShowLForm(false); load();
-    } catch(e) { setError(e.message); }
-    finally { setSaving(false); }
-  };
-  const delL = async (id, name) => {
-    if (!window.confirm(`${lang==='ar'?'حذف الأرض':'מחיקת קרקע'} "${name}"?`)) return;
-    await adminAPI.deleteLand(id); load();
-  };
-
   const addReadingField    = () => setRForm({ ...rForm, readings:[...rForm.readings,''] });
-  const removeReadingField = i  => { if(rForm.readings.length<=2) return; setRForm({...rForm,readings:rForm.readings.filter((_,idx)=>idx!==i)}); };
-  const updateReadingField = (i,v) => { const r=[...rForm.readings]; r[i]=v; setRForm({...rForm,readings:r}); };
+  const removeReadingField = i  => {
+    if (rForm.readings.length <= 2) return;
+    setRForm({ ...rForm, readings: rForm.readings.filter((_,idx) => idx !== i) });
+  };
+  const updateReadingField = (i,v) => {
+    const r = [...rForm.readings]; r[i] = v; setRForm({ ...rForm, readings:r });
+  };
 
+  // ── Filters ───────────────────────────────────────────────
   const filtered = readings.filter(r => {
     if (filterF && String(r.farmerId) !== String(filterF)) return false;
     if (filterY && r.year !== parseInt(filterY)) return false;
@@ -172,83 +156,305 @@ export default function AdminReadings({ adminRole='admin' }) {
     return true;
   });
 
+  // ── Render ────────────────────────────────────────────────
   return (
     <div>
-      {/* Filters + actions */}
+      {/* ── شريط الفلاتر والأزرار ── */}
       <div className="flex-between mb-16" style={{ flexWrap:'wrap', gap:12 }}>
         <div className="flex-gap gap-8" style={{ flexWrap:'wrap' }}>
-          <select value={filterF} onChange={e => setFilterF(e.target.value)} style={{ width:180 }}>
-            <option value="">{t('allFarmers', lang)}</option>
-            {farmers.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-          </select>
+          {/* ── فلتر المزارعين — searchable ── */}
+          <div style={{ position:'relative' }}>
+            <input
+              type="text"
+              value={farmerSearch}
+              onChange={e => { setFarmerSearch(e.target.value); setShowFarmerList(true); }}
+              onFocus={() => setShowFarmerList(true)}
+              onBlur={() => setTimeout(() => setShowFarmerList(false), 150)}
+              placeholder={filterF
+                ? (farmers.find(f=>f.id===filterF)?.nameHeb || farmers.find(f=>f.id===filterF)?.name || '')
+                : (ar ? '🔍 اختر مزارعاً...' : '🔍 חפש חקלאי...')}
+              style={{ width:190, paddingLeft:8 }}
+            />
+            {filterF && (
+              <button
+                onClick={() => { setFilterF(''); setFarmerSearch(''); }}
+                style={{ position:'absolute', left:6, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'var(--text-muted)', fontSize:14, lineHeight:1 }}>
+                ✕
+              </button>
+            )}
+            {showFarmerList && (
+              <div style={{
+                position:'absolute', top:'100%', right:0, zIndex:100,
+                background:'#fff', border:'1.5px solid var(--border)',
+                borderRadius:8, boxShadow:'0 4px 16px rgba(0,0,0,0.12)',
+                maxHeight:220, overflowY:'auto', minWidth:220,
+              }}>
+                <div
+                  onMouseDown={() => { setFilterF(''); setFarmerSearch(''); setShowFarmerList(false); }}
+                  style={{ padding:'8px 12px', fontSize:13, color:'var(--text-muted)', cursor:'pointer', borderBottom:'1px solid var(--border)' }}
+                  onMouseEnter={e=>e.currentTarget.style.background='#f0fdf4'}
+                  onMouseLeave={e=>e.currentTarget.style.background=''}>
+                  {ar ? '— الكل —' : '— הכל —'}
+                </div>
+                {farmers
+                  .filter(f => {
+                    const q = farmerSearch.toLowerCase();
+                    return !q || (f.nameHeb||f.name||'').toLowerCase().includes(q);
+                  })
+                  .map(f => (
+                    <div key={f.id}
+                      onMouseDown={() => { setFilterF(f.id); setFarmerSearch(''); setShowFarmerList(false); }}
+                      style={{
+                        padding:'8px 12px', fontSize:13, cursor:'pointer',
+                        fontFamily:'Heebo,sans-serif', fontWeight:600,
+                        background: filterF===f.id ? '#f0fdf4' : '',
+                      }}
+                      onMouseEnter={e=>e.currentTarget.style.background='#f0fdf4'}
+                      onMouseLeave={e=>e.currentTarget.style.background=filterF===f.id?'#f0fdf4':''}>
+                      {f.nameHeb || f.name}
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
           <select value={filterR} onChange={e => setFilterR(e.target.value)} style={{ width:160 }}>
             <option value="">{t('allRegions', lang)}</option>
-            {regions.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            {regions.map(r => (
+              <option key={r.id} value={r.id}>
+                {r.name}{r.nameHeb && r.nameHeb !== r.name ? ` — ${r.nameHeb}` : ''}
+              </option>
+            ))}
           </select>
           <select value={filterY} onChange={e => setFilterY(e.target.value)} style={{ width:130 }}>
             <option value="">{t('allYears', lang)}</option>
             {years.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
           <select value={filterPaid} onChange={e => setFilterPaid(e.target.value)} style={{ width:150 }}>
-            <option value="">{ar?'الكل (مدفوع + غير)':'הכל'}</option>
-            <option value="paid">{ar?'✅ مدفوع فقط':'✅ שולם בלבד'}</option>
-            <option value="unpaid">{ar?'❌ غير مدفوع':'❌ לא שולם'}</option>
+            <option value="">{ar ? 'الكل' : 'הכל'}</option>
+            <option value="paid">{ar ? '✅ مدفوع فقط' : '✅ שולם בלבד'}</option>
+            <option value="unpaid">{ar ? '❌ غير مدفوع' : '❌ לא שולם'}</option>
           </select>
         </div>
         <div className="flex-gap gap-8">
-          <button className="btn btn-outline btn-sm" onClick={() => window.print()} title={ar?'طباعة':'הדפסה'}>
+          <button className="btn btn-outline btn-sm" onClick={() => window.print()} title={ar ? 'طباعة' : 'הדפסה'}>
             🖨️
           </button>
-          <button className="btn btn-outline btn-sm" onClick={() => { setShowLForm(v=>!v); setError(''); }}>
-            🌾 {showLForm ? t('cancel',lang) : (lang==='ar'?'+ أرض جديدة':'+ קרקע חדשה')}
-          </button>
-          {!isViewer && <button className="btn btn-primary" onClick={openAddR}>
-            + {lang==='ar'?'إضافة قراءة':'הוסף קריאה'}
-          </button>}
+          {!isViewer && (
+            <button className="btn btn-primary" onClick={openAddR}>
+              + {ar ? 'إضافة قراءة' : 'הוסף קריאה'}
+            </button>
+          )}
         </div>
       </div>
 
       {error && <div className="alert alert-error mb-16">{error}</div>}
 
-      {/* ══ نموذج الأرض — عبري فقط، مستقلة ══ */}
-      {showLForm && (
-        <div className="card mb-16 fade-in-fast" style={{ border:'2px solid var(--lime-500)' }}>
-          <h3 className="mb-4" style={{ fontFamily:'Heebo, sans-serif' }}>
-            🌾 {editLand ? (lang==='ar'?'تعديل أرض':'עריכת קרקע') : (lang==='ar'?'إضافة أرض':'הוספת קרקע')}
+      {/* ══ نموذج إضافة/تعديل قراءة ══ */}
+      {showRForm && (
+        <div className="card mb-16 fade-in-fast" style={{ border:'2px solid var(--primary)' }}>
+          <h3 className="mb-16">
+            {editR
+              ? `✏️ ${ar ? 'تعديل قراءة' : 'עריכת קריאה'}`
+              : `+ ${ar ? 'إضافة قراءة' : 'הוסף קריאה'}`}
           </h3>
-          <p style={{ color:'var(--text-muted)', fontSize:13, marginBottom:16 }}>
-            {lang==='ar'
-              ? 'الأراضي قائمة مستقلة — يتم ربطها بالمزارع عند إضافة القراءة'
-              : 'הקרקעות רשימה עצמאית — מקושרות לחקלאי בעת הוספת קריאה'}
-          </p>
-          <form onSubmit={submitL}>
-            <div className="grid-2">
+          <form onSubmit={submitR}>
+            <div className="grid-3">
+
+              {/* المزارع */}
               <div className="form-group">
-                <label style={{ fontFamily:'Heebo, sans-serif' }}>שם הקרקע (עברית) *</label>
-                <input
-                  value={lForm.name}
-                  onChange={e => setLForm({...lForm, name:e.target.value})}
-                  placeholder="חלקת הצפון"
-                  style={{ fontFamily:'Heebo, sans-serif', fontSize:16, fontWeight:700 }}
-                  autoFocus
-                />
-              </div>
-              <div className="form-group">
-                <label>📍 {t('region', lang)}</label>
-                <select value={lForm.regionId} onChange={e => setLForm({...lForm,regionId:e.target.value})}>
-                  <option value="">— {lang==='ar'?'اختر المنطقة':'בחר אזור'} —</option>
-                  {regions.map(r => (
-                    <option key={r.id} value={r.id}>{r.name}</option>
+                <label>{ar ? 'المزارع *' : 'חקלאי *'}</label>
+                <select
+                  value={rForm.farmerId}
+                  onChange={e => setRForm({ ...rForm, farmerId: e.target.value, landId:'' })}
+                >
+                  <option value="">— {ar ? 'اختر' : 'בחר'} —</option>
+                  {farmers.map(f => (
+                    <option key={f.id} value={f.id}>{f.nameHeb || f.name}</option>
                   ))}
                 </select>
               </div>
+
+              {/* الأرض — تظهر فقط محطات المزارع المختار */}
+              <div className="form-group">
+                <label>{ar ? 'المحطة *' : 'תחנה *'}</label>
+                <select
+                  value={rForm.landId}
+                  onChange={e => setRForm({ ...rForm, landId: e.target.value })}
+                  disabled={!rForm.farmerId}
+                >
+                  <option value="">
+                    {rForm.farmerId
+                      ? `— ${ar ? 'اختر محطة' : 'בחר תחנה'} —`
+                      : `— ${ar ? 'اختر المزارع أولاً' : 'בחר חקלאי תחילה'} —`}
+                  </option>
+                  {farmerLands.map(l => (
+                    <option key={l.id} value={l.id}>
+                      {(() => {
+                        const reg = regions.find(r => String(r.id) === String(l.regionId));
+                        const regName = reg?.nameHeb && reg.nameHeb !== reg.name ? reg.nameHeb : reg?.name || '';
+                        return `${l.stationNumber}${regName ? ` — ${regName}` : ''}`;
+                      })()}
+                    </option>
+                  ))}
+                </select>
+                {rForm.farmerId && farmerLands.length === 0 && (
+                  <p style={{ fontSize:12, color:'var(--red-500)', marginTop:4 }}>
+                    ⚠️ {ar
+                      ? 'لا توجد محطات لهذا المزارع — أضفها في صفحة الحقلاء'
+                      : 'אין תחנות לחקלאי זה — הוסף בדף החקלאים'}
+                  </p>
+                )}
+              </div>
+
+              {/* السنة */}
+              <div className="form-group">
+                <label>{t('year', lang)} *</label>
+                <input
+                  type="number" value={rForm.year}
+                  onChange={e => setRForm({ ...rForm, year: e.target.value })}
+                  min={2000} max={2100}
+                />
+              </div>
+
             </div>
+
+            {/* معلومات المحطة المختارة */}
+            {rForm.landId && (() => {
+              const land = lands.find(l => l.id === rForm.landId);
+              return land ? (
+                <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', padding:'8px 14px', borderRadius:8, marginBottom:16, fontSize:13 }}>
+                  {land.regionId && (
+                    <span style={{ color:'var(--primary)', fontWeight:700, marginLeft:12 }}>
+                      📍 {t('region', lang)}: {regionName(land.regionId)}
+                    </span>
+                  )}
+                  {land.stationNumber && (
+                    <span style={{ marginRight:12, fontWeight:700, color:'var(--primary-dark)' }}>
+                      {' | '}עמדה:{' '}
+                      <code style={{ background:'white', border:'1px solid #bbf7d0', padding:'1px 8px', borderRadius:5 }}>
+                        {land.stationNumber}
+                      </code>
+                    </span>
+                  )}
+                  {land.stationLat && land.stationLng
+                    ? <span style={{ fontSize:11, color:'#16a34a', marginRight:8 }}>
+                        ✓ GPS: {parseFloat(land.stationLat).toFixed(4)}, {parseFloat(land.stationLng).toFixed(4)}
+                      </span>
+                    : <span style={{ fontSize:11, color:'#f59e0b', marginRight:8 }}>
+                        ⚠ {ar ? 'لا يوجد GPS — أضفه في صفحة الحقلاء' : 'אין GPS — הוסף בדף החקלאים'}
+                      </span>
+                  }
+                </div>
+              ) : null;
+            })()}
+
+            {/* القراءات */}
+            <div className="form-group">
+              <label>
+                {ar
+                  ? 'القراءات (الأولى = بداية، التالية = قراءات الفترات)'
+                  : 'קריאות (ראשונה = התחלה, הבאות = קריאות תקופה)'}
+              </label>
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {rForm.readings.map((v,i) => {
+                  const prev = parseFloat(rForm.readings[i-1]);
+                  const curr = parseFloat(v);
+                  const cups = i > 0 && !isNaN(prev) && !isNaN(curr) ? curr - prev : null;
+                  return (
+                    <div key={i} style={{ display:'flex', gap:10, alignItems:'center' }}>
+                      <span style={{ width:130, fontSize:13, fontWeight:700, color:'var(--text-muted)', flexShrink:0 }}>
+                        {ar ? 'قراءة' : 'קריאה'} {i+1}
+                        {i===0 ? ` (${ar ? 'بداية' : 'התחלה'})` : ` (${ar ? 'فترة' : 'תקופה'} ${i})`}
+                      </span>
+                      <input
+                        type="number" step="any" value={v}
+                        onChange={e => updateReadingField(i, e.target.value)}
+                        placeholder="0"
+                        style={{ width:130, fontWeight:700 }}
+                      />
+                      {/* عرض الأكواب */}
+                      {cups !== null && (
+                        <span style={{
+                          fontSize:12, fontWeight:700, minWidth:90,
+                          color: cups >= 0 ? '#16a34a' : '#dc2626',
+                          background: cups >= 0 ? '#f0fdf4' : '#fff1f2',
+                          border: `1px solid ${cups >= 0 ? '#bbf7d0' : '#fca5a5'}`,
+                          padding:'2px 10px', borderRadius:6,
+                        }}>
+                          {cups >= 0 ? `🪣 ${cups}` : `⚠️ ${cups}`} {ar ? 'م³' : 'קוב'}
+                        </span>
+                      )}
+                      {i >= 2 && (
+                        <button type="button" onClick={() => removeReadingField(i)}
+                          style={{ width:26, height:26, borderRadius:6, border:'1.5px solid #fca5a5', background:'#fff1f2', color:'#dc2626', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:13 }}>
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+                <button type="button" onClick={addReadingField}
+                  className="btn btn-outline btn-sm" style={{ width:'fit-content', marginTop:4 }}>
+                  + {ar ? 'إضافة فترة' : 'הוסף תקופה'}
+                </button>
+              </div>
+            </div>
+
+            {/* الإضافات */}
+            <div style={{ background:'var(--surface-2)', borderRadius:10, padding:'12px 16px', marginBottom:16 }}>
+              <h4 className="mb-8" style={{ fontSize:13, color:'var(--primary)' }}>
+                ➕ {ar ? 'مبلغ إضافي (اختياري)' : 'סכום נוסף (אופציונלי)'}
+              </h4>
+              <div className="grid-2">
+                <div className="form-group" style={{ marginBottom:0 }}>
+                  <label style={{ fontSize:13 }}>₪ {ar ? 'المبلغ الإضافي' : 'סכום נוסף'}</label>
+                  <input
+                    type="number" step="any" min="0"
+                    value={rForm.extra}
+                    onChange={e => setRForm({ ...rForm, extra:e.target.value })}
+                    placeholder="0"
+                  />
+                </div>
+                <div className="form-group" style={{ marginBottom:0 }}>
+                  <label style={{ fontSize:13 }}>{ar ? 'سبب الإضافة' : 'סיבת התוספת'}</label>
+                  <input
+                    value={rForm.extraNote}
+                    onChange={e => setRForm({ ...rForm, extraNote:e.target.value })}
+                    placeholder={ar ? 'مثال: غرامة، صيانة...' : 'לדוג: קנס, תחזוקה...'}
+                  />
+                </div>
+              </div>
+              {rForm.extra > 0 && (
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, background:'#f0fdf4', borderRadius:8, padding:'10px 16px', marginTop:8 }}>
+                  <div className="form-group" style={{ marginBottom:0 }}>
+                    <label style={{ fontSize:13 }}>✅ {ar ? 'المبلغ المدفوع منها (₪)' : 'שולם (₪)'}</label>
+                    <input
+                      type="number" step="any" min="0" max={rForm.extra}
+                      value={rForm.extraPaid}
+                      onChange={e => setRForm({ ...rForm, extraPaid:e.target.value })}
+                      placeholder="0"
+                      style={{ fontWeight:700 }}
+                    />
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', paddingTop:20 }}>
+                    {rForm.extraPaid > 0 && rForm.extra > 0 && (
+                      <span style={{ fontSize:13, fontWeight:700, color: parseFloat(rForm.extraPaid) >= parseFloat(rForm.extra) ? '#16a34a' : '#ca8a04' }}>
+                        {parseFloat(rForm.extraPaid) >= parseFloat(rForm.extra)
+                          ? `✅ ${ar ? 'مدفوع كاملاً' : 'שולם במלואו'}`
+                          : `⚠️ ${ar ? 'متبقي' : 'נותר'}: ₪${(parseFloat(rForm.extra)-parseFloat(rForm.extraPaid)).toFixed(2)}`}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {error && <div className="alert alert-error">{error}</div>}
-            <div className="flex-gap gap-8">
-              <button type="submit" className="btn btn-accent btn-sm" disabled={saving}>
-                💾 {t('save', lang)}
+            <div className="flex-gap gap-12">
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? t('saving', lang) : `💾 ${t('save', lang)}`}
               </button>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowLForm(false)}>
+              <button type="button" className="btn btn-outline" onClick={() => setShowRForm(false)}>
                 {t('cancel', lang)}
               </button>
             </div>
@@ -256,239 +462,23 @@ export default function AdminReadings({ adminRole='admin' }) {
         </div>
       )}
 
-      {/* ══ نموذج القراءة ══ */}
-      {showRForm && (
-        <div className="card mb-16 fade-in-fast" style={{ border:'2px solid var(--primary)' }}>
-          <h3 className="mb-16">
-            {editR ? `✏️ ${lang==='ar'?'تعديل قراءة':'עריכת קריאה'}` : `+ ${lang==='ar'?'إضافة قراءة':'הוסף קריאה'}`}
-          </h3>
-          <form onSubmit={submitR}>
-            <div className="grid-3">
-              <div className="form-group">
-                <label>{lang==='ar'?'المزارع *':'חקלאי *'}</label>
-                <select value={rForm.farmerId} onChange={e => setRForm({...rForm,farmerId:e.target.value})}>
-                  <option value="">— {lang==='ar'?'اختر':'בחר'} —</option>
-                  {farmers.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                </select>
-              </div>
-              <div className="form-group">
-                <label>{lang==='ar'?'الأرض *':'קרקע *'}</label>
-                {/* ✅ كل الأراضي بدون فلتر بالمزارع */}
-                <select value={rForm.landId} onChange={e => setRForm({...rForm,landId:e.target.value})}>
-                  <option value="">— {lang==='ar'?'اختر':'בחר'} —</option>
-                  {lands.map(l => (
-                    <option key={l.id} value={l.id}>
-                      {l.name}{regionName(l.regionId) ? ` — ${regionName(l.regionId)}` : ''}
-                    </option>
-                  ))}
-                </select>
-                {lands.length === 0 && (
-                  <p style={{ fontSize:12, color:'var(--red-500)', marginTop:4 }}>
-                    ⚠️ {lang==='ar'?'لا توجد أراضٍ — أضف أرضاً أولاً':'אין קרקעות — הוסף קרקע תחילה'}
-                  </p>
-                )}
-              </div>
-              <div className="form-group">
-                <label>{t('year', lang)} *</label>
-                <input type="number" value={rForm.year}
-                  onChange={e => setRForm({...rForm,year:e.target.value})} min={2000} max={2100} />
-              </div>
-
-            </div>
-
-
-
-            {rForm.landId && (
-              <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', padding:'8px 14px', borderRadius:8, marginBottom:16, fontSize:13 }}>
-                {landRegion(rForm.landId) && <span style={{color:'var(--primary)',fontWeight:700,marginLeft:12}}>📍 {t('region',lang)}: {landRegion(rForm.landId)}</span>}
-                {(() => {
-                  const land = lands.find(l => l.id === rForm.landId);
-                  return land?.stationNumber
-                    ? <span style={{marginRight:12,fontWeight:700,color:'var(--primary-dark)'}}> | עמדה: <code style={{background:'white',border:'1px solid #bbf7d0',padding:'1px 8px',borderRadius:5}}>{land.stationNumber}</code></span>
-                    : null;
-                })()}
-                {(() => {
-                  const land = lands.find(l => l.id === rForm.landId);
-                  return land?.stationLat && land?.stationLng
-                    ? <span style={{fontSize:11,color:'#16a34a',marginRight:8}}>  ✓ GPS: {parseFloat(land.stationLat).toFixed(4)}, {parseFloat(land.stationLng).toFixed(4)}</span>
-                    : <span style={{fontSize:11,color:'#f59e0b',marginRight:8}}>  ⚠ {ar?'لا يوجد موقع GPS — أضفه في صفحة المزارعين':'אין מיקום GPS — הוסף בדף החקלאים'}</span>;
-                })()}
-              </div>
-            )}
-
-            <div className="form-group">
-              <label>
-                {lang==='ar'
-                  ? 'القراءات (الأولى = بداية، التالية = قراءات الفترات)'
-                  : 'קריאות (ראשונה = התחלה, הבאות = קריאות תקופה)'}
-              </label>
-              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                {rForm.readings.map((v,i) => (
-                  <div key={i} style={{ display:'flex', gap:10, alignItems:'center' }}>
-                    <span style={{ width:130, fontSize:13, fontWeight:700, color:'var(--text-muted)', flexShrink:0 }}>
-                      {lang==='ar'?'قراءة':'קריאה'} {i+1}{i===0?` (${lang==='ar'?'أولى':'ראשונה'})`:''}
-                    </span>
-                    <input type="number" step="any" value={v}
-                      onChange={e => updateReadingField(i,e.target.value)}
-                      placeholder={`${lang==='ar'?'القراءة':'קריאה'} ${i+1}`}
-                      style={{ maxWidth:180 }} />
-                    {rForm.readings.length > 2 && (
-                      <button type="button" className="btn btn-danger btn-sm btn-icon" onClick={() => removeReadingField(i)}>✕</button>
-                    )}
-                    {i > 0 && rForm.readings[i-1] !== '' && v !== '' && (
-                      <span style={{ fontSize:13, color:'var(--primary)', fontWeight:700 }}>
-                        {lang==='ar'?'الفرق':'הפרש'}: {(parseFloat(v)-parseFloat(rForm.readings[i-1])).toFixed(2)} {t('cups',lang)}
-                      </span>
-                    )}
-                  </div>
-                ))}
-                <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf:'flex-start' }} onClick={addReadingField}>
-                  {t('addReadingField', lang)}
-                </button>
-              </div>
-            </div>
-
-            {/* إضافات */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 2fr', gap:10, background:'#fff8e1', borderRadius:10, padding:'12px 16px', marginBottom:0 }}>
-              <div className="form-group" style={{ marginBottom:0 }}>
-                <label style={{ fontSize:13 }}>💰 {ar?'مبلغ إضافي (₪)':'תוספת (₪)'}</label>
-                <input
-                  type="number" step="any" min="0"
-                  value={rForm.extra}
-                  onChange={e => setRForm({...rForm, extra:e.target.value})}
-                  placeholder="0"
-                  style={{ fontWeight:700 }}
-                />
-              </div>
-              <div className="form-group" style={{ marginBottom:0 }}>
-                <label style={{ fontSize:13 }}>📝 {ar?'سبب الإضافة':'סיבת התוספת'}</label>
-                <input
-                  value={rForm.extraNote}
-                  onChange={e => setRForm({...rForm, extraNote:e.target.value})}
-                  placeholder={ar?'مثال: غرامة، صيانة...':'לדוג: קנס, תחזוקה...'}
-                />
-              </div>
-            </div>
-            {rForm.extra > 0 && (
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, background:'#f0fdf4', borderRadius:8, padding:'10px 16px', marginTop:8 }}>
-                <div className="form-group" style={{ marginBottom:0 }}>
-                  <label style={{ fontSize:13 }}>✅ {ar?'المبلغ المدفوع منها (₪)':'שולם (₪)'}</label>
-                  <input
-                    type="number" step="any" min="0"
-                    max={rForm.extra}
-                    value={rForm.extraPaid}
-                    onChange={e => setRForm({...rForm, extraPaid:e.target.value})}
-                    placeholder="0"
-                    style={{ fontWeight:700 }}
-                  />
-                </div>
-                <div style={{ display:'flex', alignItems:'center', paddingTop:20 }}>
-                  {rForm.extraPaid > 0 && rForm.extra > 0 && (
-                    <span style={{ fontSize:13, fontWeight:700, color: parseFloat(rForm.extraPaid)>=parseFloat(rForm.extra) ? '#16a34a' : '#ca8a04' }}>
-                      {parseFloat(rForm.extraPaid) >= parseFloat(rForm.extra)
-                        ? `✅ ${ar?'مدفوع كاملاً':'שולם במלואו'}`
-                        : `⚠️ ${ar?'متبقي':'נותר'}: ₪${(parseFloat(rForm.extra)-parseFloat(rForm.extraPaid)).toFixed(2)}`}
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {error && <div className="alert alert-error">{error}</div>}
-            <div className="flex-gap gap-12">
-              <button type="submit" className="btn btn-primary" disabled={saving}>
-                {saving ? t('saving',lang) : `💾 ${t('save',lang)}`}
-              </button>
-              <button type="button" className="btn btn-outline" onClick={() => setShowRForm(false)}>
-                {t('cancel',lang)}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* ══ جدول الأراضي ══ */}
-      <details className="card mb-16">
-        <summary style={{ cursor:'pointer', fontWeight:700, color:'var(--primary)', listStyle:'none', display:'flex', justifyContent:'space-between', alignItems:'center', padding:4 }}>
-          <span>🌾 {lang==='ar'?'جميع الأراضي':'כל הקרקעות'} ({lands.length})</span>
-          <span style={{ fontSize:12 }}>▼</span>
-        </summary>
-        <div className="tbl-wrap mt-16">
-          <table>
-            <thead>
-              <tr>
-                <th>{lang==='ar'?'الأرض':'קרקע'}</th>
-                <th>📍 {t('region',lang)}</th>
-                <th>{t('area',lang)}</th>
-                <th>{t('delete',lang)}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lands.length === 0 ? (
-                <tr><td colSpan={4} style={{ textAlign:'center', color:'var(--text-muted)', padding:20 }}>
-                  {lang==='ar'?'لا توجد أراضٍ بعد':'אין קרקעות עדיין'}
-                </td></tr>
-              ) : lands.map(l => (
-                <tr key={l.id}>
-                  <td><strong style={{ fontFamily:'Heebo, sans-serif', fontSize:15 }}>{l.name}</strong></td>
-                  <td>
-                    {l.regionId
-                      ? <span className="badge badge-green">{regionName(l.regionId)}</span>
-                      : <span style={{ color:'var(--text-muted)',fontSize:12 }}>—</span>}
-                  </td>
-                  <td>{l.area ? `${l.area} ${t('dunam',lang)}` : '—'}</td>
-                  <td>
-                    <div className="flex-gap gap-6">
-                      <button onClick={() => openEditLand(l)}
-                          style={{
-                            width:28, height:28, borderRadius:7,
-                            border:'1.5px solid var(--border)',
-                            background:'var(--surface-2)', color:'var(--primary)',
-                            cursor:'pointer', display:'inline-flex',
-                            alignItems:'center', justifyContent:'center',
-                            fontSize:13, transition:'all 0.18s',
-                          }}
-                          onMouseEnter={e=>{e.currentTarget.style.background='var(--primary)';e.currentTarget.style.color='#fff';}}
-                          onMouseLeave={e=>{e.currentTarget.style.background='var(--surface-2)';e.currentTarget.style.color='var(--primary)';}}
-                        >✏</button>
-                      <button
-                          onClick={() => delL(l.id,l.name)}
-                          style={{
-                            width:28, height:28, borderRadius:7,
-                            border:'1.5px solid #fca5a5',
-                            background:'#fff1f2', color:'#dc2626',
-                            cursor:'pointer', display:'inline-flex',
-                            alignItems:'center', justifyContent:'center',
-                            fontSize:13, transition:'all 0.18s',
-                          }}
-                          onMouseEnter={e=>{e.currentTarget.style.background='#dc2626';e.currentTarget.style.color='#fff';}}
-                          onMouseLeave={e=>{e.currentTarget.style.background='#fff1f2';e.currentTarget.style.color='#dc2626';}}
-                        >✕</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
-
-      {/* ══ جدول القراءات — أعمدة ثابتة ══ */}
+      {/* ══ جدول القراءات ══ */}
       {loading ? (
         <div style={{ textAlign:'center', padding:40 }}><div className="spinner" /></div>
       ) : (
         <ReadingsTable
-          setReadings={setReadings}
           readings={filtered}
-          prices={prices}
+          setReadings={setReadings}
           farmerName={farmerName}
           landName={landName}
           landRegion={landRegion}
           onEdit={openEditR}
           onDelete={delR}
           lang={lang}
+          prices={prices}
           isViewer={isViewer}
           lands={lands}
+          regions={regions}
         />
       )}
     </div>

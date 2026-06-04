@@ -31,7 +31,7 @@ const parseGoogleCoords = (raw) => {
 
 // ── Empty forms ──────────────────────────────────────────────
 const EMPTY_FARMER = { name:'', idNumber:'', phone:'', notes:'' };
-const EMPTY_LAND   = { name:'', regionId:'', stationNumber:'', gpsRaw:'', stationLat:'', stationLng:'' };
+const EMPTY_LAND   = { regionId:'', stationNumber:'', gpsRaw:'', stationLat:'', stationLng:'', description:'' };
 
 export default function AdminFarmers({ adminRole='admin' }) {
   const { lang }  = useLang();
@@ -63,7 +63,7 @@ export default function AdminFarmers({ adminRole='admin' }) {
   const [expandedFarmer, setExpandedFarmer] = useState(null);
   const [farmerLands,    setFarmerLands]    = useState([]);
   const [loadingLands,   setLoadingLands]   = useState(false);
-  const [landForm,       setLandForm]       = useState(null); // null=hidden, {}=adding/editing
+  const [landForm,       setLandForm]       = useState(null);
   const [editLand,       setEditLand]       = useState(null);
   const [landFormData,   setLandFormData]   = useState(EMPTY_LAND);
   const [savingLand,     setSavingLand]     = useState(false);
@@ -178,12 +178,14 @@ export default function AdminFarmers({ adminRole='admin' }) {
   const openEditLand = land => {
     setEditLand(land);
     setLandFormData({
-      name:          land.nameHeb || land.name || '',
       regionId:      land.regionId || '',
       stationNumber: land.stationNumber || '',
-      gpsRaw:        land.stationLat ? `${land.stationLat}, ${land.stationLng}` : '',
+      gpsRaw:        (land.stationLat && land.stationLng)
+                       ? `${land.stationLat}, ${land.stationLng}`
+                       : '',
       stationLat:    land.stationLat || '',
       stationLng:    land.stationLng || '',
+      description:   land.description || '',
     });
     setLandError('');
     setLandForm('edit');
@@ -196,19 +198,28 @@ export default function AdminFarmers({ adminRole='admin' }) {
     });
   };
 
+  // ✅ FIX: تحقق من NaN قبل الإرسال
+  const safeFloat = v => {
+    const f = parseFloat(v);
+    return (!isNaN(f) && v !== '' && v !== null) ? f : null;
+  };
+
   const submitLand = async e => {
     e.preventDefault();
-    if (!landFormData.name.trim()) { setLandError(ar?'اسم الأرض مطلوب':'שם הקרקע חובה'); return; }
+    if (!landFormData.stationNumber.trim()) {
+      setLandError(ar ? 'رقم المحطة مطلوب' : 'מספר תחנה חובה'); return;
+    }
     setSavingLand(true); setLandError('');
     try {
       const payload = {
         farmerId:      expandedFarmer,
         regionId:      landFormData.regionId || null,
-        name:          landFormData.name.trim(),
-        nameHeb:       landFormData.name.trim(),
-        stationNumber: landFormData.stationNumber || '',
-        stationLat:    landFormData.stationLat ? parseFloat(landFormData.stationLat) : null,
-        stationLng:    landFormData.stationLng ? parseFloat(landFormData.stationLng) : null,
+        name:          landFormData.stationNumber.trim(),
+        nameHeb:       landFormData.stationNumber.trim(),
+        stationNumber: landFormData.stationNumber.trim(),
+        description:   landFormData.description || '',
+        stationLat:    safeFloat(landFormData.stationLat),
+        stationLng:    safeFloat(landFormData.stationLng),
       };
       if (editLand) await adminAPI.updateLand(editLand.id, payload);
       else          await adminAPI.createLand(payload);
@@ -405,146 +416,190 @@ export default function AdminFarmers({ adminRole='admin' }) {
                         <td>{f.phone||'—'}</td>
                         <td style={{textAlign:'center'}}>
                           {unpaid > 0
-                            ? <span style={{fontWeight:800,fontSize:13,color:'#dc2626',background:'#fff1f2',border:'1.5px solid #fca5a5',borderRadius:8,padding:'3px 10px'}}>₪{unpaid.toLocaleString('he-IL',{maximumFractionDigits:0})}</span>
-                            : <span style={{color:'#16a34a',fontSize:14,fontWeight:700}}>✓</span>}
+                            ? <span style={{background:'#fff1f2',color:'#dc2626',padding:'3px 10px',borderRadius:6,fontWeight:700,fontSize:13}}>₪{Math.round(unpaid).toLocaleString()}</span>
+                            : <span style={{color:'#16a34a',fontWeight:700}}>✓</span>}
                         </td>
-                        <td style={{maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:12,color:'var(--text-muted)'}}>{f.notes||'—'}</td>
-                        <td>
-                          {!isViewer && <div className="flex-gap gap-6">
-                            <button onClick={()=>openEdit(f)} style={{width:28,height:28,borderRadius:7,border:'1.5px solid var(--border)',background:'var(--surface-2)',color:'var(--primary)',cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:13}}
-                              onMouseEnter={e=>{e.currentTarget.style.background='var(--primary)';e.currentTarget.style.color='#fff';}}
-                              onMouseLeave={e=>{e.currentTarget.style.background='var(--surface-2)';e.currentTarget.style.color='var(--primary)';}}>✏</button>
-                            <button onClick={()=>delFarmer(f.id, f.nameHeb||f.name)} style={{width:28,height:28,borderRadius:7,border:'1.5px solid #fca5a5',background:'#fff1f2',color:'#dc2626',cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:13}}
-                              onMouseEnter={e=>{e.currentTarget.style.background='#dc2626';e.currentTarget.style.color='#fff';}}
-                              onMouseLeave={e=>{e.currentTarget.style.background='#fff1f2';e.currentTarget.style.color='#dc2626';}}>✕</button>
-                          </div>}
-                        </td>
+                        <td style={{maxWidth:150,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:12,color:'var(--text-muted)'}}>{f.notes||'—'}</td>
+                        {!isViewer && (
+                          <td>
+                            <div className="flex-gap gap-4">
+                              <button onClick={()=>openEdit(f)}
+                                style={{width:26,height:26,borderRadius:6,border:'1.5px solid var(--border)',background:'var(--surface-2)',color:'var(--primary)',cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:12}}
+                                onMouseEnter={e=>{e.currentTarget.style.background='var(--primary)';e.currentTarget.style.color='#fff';}}
+                                onMouseLeave={e=>{e.currentTarget.style.background='var(--surface-2)';e.currentTarget.style.color='var(--primary)';}}>✏</button>
+                              <button onClick={()=>delFarmer(f.id,f.nameHeb||f.name)}
+                                style={{width:26,height:26,borderRadius:6,border:'1.5px solid #fca5a5',background:'#fff1f2',color:'#dc2626',cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:12}}
+                                onMouseEnter={e=>{e.currentTarget.style.background='#dc2626';e.currentTarget.style.color='#fff';}}
+                                onMouseLeave={e=>{e.currentTarget.style.background='#fff1f2';e.currentTarget.style.color='#dc2626';}}>✕</button>
+                            </div>
+                          </td>
+                        )}
                       </tr>
 
-                      {/* ── قسم الأراضي (عند التوسيع) ── */}
+                      {/* ── صف الأراضي الموسّع ── */}
                       {isOpen && (
                         <tr>
-                          <td colSpan={8} style={{background:'#f8fafc',padding:'12px 16px 16px',borderBottom:'2px solid var(--primary-light)'}}>
-                            <div style={{marginBottom:10,display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:8}}>
-                              <strong style={{color:'var(--primary)',fontSize:14}}>
-                                🌾 {ar?'أراضي':'קרקעות של'} {f.nameHeb||f.name}
-                              </strong>
-                              {!isViewer && (
-                                <button className="btn btn-outline btn-sm" onClick={()=>openAddLand(f.id)}>
-                                  + {ar?'إضافة أرض':'הוסף קרקע'}
-                                </button>
+                          <td colSpan={isViewer ? 7 : 8} style={{padding:0,background:'#f8fffe'}}>
+                            <div style={{padding:'12px 16px 16px',borderTop:'2px solid #bbf7d0'}}>
+                              <div className="flex-between mb-8">
+                                <strong style={{fontSize:13,color:'var(--primary)'}}>
+                                  🌱 {ar?'أراضي':'קרקעות של'} {f.nameHeb||f.name}
+                                </strong>
+                                {!isViewer && (
+                                  <button className="btn btn-outline btn-sm" onClick={()=>openAddLand(f.id)}>
+                                    + {ar?'إضافة أرض':'הוסף קרקע'}
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* نموذج الأرض */}
+                              {landForm && (
+                                <div style={{background:'#fff',border:'1.5px solid var(--primary)',borderRadius:10,padding:14,marginBottom:12}}>
+                                  <h4 style={{margin:'0 0 12px'}}>{editLand ? (ar?'✏ تعديل أرض':'✏ עריכת קרקע') : (ar?'+ أرض جديدة':'+ קרקע חדשה')}</h4>
+                                  <form onSubmit={submitLand}>
+                                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12,marginBottom:12}}>
+                                      <div className="form-group">
+                                        <label style={{fontFamily:'Heebo,sans-serif'}}>
+                                          עמדה (מס׳ תחנה) *
+                                        </label>
+                                        <input
+                                          value={landFormData.stationNumber}
+                                          onChange={e=>setLandFormData({...landFormData,stationNumber:e.target.value})}
+                                          placeholder="A14 / B3 / FC7"
+                                          style={{fontFamily:'monospace',fontWeight:900,textAlign:'center',fontSize:18,letterSpacing:3}}
+                                          autoFocus
+                                        />
+                                      </div>
+                                      <div className="form-group">
+                                        <label>{ar?'المنطقة':'אזור'} *</label>
+                                        <select value={landFormData.regionId} onChange={e=>setLandFormData({...landFormData,regionId:e.target.value})}>
+                                          <option value="">{ar?'— اختر منطقة —':'— בחר אזור —'}</option>
+                                          {regions.map(r => (
+                                            <option key={r.id} value={r.id}>
+                                              {r.name}{r.nameHeb && r.nameHeb !== r.name ? ` — ${r.nameHeb}` : ''}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                      <div className="form-group">
+                                        <label>📍 {ar?'الموقع (GPS)':'מיקום GPS'}</label>
+                                        <input value={landFormData.gpsRaw}
+                                          onChange={e=>handleGpsChange(e.target.value)}
+                                          placeholder="32.123456, 35.123456" style={{fontFamily:'monospace',fontSize:12}} />
+                                        {landFormData.stationLat && landFormData.stationLng && (
+                                          <div style={{display:'flex',alignItems:'center',gap:8,marginTop:5}}>
+                                            <span style={{fontSize:11,color:'#16a34a',flex:1}}>✓ {parseFloat(landFormData.stationLat).toFixed(5)}, {parseFloat(landFormData.stationLng).toFixed(5)}</span>
+                                            <button type="button"
+                                              onClick={()=>setMapModal({lat:landFormData.stationLat,lng:landFormData.stationLng,name:landFormData.stationNumber||'📍'})}
+                                              style={{background:'var(--primary)',color:'#fff',border:'none',borderRadius:6,padding:'3px 10px',fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                                              🗺️ {ar?'معاينة':'תצוגה מקדימה'}
+                                            </button>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                    {landError && <div className="alert alert-error mb-8">{landError}</div>}
+                                    {/* ── وصف الأرض ── */}
+                                    <div className="form-group">
+                                      <label style={{fontSize:13}}>
+                                        📝 {ar ? 'وصف الأرض (اختياري)' : 'תיאור התחנה (אופציונלי)'}
+                                      </label>
+                                      <textarea
+                                        rows={2}
+                                        value={landFormData.description}
+                                        onChange={e=>setLandFormData({...landFormData,description:e.target.value})}
+                                        placeholder={ar
+                                          ? 'مثال: الأرض الكبيرة بجانب البئر، عند المدخل الشمالي...'
+                                          : 'לדוג׳: השדה הגדול ליד הבאר, בכניסה הצפונית...'}
+                                        style={{fontSize:13, resize:'vertical'}}
+                                      />
+                                    </div>
+                                    <div className="flex-gap gap-8">
+                                      <button type="submit" className="btn btn-primary btn-sm" disabled={savingLand}>
+                                        {savingLand ? '⏳' : `💾 ${ar?'حفظ':'שמור'}`}
+                                      </button>
+                                      <button type="button" className="btn btn-outline btn-sm" onClick={()=>setLandForm(null)}>{ar?'إلغاء':'ביטול'}</button>
+                                    </div>
+                                  </form>
+                                </div>
+                              )}
+
+                              {/* جدول الأراضي */}
+                              {loadingLands ? (
+                                <div style={{textAlign:'center',padding:20}}><div className="spinner"/></div>
+                              ) : farmerLands.length === 0 ? (
+                                <div style={{textAlign:'center',padding:16,color:'var(--text-muted)',fontSize:13}}>
+                                  {ar?'لا توجد أراضٍ مسجلة':'אין קרקעות רשומות'} — {ar?'اضغط "إضافة أرض"':'לחץ "הוסף קרקע"'}
+                                </div>
+                              ) : (
+                                <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                                  <thead>
+                                    <tr style={{background:'#e8f5e9'}}>
+                                      <th style={{padding:'6px 10px',textAlign:'center',fontFamily:'Heebo,sans-serif'}}>עמדה</th>
+                                      <th style={{padding:'6px 10px',textAlign:'center'}}>{ar?'المنطقة':'אזור'}</th>
+                                      <th style={{padding:'6px 10px',textAlign:'right'}}>{ar?'الوصف':'תיאור'}</th>
+                                      <th style={{padding:'6px 10px',textAlign:'center'}}>📍 {ar?'موقع':'מיקום'}</th>
+                                      {!isViewer && <th style={{padding:'6px 10px',width:70}}></th>}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {farmerLands.map(l => (
+                                      <tr key={l.id} style={{borderBottom:'1px solid #e5e7eb'}}>
+                                        {/* עמדה */}
+                                        <td style={{padding:'7px 10px',textAlign:'center'}}>
+                                          {l.stationNumber
+                                            ? <code style={{background:'#f0fdf4',border:'1px solid #bbf7d0',padding:'3px 12px',borderRadius:6,fontWeight:900,fontSize:15,letterSpacing:2}}>{l.stationNumber}</code>
+                                            : <span style={{color:'var(--border)'}}>—</span>}
+                                        </td>
+                                        {/* אזור */}
+                                        <td style={{padding:'7px 10px',textAlign:'center',fontSize:13}}>
+                                          {(() => {
+                                            const reg = regions.find(r=>r.id===l.regionId);
+                                            return reg
+                                              ? <span style={{background:'#f0fdf4',border:'1px solid #bbf7d0',padding:'2px 10px',borderRadius:6,fontWeight:700,color:'var(--primary)'}}>
+                                                  {reg.name}
+                                                  {reg.nameHeb && reg.nameHeb !== reg.name ? ` — ${reg.nameHeb}` : ''}
+                                                </span>
+                                              : <span style={{color:'var(--border)'}}>—</span>;
+                                          })()}
+                                        </td>
+                                        {/* תיאור */}
+                                        <td style={{padding:'7px 10px',fontSize:12,color:'#1e40af',maxWidth:200}}>
+                                          {l.description
+                                            ? <span style={{background:'#eff6ff',border:'1px solid #bfdbfe',padding:'2px 8px',borderRadius:6}}>
+                                                🏡 {l.description}
+                                              </span>
+                                            : <span style={{color:'var(--border)'}}>—</span>}
+                                        </td>
+                                        {/* מיקום */}
+                                        <td style={{padding:'7px 10px',textAlign:'center',fontSize:11}}>
+                                          {l.stationLat && l.stationLng
+                                            ? <a href={`https://www.google.com/maps?q=${l.stationLat},${l.stationLng}`} target="_blank" rel="noreferrer"
+                                                style={{color:'var(--primary)',fontWeight:600,textDecoration:'none'}}>
+                                                📍 {parseFloat(l.stationLat).toFixed(4)}, {parseFloat(l.stationLng).toFixed(4)}
+                                              </a>
+                                            : <span style={{color:'var(--border)'}}>—</span>}
+                                        </td>
+                                        {!isViewer && (
+                                          <td style={{padding:'7px 10px'}}>
+                                            <div className="flex-gap gap-4">
+                                              <button onClick={()=>openEditLand(l)}
+                                                style={{width:26,height:26,borderRadius:6,border:'1.5px solid var(--border)',background:'var(--surface-2)',color:'var(--primary)',cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:12}}
+                                                onMouseEnter={e=>{e.currentTarget.style.background='var(--primary)';e.currentTarget.style.color='#fff';}}
+                                                onMouseLeave={e=>{e.currentTarget.style.background='var(--surface-2)';e.currentTarget.style.color='var(--primary)';}}>✏</button>
+                                              <button onClick={()=>delLand(l.id, l.stationNumber||'?')}
+                                                style={{width:26,height:26,borderRadius:6,border:'1.5px solid #fca5a5',background:'#fff1f2',color:'#dc2626',cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:12}}
+                                                onMouseEnter={e=>{e.currentTarget.style.background='#dc2626';e.currentTarget.style.color='#fff';}}
+                                                onMouseLeave={e=>{e.currentTarget.style.background='#fff1f2';e.currentTarget.style.color='#dc2626';}}>✕</button>
+                                            </div>
+                                          </td>
+                                        )}
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
                               )}
                             </div>
-
-                            {/* نموذج الأرض */}
-                            {landForm && (
-                              <div style={{background:'#fff',border:'1.5px solid var(--primary)',borderRadius:10,padding:14,marginBottom:12}}>
-                                <h4 style={{margin:'0 0 12px'}}>{editLand ? (ar?'✏ تعديل أرض':'✏ עריכת קרקע') : (ar?'+ أرض جديدة':'+ קרקע חדשה')}</h4>
-                                <form onSubmit={submitLand}>
-                                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12,marginBottom:12}}>
-                                    <div className="form-group">
-                                      <label style={{fontFamily:'Heebo,sans-serif'}}>שם הקרקע (עברית) *</label>
-                                      <input value={landFormData.name} onChange={e=>setLandFormData({...landFormData,name:e.target.value})}
-                                        placeholder="אלעברה" style={{fontFamily:'Heebo,sans-serif'}} autoFocus />
-                                    </div>
-                                    <div className="form-group">
-                                      <label>{ar?'المنطقة':'אזור'}</label>
-                                      <select value={landFormData.regionId} onChange={e=>setLandFormData({...landFormData,regionId:e.target.value})}>
-                                        <option value="">{ar?'بدون منطقة':'ללא אזור'}</option>
-                                        {regions.map(r => <option key={r.id} value={r.id}>{r.name || r.code}</option>)}
-                                      </select>
-                                    </div>
-                                    <div className="form-group">
-                                      <label style={{fontFamily:'Heebo,sans-serif'}}>עמדה (מס׳ תחנה)</label>
-                                      <input value={landFormData.stationNumber}
-                                        onChange={e=>setLandFormData({...landFormData,stationNumber:e.target.value})}
-                                        placeholder="A3" style={{fontFamily:'monospace',fontWeight:700,textAlign:'center'}} />
-                                    </div>
-                                    <div className="form-group">
-                                      <label>📍 {ar?'الموقع (GPS)':'מיקום GPS'}</label>
-                                      <input value={landFormData.gpsRaw}
-                                        onChange={e=>handleGpsChange(e.target.value)}
-                                        placeholder="32.123456, 35.123456" style={{fontFamily:'monospace',fontSize:12}} />
-                                      {landFormData.stationLat && landFormData.stationLng && (
-                                        <div style={{display:'flex',alignItems:'center',gap:8,marginTop:5}}>
-                                          <span style={{fontSize:11,color:'#16a34a',flex:1}}>✓ {parseFloat(landFormData.stationLat).toFixed(5)}, {parseFloat(landFormData.stationLng).toFixed(5)}</span>
-                                          <button type="button"
-                                            onClick={()=>setMapModal({lat:landFormData.stationLat,lng:landFormData.stationLng,name:landFormData.stationNumber||'📍'})}
-                                            style={{background:'var(--primary)',color:'#fff',border:'none',borderRadius:6,padding:'3px 10px',fontSize:11,fontWeight:700,cursor:'pointer'}}>
-                                            🗺️ {ar?'معاينة':'תצוגה מקדימה'}
-                                          </button>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                  {landError && <div className="alert alert-error mb-8">{landError}</div>}
-                                  <div className="flex-gap gap-8">
-                                    <button type="submit" className="btn btn-primary btn-sm" disabled={savingLand}>
-                                      {savingLand ? '⏳' : `💾 ${ar?'حفظ':'שמור'}`}
-                                    </button>
-                                    <button type="button" className="btn btn-outline btn-sm" onClick={()=>setLandForm(null)}>{ar?'إلغاء':'ביטול'}</button>
-                                  </div>
-                                </form>
-                              </div>
-                            )}
-
-                            {/* جدول الأراضي */}
-                            {loadingLands ? (
-                              <div style={{textAlign:'center',padding:20}}><div className="spinner"/></div>
-                            ) : farmerLands.length === 0 ? (
-                              <div style={{textAlign:'center',padding:16,color:'var(--text-muted)',fontSize:13}}>
-                                {ar?'لا توجد أراضٍ مسجلة':'אין קרקעות רשומות'} — {ar?'اضغط "إضافة أرض"':'לחץ "הוסף קרקע"'}
-                              </div>
-                            ) : (
-                              <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-                                <thead>
-                                  <tr style={{background:'#e8f5e9'}}>
-                                    <th style={{padding:'6px 10px',textAlign:'right',fontFamily:'Heebo,sans-serif'}}>שם הקרקע</th>
-                                    <th style={{padding:'6px 10px',textAlign:'center',fontFamily:'Heebo,sans-serif'}}>עמדה</th>
-                                    <th style={{padding:'6px 10px',textAlign:'center'}}>{ar?'المنطقة':'אזור'}</th>
-                                    <th style={{padding:'6px 10px',textAlign:'center'}}>📍 GPS</th>
-                                    {!isViewer && <th style={{padding:'6px 10px',width:70}}></th>}
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {farmerLands.map(l => (
-                                    <tr key={l.id} style={{borderBottom:'1px solid #e5e7eb'}}>
-                                      <td style={{padding:'7px 10px',fontFamily:'Heebo,sans-serif',fontWeight:600}}>{l.nameHeb||l.name}</td>
-                                      <td style={{padding:'7px 10px',textAlign:'center'}}>
-                                        {l.stationNumber
-                                          ? <code style={{background:'#f0fdf4',border:'1px solid #bbf7d0',padding:'2px 10px',borderRadius:6,fontWeight:800}}>{l.stationNumber}</code>
-                                          : <span style={{color:'var(--border)'}}>—</span>}
-                                      </td>
-                                      <td style={{padding:'7px 10px',textAlign:'center',fontSize:12}}>
-                                        {regions.find(r=>r.id===l.regionId)?.name || regions.find(r=>r.id===l.regionId)?.code || '—'}
-                                      </td>
-                                      <td style={{padding:'7px 10px',textAlign:'center',fontSize:11}}>
-                                        {l.stationLat && l.stationLng
-                                          ? <a href={`https://www.google.com/maps?q=${l.stationLat},${l.stationLng}`} target="_blank" rel="noreferrer"
-                                              style={{color:'var(--primary)',fontWeight:600,textDecoration:'none'}}>
-                                              📍 {parseFloat(l.stationLat).toFixed(4)}, {parseFloat(l.stationLng).toFixed(4)}
-                                            </a>
-                                          : <span style={{color:'var(--border)'}}>—</span>}
-                                      </td>
-                                      {!isViewer && (
-                                        <td style={{padding:'7px 10px'}}>
-                                          <div className="flex-gap gap-4">
-                                            <button onClick={()=>openEditLand(l)}
-                                              style={{width:26,height:26,borderRadius:6,border:'1.5px solid var(--border)',background:'var(--surface-2)',color:'var(--primary)',cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:12}}
-                                              onMouseEnter={e=>{e.currentTarget.style.background='var(--primary)';e.currentTarget.style.color='#fff';}}
-                                              onMouseLeave={e=>{e.currentTarget.style.background='var(--surface-2)';e.currentTarget.style.color='var(--primary)';}}>✏</button>
-                                            <button onClick={()=>delLand(l.id, l.nameHeb||l.name)}
-                                              style={{width:26,height:26,borderRadius:6,border:'1.5px solid #fca5a5',background:'#fff1f2',color:'#dc2626',cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:12}}
-                                              onMouseEnter={e=>{e.currentTarget.style.background='#dc2626';e.currentTarget.style.color='#fff';}}
-                                              onMouseLeave={e=>{e.currentTarget.style.background='#fff1f2';e.currentTarget.style.color='#dc2626';}}>✕</button>
-                                          </div>
-                                        </td>
-                                      )}
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            )}
                           </td>
                         </tr>
                       )}

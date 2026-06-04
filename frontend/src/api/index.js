@@ -102,7 +102,10 @@ export const adminAPI = {
   uploadImage:   file     => upload('/admin/upload-image', file),
   deleteImage:   path     => req('/admin/image', { method: 'DELETE', body: JSON.stringify({ path }) }),
   // reports
+// reports
   getReport:     p        => req('/admin/report' + (p ? '?' + new URLSearchParams(p) : '')),
+  // sync GPS
+  syncGPS: () => req('/admin/sync-gps', { method: 'POST' }),
 };
 
 // تمت الإضافة — Regions API

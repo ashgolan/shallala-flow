@@ -52,21 +52,24 @@ const IconBtn = ({ onClick, title, bg, hoverBg, color, hoverColor, border, child
   >{children}</button>
 );
 
-export default function ReadingsTable({ readings, setReadings, farmerName, landName, landRegion, onEdit, onDelete, lang, prices, isViewer=false, lands=[] }) {
+export default function ReadingsTable({
+  readings, setReadings, farmerName, landName, landRegion,
+  onEdit, onDelete, lang, prices, isViewer=false, lands=[], regions=[],
+}) {
   const [expandedId, setExpandedId] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
   const [editNoteId, setEditNoteId] = useState(null);
   const [noteText,   setNoteText]   = useState('');
-  const [savingNote, setSavingNote]   = useState(false);
+  const [savingNote, setSavingNote] = useState(false);
   const [sortKey,    setSortKey]    = useState(null);
   const [sortDir,    setSortDir]    = useState('asc');
-  const [mapModal,   setMapModal]   = useState(null); // { lat, lng, name }
+  const [mapModal,   setMapModal]   = useState(null);
 
   const ar = lang === 'ar';
 
   // ── Sort ──────────────────────────────────────────────────
   const handleSort = key => {
-    if (sortKey === key) setSortDir(d => d==='asc'?'desc':'asc');
+    if (sortKey === key) setSortDir(d => d==='asc' ? 'desc' : 'asc');
     else { setSortKey(key); setSortDir('asc'); }
     setExpandedId(null);
   };
@@ -141,30 +144,13 @@ export default function ReadingsTable({ readings, setReadings, farmerName, landN
     if (!mapModal) return null;
     const { lat, lng, name } = mapModal;
     const embedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${lng-0.005},${lat-0.005},${lng+0.005},${lat+0.005}&layer=mapnik&marker=${lat},${lng}`;
-    // رابط Google Earth يفتح المشروع على الإحداثيات المحددة
     const earthUrl = `https://earth.google.com/web/@${lat},${lng},400a,800d,30y,0h,0t,0r/data=CgRCAggBMikKJwolCiExS0M0V193eFlWeTQ2UFR6RW81VkFtVVlvMDNHemUtUHQgAToDCgEwQgIIAEoICLG2obACEAE`;
-    const mapsUrl  = earthUrl;
     return (
-      <div
-        onClick={() => setMapModal(null)}
-        style={{
-          position:'fixed', inset:0, zIndex:9999,
-          background:'rgba(0,0,0,0.65)',
-          display:'flex', alignItems:'center', justifyContent:'center',
-          padding:20,
-        }}>
-        <div
-          onClick={e => e.stopPropagation()}
-          style={{
-            background:'#fff', borderRadius:16, overflow:'hidden',
-            width:'100%', maxWidth:600,
-            boxShadow:'0 20px 60px rgba(0,0,0,0.4)',
-          }}>
-          {/* Header */}
-          <div style={{
-            padding:'14px 18px', background:'var(--primary-dark)',
-            display:'flex', alignItems:'center', justifyContent:'space-between',
-          }}>
+      <div onClick={() => setMapModal(null)}
+        style={{ position:'fixed', inset:0, zIndex:9999, background:'rgba(0,0,0,0.65)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+        <div onClick={e => e.stopPropagation()}
+          style={{ background:'#fff', borderRadius:16, overflow:'hidden', width:'100%', maxWidth:600, boxShadow:'0 20px 60px rgba(0,0,0,0.4)' }}>
+          <div style={{ padding:'14px 18px', background:'var(--primary-dark)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
             <div style={{ display:'flex', alignItems:'center', gap:10 }}>
               <span style={{ fontSize:20 }}>📍</span>
               <div>
@@ -173,28 +159,17 @@ export default function ReadingsTable({ readings, setReadings, farmerName, landN
               </div>
             </div>
             <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-              <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
-                style={{ color:'#a3e635', fontSize:12, fontWeight:700, textDecoration:'none',
-                  background:'rgba(255,255,255,0.1)', padding:'5px 10px', borderRadius:8 }}>
-                🗺️ {ar?'فتح في Google Earth 🌍':'פתח ב-Google Earth 🌍'}
+              <a href={earthUrl} target="_blank" rel="noopener noreferrer"
+                style={{ color:'#a3e635', fontSize:12, fontWeight:700, textDecoration:'none', background:'rgba(255,255,255,0.1)', padding:'5px 10px', borderRadius:8 }}>
+                🗺️ {ar ? 'فتح في Google Earth 🌍' : 'פתח ב-Google Earth 🌍'}
               </a>
               <button onClick={() => setMapModal(null)}
-                style={{ background:'rgba(255,255,255,0.15)', border:'none', color:'#fff',
-                  width:30, height:30, borderRadius:'50%', cursor:'pointer', fontSize:16,
-                  display:'flex', alignItems:'center', justifyContent:'center' }}>
+                style={{ background:'rgba(255,255,255,0.15)', border:'none', color:'#fff', width:30, height:30, borderRadius:'50%', cursor:'pointer', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center' }}>
                 ✕
               </button>
             </div>
           </div>
-          {/* Map */}
-          <iframe
-            src={embedUrl}
-            width="100%" height="380"
-            style={{ border:0, display:'block' }}
-            allowFullScreen loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
-            title="map"
-          />
+          <iframe src={embedUrl} width="100%" height="380" style={{ border:0, display:'block' }} allowFullScreen loading="lazy" referrerPolicy="no-referrer-when-downgrade" title="map" />
         </div>
       </div>
     );
@@ -204,7 +179,6 @@ export default function ReadingsTable({ readings, setReadings, farmerName, landN
     <div className="card empty-state"><span className="icon">📏</span><p>{ar?'لا توجد قراءات':'אין קריאות'}</p></div>
   );
 
-  // ── TH style helpers ──────────────────────────────────────
   const thBase   = { padding:'10px 10px', fontSize:12, fontWeight:800, whiteSpace:'nowrap' };
   const thCups   = { ...thBase, background:'#e8f5e9', color:'var(--primary)', textAlign:'center', minWidth:70 };
   const thTotal  = { ...thBase, background:'#c8e6c9', color:'var(--primary-dark)', textAlign:'center', minWidth:75 };
@@ -229,26 +203,19 @@ export default function ReadingsTable({ readings, setReadings, farmerName, landN
         <table style={{minWidth:600}}>
           <thead>
             <tr>
-              {/* ── أعمدة ثابتة ── */}
               <STh col="paid"    style={{...thBase, minWidth:50, textAlign:'center'}}>{ar?'دفع':'תשלום'}</STh>
               <STh col="farmer"  style={{...thBase, minWidth:110}}>{ar?'المزارع':'חקלאי'}</STh>
-              <STh col="land"    style={{...thBase, minWidth:100}}>{ar?'الأرض':'קרקע'}</STh>
+              <STh col="land"    style={{...thBase, minWidth:100}}>{ar?'المنطقة':'אזור'}</STh>
               <STh col="year"    style={{...thBase, minWidth:60, textAlign:'center'}}>{ar?'السنة':'שנה'}</STh>
               <STh col="station" style={{...thBase, minWidth:65, textAlign:'center', fontFamily:'monospace'}}>{ar?'المحطة':'עמדה'}</STh>
-
-              {/* ── أعمدة الأكواب ── */}
               {Array.from({length:cupsCols}).map((_,i) => (
                 <STh key={i} col={`cups_${i}`} style={thCups}>🪣 {ar?`ف${i+1}`:`ת${i+1}`}</STh>
               ))}
-
-              {/* ── إجمالي + مبلغ ── */}
               <STh col="total"  style={thTotal}>🪣 {ar?'الكل':'כלל'}</STh>
               <th style={{ ...thBase, minWidth:80, background:'#fff3e0', color:'#e65100', textAlign:'center' }}>
                 ➕ {ar?'إضافات':'תוספות'}
               </th>
               <STh col="amount" style={{...thAmount, minWidth:100}}>💰 {ar?'الإجمالي':'סה"כ'}</STh>
-
-              {/* ── ملاحظة + إجراءات ── */}
               <th style={{...thBase, minWidth:90, textAlign:'center'}}>💬</th>
               <th style={{...thBase, minWidth:70, textAlign:'center'}}></th>
             </tr>
@@ -262,7 +229,6 @@ export default function ReadingsTable({ readings, setReadings, farmerName, landN
               const totalCups     = cupsPerPeriod.reduce((s,c)=>s+(c||0),0);
               const rowAmount     = cupsPerPeriod.reduce((s,c,i)=>s+(c||0)*getPrice(prices,r.year,r.landId,i+1),0);
               const isPaid        = !!r.paid;
-
               const rowBg   = isPaid ? 'rgba(220,252,231,0.5)' : 'rgba(254,226,226,0.35)';
               const cupsBg  = isPaid ? '#d1fae5' : '#fee2e2';
               const totalBg = isPaid ? '#a7f3d0' : '#fecaca';
@@ -286,6 +252,8 @@ export default function ReadingsTable({ readings, setReadings, farmerName, landN
                     <td><strong style={{fontFamily:'Heebo,sans-serif',fontSize:14}}>{farmerName(r.farmerId)}</strong></td>
                     <td style={{fontFamily:'Heebo,sans-serif',fontSize:13}}>{landName(r.landId)}</td>
                     <td style={{textAlign:'center'}}><span className="badge badge-blue">{r.year}</span></td>
+
+                    {/* المحطة + GPS */}
                     <td style={{textAlign:'center'}} onClick={e => e.stopPropagation()}>
                       {(() => {
                         const land = lands.find(l => String(l.id) === String(r.landId));
@@ -311,153 +279,135 @@ export default function ReadingsTable({ readings, setReadings, farmerName, landN
                     {cupsPerPeriod.map((cups,i) => (
                       <td key={i} style={{textAlign:'center', background:cupsBg}}>
                         {cups!==null
-                          ? <strong style={{fontSize:14,color:'var(--primary-dark)'}}>{cups.toLocaleString()}</strong>
+                          ? <span style={{fontWeight:700,fontSize:13,color:cups<0?'#dc2626':'inherit'}}>{cups.toLocaleString()}</span>
                           : <span style={{color:'var(--border)'}}>—</span>}
                       </td>
                     ))}
 
                     {/* إجمالي الأكواب */}
                     <td style={{textAlign:'center', background:totalBg}}>
-                      <strong style={{fontSize:15,color:'var(--primary-dark)'}}>{totalCups.toLocaleString()}</strong>
+                      <strong style={{fontSize:14}}>{totalCups.toLocaleString()}</strong>
                     </td>
 
-                    {/* ➕ إضافات مع المبلغ المدفوع */}
-                    <td style={{textAlign:'center', background:'#fff8e1'}} onClick={e=>e.stopPropagation()}>
-                      {(r.extra > 0) ? (() => {
-                        const extra    = parseFloat(r.extra) || 0;
-                        const paid     = parseFloat(r.extraPaid) || 0;
-                        const remaining = extra - paid;
-                        const isFullPaid = paid >= extra;
-                        const isPartial  = paid > 0 && paid < extra;
-                        return (
-                          <div title={r.extraNote||''} style={{ cursor: r.extraNote?'help':'default', lineHeight:1.3 }}>
-                            {/* المبلغ الكلي */}
-                            <div style={{
-                              fontWeight:800, fontSize:13,
-                              color: isFullPaid ? '#9ca3af' : '#e65100',
-                              textDecoration: isFullPaid ? 'line-through' : 'none',
-                            }}>
-                              +₪{extra.toLocaleString()}
-                            </div>
-                            {/* المدفوع / المتبقي */}
-                            {isFullPaid && (
-                              <div style={{fontSize:10, color:'#16a34a', fontWeight:700}}>✓ {ar?'مدفوع':'שולם'}</div>
-                            )}
-                            {isPartial && (
-                              <div style={{fontSize:10, color:'#ca8a04', fontWeight:700}}>
-                                {ar?'متبقي':'נותר'}: ₪{remaining.toLocaleString()}
-                              </div>
-                            )}
-                            {r.extraNote && (
-                              <div style={{fontSize:9, color:'#9ca3af', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:80}}>{r.extraNote}</div>
-                            )}
-                          </div>
-                        );
-                      })() : <span style={{color:'var(--border)',fontSize:12}}>—</span>}
+                    {/* الإضافات */}
+                    <td style={{textAlign:'center', background:'#fff3e0'}}>
+                      {(parseFloat(r.extra)||0) > 0 ? (
+                        <span style={{fontSize:12,color:'#e65100',fontWeight:700}}>
+                          +₪{Number(r.extra).toLocaleString()}
+                          {(parseFloat(r.extraPaid)||0) > 0 &&
+                            <span style={{color:'#16a34a'}}> (-{Number(r.extraPaid).toLocaleString()})</span>}
+                        </span>
+                      ) : <span style={{color:'var(--border)'}}>—</span>}
                     </td>
-                    {/* 💰 الإجمالي = أكواب + إضافة - مدفوع من الإضافة */}
-                    <td style={{textAlign:'center', background:amtBg, borderLeft:'2px solid #f59e0b'}}>
-                      <strong style={{fontSize:15,color:'#92400e'}}>
-                        ₪{(rowAmount + (parseFloat(r.extra)||0) - (parseFloat(r.extraPaid)||0)).toLocaleString()}
+
+                    {/* المبلغ الإجمالي */}
+                    <td style={{textAlign:'center', background:amtBg}}>
+                      <strong style={{fontSize:14,color:'#854d0e'}}>
+                        ₪{Math.round(rowAmount + (parseFloat(r.extra)||0) - (parseFloat(r.extraPaid)||0)).toLocaleString()}
                       </strong>
                     </td>
 
                     {/* ملاحظة */}
                     <td style={{textAlign:'center'}} onClick={e=>e.stopPropagation()}>
                       {editNoteId===r.id ? (
-                        <div style={{display:'flex',flexDirection:'column',gap:4,minWidth:140}}>
-                          <textarea autoFocus value={noteText} onChange={e=>setNoteText(e.target.value)} rows={2}
-                            style={{fontSize:12,padding:'4px 8px',borderRadius:6,border:'1.5px solid var(--primary)',fontFamily:'Tajawal,Heebo,sans-serif',resize:'none',width:'100%'}}
-                            onClick={e=>e.stopPropagation()}/>
-                          <div className="flex-gap gap-4">
-                            <button onClick={e=>saveNote(e,r)} disabled={savingNote}
-                              style={{flex:1,padding:'3px 6px',borderRadius:5,border:'none',background:'var(--primary)',color:'#fff',fontSize:11,cursor:'pointer'}}>
-                              {savingNote?'⏳':'💾'}
-                            </button>
-                            <button onClick={e=>{e.stopPropagation();setEditNoteId(null);}}
-                              style={{padding:'3px 8px',borderRadius:5,border:'1px solid var(--border)',background:'transparent',fontSize:11,cursor:'pointer'}}>✕</button>
-                          </div>
+                        <div style={{display:'flex',gap:4,alignItems:'center'}}>
+                          <input value={noteText} onChange={e=>setNoteText(e.target.value)}
+                            style={{width:100,fontSize:12,padding:'3px 6px'}}
+                            autoFocus onKeyDown={e=>{if(e.key==='Enter')saveNote(e,r);if(e.key==='Escape')setEditNoteId(null);}}/>
+                          <IconBtn onClick={e=>saveNote(e,r)} title="حفظ" bg="#dcfce7" hoverBg="#16a34a" color="#16a34a" hoverColor="#fff" border="1.5px solid #16a34a">✓</IconBtn>
+                          <IconBtn onClick={e=>{e.stopPropagation();setEditNoteId(null)}} title="إلغاء" bg="#fff1f2" hoverBg="#dc2626" color="#dc2626" hoverColor="#fff" border="1.5px solid #fca5a5">✕</IconBtn>
                         </div>
                       ) : (
-                        <button onClick={e=>openNote(e,r)}
-                          style={{
-                            background: r.note?'var(--amber-100)':'var(--surface-2)',
-                            border: r.note?'1.5px solid var(--amber-400)':'1.5px solid var(--border)',
-                            borderRadius:8, padding:'4px 8px', cursor:'pointer', fontSize:13,
-                            display:'flex', alignItems:'center', gap:4, maxWidth:110, overflow:'hidden',
-                          }}>
-                          <span>{r.note?'💬':'➕'}</span>
-                          {r.note&&<span style={{fontSize:11,color:'#78350f',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:70}}>{r.note}</span>}
-                        </button>
+                        <IconBtn onClick={e=>openNote(e,r)} title={ar?'تعديل الملاحظة':'ערוך הערה'}
+                          bg={r.note?'#fef9c3':'var(--surface-2)'} hoverBg="#fef08a" color={r.note?'#78350f':'var(--text-muted)'} hoverColor="#78350f" border={`1.5px solid ${r.note?'#fde047':'var(--border)'}`}>
+                          💬
+                        </IconBtn>
                       )}
                     </td>
 
                     {/* إجراءات */}
-                    {!isViewer && <td style={{textAlign:'center'}} onClick={e=>e.stopPropagation()}>
-                      <div className="flex-gap gap-6" style={{justifyContent:'center'}}>
-                        <IconBtn onClick={()=>onEdit(r)} title={ar?'تعديل':'עריכה'}
-                          bg="var(--surface-2)" hoverBg="var(--primary)"
-                          color="var(--primary)" hoverColor="#fff"
-                          border="1.5px solid var(--border)">✏</IconBtn>
-                        <IconBtn onClick={()=>onDelete(r.id)} title={ar?'حذف':'מחיקה'}
-                          bg="#fff1f2" hoverBg="#dc2626"
-                          color="#dc2626" hoverColor="#fff"
-                          border="1.5px solid #fca5a5">✕</IconBtn>
-                      </div>
-                    </td>}
+                    <td style={{textAlign:'center'}} onClick={e=>e.stopPropagation()}>
+                      {!isViewer && (
+                        <div className="flex-gap gap-4">
+                          <IconBtn onClick={e=>{e.stopPropagation();onEdit(r)}} title={ar?'تعديل':'עריכה'} bg="var(--surface-2)" hoverBg="var(--primary)" color="var(--primary)" hoverColor="#fff" border="1.5px solid var(--border)">✏</IconBtn>
+                          <IconBtn onClick={e=>{e.stopPropagation();onDelete(r.id)}} title={ar?'حذف':'מחיקה'} bg="#fff1f2" hoverBg="#dc2626" color="#dc2626" hoverColor="#fff" border="1.5px solid #fca5a5">✕</IconBtn>
+                        </div>
+                      )}
+                    </td>
                   </tr>
 
-                  {/* تفاصيل أرقام الساعات */}
+                  {/* ── صف التفاصيل الموسّع ── */}
                   {expanded && (
                     <tr style={{background: isPaid?'#f0fdf4':'#fff5f5'}}>
-                      <td colSpan={6+cupsCols+4} style={{padding:'10px 16px'}}>
-                        <div className="flex-gap gap-8" style={{flexWrap:'wrap',alignItems:'center'}}>
-                          <span style={{fontSize:12,color:'var(--text-muted)',fontWeight:700}}>
-                            📟 {ar?'أرقام العداد:':'קריאות מד המים:'}
-                          </span>
-                          {vals.map((v,i) => (
-                            <React.Fragment key={i}>
-                              <div style={{textAlign:'center'}}>
-                                <div style={{fontSize:10,color:'var(--text-muted)',fontWeight:700,marginBottom:2}}>
-                                  {ar?`ق${i+1}`:`ק${i+1}`}{i===0?(ar?' (أولى)':' (ראשונה)'):''}
-                                </div>
-                                <div style={{background:'white',border:'1.5px solid var(--border)',borderRadius:8,padding:'5px 12px',fontWeight:800,fontSize:15,fontFamily:'monospace',color:'var(--primary-dark)'}}>
-                                  {Number(v).toLocaleString()}
-                                </div>
-                              </div>
-                              {i<vals.length-1&&<span style={{color:'var(--text-muted)'}}>←</span>}
-                            </React.Fragment>
-                          ))}
-                        </div>
-                        {/* ── تفاصيل حساب كل فترة ── */}
-                        <div style={{display:'flex',flexWrap:'wrap',gap:6,margin:'8px 0'}}>
-                          <span style={{fontSize:12,color:'var(--text-muted)',fontWeight:700,alignSelf:'center'}}>
-                            💰 {ar?'حساب الفترات:':'חישוב תקופות:'}
-                          </span>
-                          {cupsPerPeriod.map((cups,i) => cups > 0 && (
-                            <div key={i} style={{background:'#e8f5e9',border:'1px solid #a7f3d0',borderRadius:8,padding:'4px 12px',fontSize:13,fontWeight:600}}>
-                              <span style={{color:'var(--text-muted)'}}>{ar?`ف${i+1}`:`ת${i+1}`}: </span>
-                              <strong>{cups.toLocaleString()}</strong>
-                              <span style={{color:'var(--text-muted)'}}> × ₪{getPrice(prices,r.year,r.landId,i+1)}</span>
-                              <strong style={{color:'var(--primary)'}}> = ₪{(cups*getPrice(prices,r.year,r.landId,i+1)).toLocaleString()}</strong>
+                      <td colSpan={5 + cupsCols + 4} style={{padding:'10px 18px'}}>
+                        <div style={{display:'flex',flexWrap:'wrap',gap:16,alignItems:'flex-start'}}>
+
+                          {/* أرقام القراءات */}
+                          <div>
+                            <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:4,fontWeight:700}}>
+                              📊 {ar?'كريאות مد المים:':'קריאות מד המים:'}
                             </div>
-                          ))}
+                            <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+                              {vals.map((v,i) => (
+                                <React.Fragment key={i}>
+                                  <span style={{background:'#fff',border:'1px solid var(--border)',borderRadius:6,padding:'3px 10px',fontWeight:700,fontSize:13}}>
+                                    {ar?`ق${i+1}`:`ק${i+1}`} ({i===0?ar?'أولى':'ראשונה':ar?`ت${i}`:`ת${i}`}): <strong>{parseFloat(v).toLocaleString()}</strong>
+                                  </span>
+                                  {i < vals.length-1 && <span style={{color:'var(--text-muted)',fontSize:12}}>←</span>}
+                                </React.Fragment>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* حساب التقوطات */}
+                          {cupsPerPeriod.filter(c=>c!==null).length > 0 && (
+                            <div>
+                              <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:4,fontWeight:700}}>
+                                🔥 {ar?'حساب تقوطات:':'חישוב תקופות:'}
+                              </div>
+                              <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                                {cupsPerPeriod.map((cups,i) => cups!==null && (
+                                  <span key={i} style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:6,padding:'3px 10px',fontSize:12,fontWeight:700,color:'var(--primary)'}}>
+                                    {ar?`ت${i+1}`:`ת${i+1}`}: <strong>{cups.toLocaleString()}</strong> × ₪{getPrice(prices,r.year,r.landId,i+1)} = <strong style={{color:'#854d0e'}}>₪{Math.round(cups*getPrice(prices,r.year,r.landId,i+1)).toLocaleString()}</strong>
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* الإضافات */}
                           {(parseFloat(r.extra)||0) > 0 && (
-                            <div style={{background:'#fff3e0',border:'1px solid #fed7aa',borderRadius:8,padding:'4px 12px',fontSize:13,fontWeight:600}}>
-                              <span style={{color:'#e65100'}}>➕ {r.extraNote||(ar?'إضافة':'תוספת')}: </span>
-                              <strong style={{color:'#e65100'}}>+₪{Number(r.extra).toLocaleString()}</strong>
-                              {(parseFloat(r.extraPaid)||0) > 0 &&
-                                <span style={{color:'#16a34a'}}> (-₪{Number(r.extraPaid).toLocaleString()} {ar?'مدفوع':'שולם'})</span>}
+                            <div>
+                              <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:4,fontWeight:700}}>
+                                ➕ {ar?'إضافات:':'תוספות:'}
+                              </div>
+                              <span style={{background:'#fff3e0',border:'1px solid #fed7aa',borderRadius:6,padding:'3px 10px',fontSize:12,fontWeight:700,color:'#e65100'}}>
+                                <span>{ar?'إضافة':'תוספת'}: </span>
+                                <strong>+₪{Number(r.extra).toLocaleString()}</strong>
+                                {(parseFloat(r.extraPaid)||0) > 0 &&
+                                  <span style={{color:'#16a34a'}}> (-₪{Number(r.extraPaid).toLocaleString()} {ar?'مدفوع':'שולם'})</span>}
+                              </span>
                             </div>
                           )}
                         </div>
-                        <div style={{display:'flex',flexWrap:'wrap',gap:8,alignItems:'center'}}>
-                          {isPaid&&r.paidAt&&(
+
+                        {/* وصف الأرض + ملاحظة + تاريخ الدفع */}
+                        <div style={{display:'flex',flexWrap:'wrap',gap:8,alignItems:'center',marginTop:8}}>
+                          {isPaid && r.paidAt && (
                             <span style={{fontSize:11,color:'#16a34a',fontWeight:700}}>
                               ✓ {ar?'مدفوع في':'שולם ב-'} {new Date(r.paidAt).toLocaleDateString(ar?'ar-SA':'he-IL')}
                             </span>
                           )}
-                          {r.note&&(
+                          {/* ✅ وصف الأرض */}
+                          {(() => {
+                            const land = lands.find(l => String(l.id) === String(r.landId));
+                            return land?.description ? (
+                              <span style={{fontSize:12,background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:8,padding:'4px 10px',color:'#1e40af',fontWeight:600}}>
+                                🏡 {land.description}
+                              </span>
+                            ) : null;
+                          })()}
+                          {r.note && (
                             <span style={{fontSize:12,background:'#fef9c3',border:'1px solid #fde047',borderRadius:8,padding:'4px 10px',color:'#78350f',fontWeight:600}}>
                               💬 {r.note}
                             </span>
@@ -486,6 +436,9 @@ export default function ReadingsTable({ readings, setReadings, farmerName, landN
                 })}
                 <td style={{textAlign:'center',padding:'11px 8px'}}>
                   <span style={{fontWeight:900,color:'#a3e635',fontSize:17}}>{grandCups.toLocaleString()}</span>
+                </td>
+                <td style={{textAlign:'center',padding:'11px 8px',color:'#fde68a',fontWeight:900,fontSize:15}}>
+                  ₪{sorted.reduce((s,r)=>s+(parseFloat(r.extra)||0),0).toLocaleString()}
                 </td>
                 <td style={{textAlign:'center',padding:'11px 8px',borderLeft:'2px solid #a3e635'}}>
                   <span style={{fontWeight:900,color:'#fde68a',fontSize:19}}>
