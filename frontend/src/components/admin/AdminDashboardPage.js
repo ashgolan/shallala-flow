@@ -25,7 +25,7 @@ const cupsDiff = (readings, idx) => {
 
 const COLORS = ['#16a34a','#84cc16','#0ea5e9','#f59e0b','#ef4444','#8b5cf6'];
 
-export default function AdminDashboardPage() {
+export default function AdminDashboardPage({ adminRole='admin' }) {
   const { lang } = useLang();
   const ar = lang === 'ar';
   const [data, setData]       = useState(null);
@@ -195,13 +195,13 @@ export default function AdminDashboardPage() {
             {ar?'نظرة عامة على الإيرادات والمدفوعات':'סקירת הכנסות ותשלומים'}
           </p>
         </div>
-        <button
+        {adminRole !== 'viewer' && <button
           className="btn btn-primary"
           onClick={downloadBackup}
           disabled={backupLoading}
           style={{display:'flex',alignItems:'center',gap:8}}>
           {backupLoading ? '⏳' : '💾'} {ar?'تنزيل نسخة احتياطية':'הורד גיבוי'}
-        </button>
+        </button>}
       </div>
 
       {/* ── بطاقات الملخص ── */}
@@ -282,7 +282,7 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* ── النسخة الاحتياطية ── */}
-      <div className="card">
+      {adminRole !== 'viewer' && <div className="card">
         <div className="flex-between mb-12">
           <div>
             <h3 className="mb-4">💾 {ar?'النسخة الاحتياطية':'גיבוי נתונים'}</h3>
@@ -309,7 +309,7 @@ export default function AdminDashboardPage() {
             </div>
           ))}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

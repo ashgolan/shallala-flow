@@ -41,7 +41,8 @@ const parseGoogleCoords = (raw) => {
 };
 
 
-export default function AdminReadings() {
+export default function AdminReadings({ adminRole='admin' }) {
+  const isViewer = adminRole === 'viewer';
   const { lang } = useLang();
   const [farmers, setFarmers]   = useState([]);
   const [lands, setLands]       = useState([]);
@@ -52,7 +53,7 @@ export default function AdminReadings() {
   const [showRForm, setShowRForm] = useState(false);
   const [showLForm, setShowLForm] = useState(false);
   const [editR, setEditR]       = useState(null);
-  const [rForm, setRForm]       = useState({ farmerId:'', landId:'', year:new Date().getFullYear(), readings:['',''], stationNumber:'', stationLat:'', stationLng:'', extra:'', extraPaid:'', extraNote:'' });
+  const [rForm, setRForm]       = useState({ farmerId:'', landId:'', year:new Date().getFullYear(), readings:['',''], extra:'', extraPaid:'', extraNote:'' });
   const [lForm, setLForm] = useState({ regionId:"", name:"" });
   const [editLand, setEditLand] = useState(null);
   const [filterF, setFilterF]   = useState('');
@@ -93,12 +94,12 @@ export default function AdminReadings() {
   // ── Reading form ──
   const openAddR = () => {
     setEditR(null);
-    setRForm({ farmerId:'', landId:'', year:new Date().getFullYear(), readings:['',''], stationNumber:'', stationLat:'', stationLng:'', extra:'', extraPaid:'', extraNote:'' });
+    setRForm({ farmerId:'', landId:'', year:new Date().getFullYear(), readings:['',''], extra:'', extraPaid:'', extraNote:'' });
     setError(''); setShowRForm(true);
   };
   const openEditR = r => {
     setEditR(r);
-    setRForm({ farmerId:r.farmerId, landId:r.landId, year:r.year, readings:[...r.readings.map(String)], stationNumber:r.stationNumber||'', stationLat:r.stationLat||'', stationLng:r.stationLng||'', extra:r.extra||'', extraPaid:r.extraPaid||'', extraNote:r.extraNote||'' });
+    setRForm({ farmerId:r.farmerId, landId:r.landId, year:r.year, readings:[...r.readings.map(String)], extra:r.extra||'', extraPaid:r.extraPaid||'', extraNote:r.extraNote||'' });
     setError(''); setShowRForm(true);
   };
   const submitR = async e => {
@@ -201,9 +202,9 @@ export default function AdminReadings() {
           <button className="btn btn-outline btn-sm" onClick={() => { setShowLForm(v=>!v); setError(''); }}>
             🌾 {showLForm ? t('cancel',lang) : (lang==='ar'?'+ أرض جديدة':'+ קרקע חדשה')}
           </button>
-          <button className="btn btn-primary" onClick={openAddR}>
+          {!isViewer && <button className="btn btn-primary" onClick={openAddR}>
             + {lang==='ar'?'إضافة قراءة':'הוסף קריאה'}
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -292,70 +293,26 @@ export default function AdminReadings() {
                 <input type="number" value={rForm.year}
                   onChange={e => setRForm({...rForm,year:e.target.value})} min={2000} max={2100} />
               </div>
-              <div className="form-group">
-                <label style={{ fontFamily:'Heebo, sans-serif' }}>
-                  {ar ? 'رقم المحطة (עמדה)' : 'מספר עמדה'} — {ar?'اختياري':'אופציונלי'}
-                </label>
-                <input
-                  value={rForm.stationNumber}
-                  onChange={e => setRForm({...rForm,stationNumber:e.target.value.toUpperCase()})}
-                  placeholder="A16 / B5"
-                  style={{ fontFamily:'monospace', fontWeight:700, fontSize:16, letterSpacing:2, textAlign:'center' }}
-                />
-              </div>
+
             </div>
 
-            {/* إحداثيات المحطة */}
-            <div style={{ background:'var(--surface-2)', borderRadius:10, padding:'12px 16px', marginBottom:16 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                <span>📍</span>
-                <label style={{ fontWeight:700, fontSize:13, margin:0 }}>
-                  {ar ? 'إحداثيات GPS للمحطة (اختياري)' : 'קואורדינטות GPS לעמדה (אופציונלי)'}
-                </label>
-              </div>
 
-              {/* لصق مباشر من Google */}
-              <div className="form-group" style={{ marginBottom:10 }}>
-                <label style={{ fontSize:12 }}>
-                  {ar ? '📋 الصق الإحداثيات من Google (أي تنسيق)' : '📋 הדבק קואורדינטות מ-Google (כל פורמט)'}
-                </label>
-                <input
-                  placeholder={ar ? `مثال: 33.238322, 35.711053  أو  33°14'17.96"N 35°42'39.79"E` : `לדוג: 33.238322, 35.711053`}
-                  onChange={e => {
-                    const result = parseGoogleCoords(e.target.value);
-                    if (result) setRForm(f => ({...f, stationLat: result.lat, stationLng: result.lng}));
-                  }}
-                  style={{ fontSize:12 }}
-                />
-              </div>
 
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-                <div className="form-group" style={{ marginBottom:0 }}>
-                  <label style={{ fontSize:12 }}>{ar?'خط العرض':'קו רוחב'} (Lat)</label>
-                  <input type="number" step="any" value={rForm.stationLat}
-                    onChange={e => setRForm({...rForm, stationLat:e.target.value})}
-                    placeholder="33.238322" />
-                </div>
-                <div className="form-group" style={{ marginBottom:0 }}>
-                  <label style={{ fontSize:12 }}>{ar?'خط الطول':'קו אורך'} (Lng)</label>
-                  <input type="number" step="any" value={rForm.stationLng}
-                    onChange={e => setRForm({...rForm, stationLng:e.target.value})}
-                    placeholder="35.711053" />
-                </div>
-              </div>
-
-              {rForm.stationLat && rForm.stationLng && (
-                <a href={`https://www.google.com/maps?q=${rForm.stationLat},${rForm.stationLng}`}
-                  target="_blank" rel="noopener noreferrer"
-                  style={{ display:'inline-flex', alignItems:'center', gap:6, marginTop:10, fontSize:12, color:'var(--primary)', fontWeight:700, background:'#dcfce7', padding:'4px 12px', borderRadius:8, textDecoration:'none' }}>
-                  🗺️ {ar?'معاينة على الخريطة':'צפה במפה'}
-                </a>
-              )}
-            </div>
-
-            {rForm.landId && landRegion(rForm.landId) && (
-              <div style={{ background:'var(--surface-2)', padding:'8px 14px', borderRadius:8, marginBottom:16, fontSize:13, color:'var(--primary)', fontWeight:700 }}>
-                📍 {t('region',lang)}: {landRegion(rForm.landId)}
+            {rForm.landId && (
+              <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', padding:'8px 14px', borderRadius:8, marginBottom:16, fontSize:13 }}>
+                {landRegion(rForm.landId) && <span style={{color:'var(--primary)',fontWeight:700,marginLeft:12}}>📍 {t('region',lang)}: {landRegion(rForm.landId)}</span>}
+                {(() => {
+                  const land = lands.find(l => l.id === rForm.landId);
+                  return land?.stationNumber
+                    ? <span style={{marginRight:12,fontWeight:700,color:'var(--primary-dark)'}}> | עמדה: <code style={{background:'white',border:'1px solid #bbf7d0',padding:'1px 8px',borderRadius:5}}>{land.stationNumber}</code></span>
+                    : null;
+                })()}
+                {(() => {
+                  const land = lands.find(l => l.id === rForm.landId);
+                  return land?.stationLat && land?.stationLng
+                    ? <span style={{fontSize:11,color:'#16a34a',marginRight:8}}>  ✓ GPS: {parseFloat(land.stationLat).toFixed(4)}, {parseFloat(land.stationLng).toFixed(4)}</span>
+                    : <span style={{fontSize:11,color:'#f59e0b',marginRight:8}}>  ⚠ {ar?'لا يوجد موقع GPS — أضفه في صفحة المزارعين':'אין מיקום GPS — הוסף בדף החקלאים'}</span>;
+                })()}
               </div>
             )}
 
@@ -530,6 +487,8 @@ export default function AdminReadings() {
           onEdit={openEditR}
           onDelete={delR}
           lang={lang}
+          isViewer={isViewer}
+          lands={lands}
         />
       )}
     </div>

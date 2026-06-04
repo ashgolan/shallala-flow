@@ -1,11 +1,16 @@
 const express = require('express');
 const router  = express.Router();
-const { farmerLogin, adminLogin } = require('../controllers/authController');
-const { loginLimiter }            = require('../middleware/rateLimiter');
-const { checkLoginAttempts }      = require('../middleware/loginProtection');
+const { checkIdentity, farmerLogin, adminLogin } = require('../controllers/authController');
+const { checkLoginAttempts } = require('../middleware/loginProtection');
+const { loginLimiter }       = require('../middleware/rateLimiter');
 
-// checkLoginAttempts يأتي قبل loginLimiter للتحقق من القفل أولاً
-router.post('/farmer-login', checkLoginAttempts, loginLimiter, farmerLogin);
-router.post('/admin-login',  checkLoginAttempts, loginLimiter, adminLogin);
+// Step 1: التحقق من الهوية والكود
+router.post('/check-identity', checkLoginAttempts, loginLimiter, checkIdentity);
+
+// Step 2a: دخول كمزارع
+router.post('/farmer-login',   checkLoginAttempts, loginLimiter, farmerLogin);
+
+// Step 2b: دخول كمدير أو مراقب
+router.post('/admin-login',    checkLoginAttempts, loginLimiter, adminLogin);
 
 module.exports = router;

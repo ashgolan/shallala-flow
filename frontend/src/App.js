@@ -1,39 +1,55 @@
 import React, { useState } from 'react';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LangProvider } from './contexts/LangContext';
 import LoginPage       from './pages/LoginPage';
 import FarmerDashboard from './pages/FarmerDashboard';
 import AdminDashboard  from './pages/AdminDashboard';
 import './styles/global.css';
 
-const AppContent = () => {
-  const { farmer, isAdmin, loading } = useAuth();
-  const [view, setView] = useState('login');
-
-  if (loading) return (
-    <div className="loading-screen">
-      <span className="emoji">🌿</span>
-      <div className="spinner" />
-    </div>
-  );
-
-  if (view === 'farmer' || farmer)  return <FarmerDashboard onLogout={() => setView('login')} />;
-  if (view === 'admin'  || isAdmin) return <AdminDashboard  onLogout={() => setView('login')} />;
-
-  return (
-    <LoginPage
-      onFarmer={() => setView('farmer')}
-      onAdmin ={() => setView('admin')}
-    />
-  );
-};
-
 export default function App() {
+  const [view,      setView]      = useState('login');
+  const [farmer,    setFarmer]    = useState(null);
+  const [adminRole, setAdminRole] = useState('admin');
+
+  const handleFarmerLogin = (token, farmerData) => {
+    localStorage.setItem('shl_token',  token);   // ما يقرأه الـ API
+    localStorage.setItem('shl_farmer', JSON.stringify(farmerData));
+    setFarmer(farmerData);
+    setView('farmer');
+  };
+
+  const handleAdminLogin = (token, role = 'admin') => {
+    localStorage.setItem('shl_token', token);    // ما يقرأه الـ API
+    localStorage.setItem('shl_admin', role);
+    setAdminRole(role);
+    setView('admin');
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('shl_token');
+    localStorage.removeItem('shl_farmer');
+    localStorage.removeItem('shl_admin');
+    setFarmer(null);
+    setView('login');
+  };
+
+  if (view === 'farmer') return (
+    <LangProvider>
+      <FarmerDashboard farmer={farmer} onLogout={handleLogout} />
+    </LangProvider>
+  );
+
+  if (view === 'admin') return (
+    <LangProvider>
+      <AdminDashboard adminRole={adminRole} onLogout={handleLogout} />
+    </LangProvider>
+  );
+
   return (
     <LangProvider>
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
+      <LoginPage
+        onFarmerLogin={handleFarmerLogin}
+        onAdminLogin={handleAdminLogin}
+      />
     </LangProvider>
   );
 }

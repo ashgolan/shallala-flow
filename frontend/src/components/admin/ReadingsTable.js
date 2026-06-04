@@ -52,7 +52,7 @@ const IconBtn = ({ onClick, title, bg, hoverBg, color, hoverColor, border, child
   >{children}</button>
 );
 
-export default function ReadingsTable({ readings, setReadings, farmerName, landName, landRegion, onEdit, onDelete, lang, prices }) {
+export default function ReadingsTable({ readings, setReadings, farmerName, landName, landRegion, onEdit, onDelete, lang, prices, isViewer=false, lands=[] }) {
   const [expandedId, setExpandedId] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
   const [editNoteId, setEditNoteId] = useState(null);
@@ -277,7 +277,9 @@ export default function ReadingsTable({ readings, setReadings, farmerName, landN
 
                     {/* دفع */}
                     <td style={{textAlign:'center'}} onClick={e=>e.stopPropagation()}>
-                      <PaidBtn paid={isPaid} loading={togglingId===r.id} onClick={e=>handlePaid(e,r)}/>
+                      {isViewer
+                        ? <span style={{fontSize:16}}>{isPaid?'✓':'○'}</span>
+                        : <PaidBtn paid={isPaid} loading={togglingId===r.id} onClick={e=>handlePaid(e,r)}/>}
                     </td>
 
                     {/* بيانات */}
@@ -285,31 +287,24 @@ export default function ReadingsTable({ readings, setReadings, farmerName, landN
                     <td style={{fontFamily:'Heebo,sans-serif',fontSize:13}}>{landName(r.landId)}</td>
                     <td style={{textAlign:'center'}}><span className="badge badge-blue">{r.year}</span></td>
                     <td style={{textAlign:'center'}} onClick={e => e.stopPropagation()}>
-                      {r.stationNumber ? (
-                        r.stationLat && r.stationLng ? (
+                      {(() => {
+                        const land = lands.find(l => String(l.id) === String(r.landId));
+                        const lat  = r.stationLat || land?.stationLat;
+                        const lng  = r.stationLng || land?.stationLng;
+                        const num  = r.stationNumber || land?.stationNumber;
+                        if (!num) return <span style={{color:'var(--border)'}}>—</span>;
+                        if (lat && lng) return (
                           <button
-                            onClick={e => { e.stopPropagation(); setMapModal({ lat:r.stationLat, lng:r.stationLng, name:r.stationNumber }); }}
+                            onClick={e => { e.stopPropagation(); setMapModal({ lat, lng, name:num }); }}
                             title={ar?'عرض الموقع':'הצג מיקום'}
-                            style={{
-                              display:'inline-flex', alignItems:'center', gap:5,
-                              fontFamily:'monospace', fontWeight:900, fontSize:13,
-                              color:'var(--primary)', background:'#dcfce7',
-                              padding:'4px 10px', borderRadius:6,
-                              border:'1.5px solid #16a34a', cursor:'pointer', transition:'all 0.2s',
-                            }}
+                            style={{ display:'inline-flex', alignItems:'center', gap:5, fontFamily:'monospace', fontWeight:900, fontSize:13, color:'var(--primary)', background:'#dcfce7', padding:'4px 10px', borderRadius:6, border:'1.5px solid #16a34a', cursor:'pointer', transition:'all 0.2s' }}
                             onMouseEnter={e=>{e.currentTarget.style.background='#16a34a';e.currentTarget.style.color='#fff';}}
-                            onMouseLeave={e=>{e.currentTarget.style.background='#dcfce7';e.currentTarget.style.color='var(--primary)';}}
-                          >
-                            {r.stationNumber} <span style={{fontSize:12}}>📍</span>
+                            onMouseLeave={e=>{e.currentTarget.style.background='#dcfce7';e.currentTarget.style.color='var(--primary)';}}>
+                            {num} <span style={{fontSize:12}}>📍</span>
                           </button>
-                        ) : (
-                          <span style={{fontFamily:'monospace',fontWeight:900,fontSize:13,color:'var(--primary)',background:'var(--surface-2)',padding:'3px 10px',borderRadius:6}}>
-                            {r.stationNumber}
-                          </span>
-                        )
-                      ) : (
-                        <span style={{color:'var(--border)'}}>—</span>
-                      )}
+                        );
+                        return <span style={{fontFamily:'monospace',fontWeight:900,fontSize:13,color:'var(--primary)',background:'var(--surface-2)',padding:'3px 10px',borderRadius:6}}>{num}</span>;
+                      })()}
                     </td>
 
                     {/* أكواب كل فترة */}
@@ -398,7 +393,7 @@ export default function ReadingsTable({ readings, setReadings, farmerName, landN
                     </td>
 
                     {/* إجراءات */}
-                    <td style={{textAlign:'center'}} onClick={e=>e.stopPropagation()}>
+                    {!isViewer && <td style={{textAlign:'center'}} onClick={e=>e.stopPropagation()}>
                       <div className="flex-gap gap-6" style={{justifyContent:'center'}}>
                         <IconBtn onClick={()=>onEdit(r)} title={ar?'تعديل':'עריכה'}
                           bg="var(--surface-2)" hoverBg="var(--primary)"
@@ -409,7 +404,7 @@ export default function ReadingsTable({ readings, setReadings, farmerName, landN
                           color="#dc2626" hoverColor="#fff"
                           border="1.5px solid #fca5a5">✕</IconBtn>
                       </div>
-                    </td>
+                    </td>}
                   </tr>
 
                   {/* تفاصيل أرقام الساعات */}
@@ -433,13 +428,37 @@ export default function ReadingsTable({ readings, setReadings, farmerName, landN
                               {i<vals.length-1&&<span style={{color:'var(--text-muted)'}}>←</span>}
                             </React.Fragment>
                           ))}
+                        </div>
+                        {/* ── تفاصيل حساب كل فترة ── */}
+                        <div style={{display:'flex',flexWrap:'wrap',gap:6,margin:'8px 0'}}>
+                          <span style={{fontSize:12,color:'var(--text-muted)',fontWeight:700,alignSelf:'center'}}>
+                            💰 {ar?'حساب الفترات:':'חישוב תקופות:'}
+                          </span>
+                          {cupsPerPeriod.map((cups,i) => cups > 0 && (
+                            <div key={i} style={{background:'#e8f5e9',border:'1px solid #a7f3d0',borderRadius:8,padding:'4px 12px',fontSize:13,fontWeight:600}}>
+                              <span style={{color:'var(--text-muted)'}}>{ar?`ف${i+1}`:`ת${i+1}`}: </span>
+                              <strong>{cups.toLocaleString()}</strong>
+                              <span style={{color:'var(--text-muted)'}}> × ₪{getPrice(prices,r.year,r.landId,i+1)}</span>
+                              <strong style={{color:'var(--primary)'}}> = ₪{(cups*getPrice(prices,r.year,r.landId,i+1)).toLocaleString()}</strong>
+                            </div>
+                          ))}
+                          {(parseFloat(r.extra)||0) > 0 && (
+                            <div style={{background:'#fff3e0',border:'1px solid #fed7aa',borderRadius:8,padding:'4px 12px',fontSize:13,fontWeight:600}}>
+                              <span style={{color:'#e65100'}}>➕ {r.extraNote||(ar?'إضافة':'תוספת')}: </span>
+                              <strong style={{color:'#e65100'}}>+₪{Number(r.extra).toLocaleString()}</strong>
+                              {(parseFloat(r.extraPaid)||0) > 0 &&
+                                <span style={{color:'#16a34a'}}> (-₪{Number(r.extraPaid).toLocaleString()} {ar?'مدفوع':'שולם'})</span>}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{display:'flex',flexWrap:'wrap',gap:8,alignItems:'center'}}>
                           {isPaid&&r.paidAt&&(
-                            <span style={{fontSize:11,color:'#16a34a',marginRight:'auto'}}>
-                              ✓ {ar?'مدفوع':'שולם'} {new Date(r.paidAt).toLocaleDateString(ar?'ar-SA':'he-IL')}
+                            <span style={{fontSize:11,color:'#16a34a',fontWeight:700}}>
+                              ✓ {ar?'مدفوع في':'שולם ב-'} {new Date(r.paidAt).toLocaleDateString(ar?'ar-SA':'he-IL')}
                             </span>
                           )}
                           {r.note&&(
-                            <span style={{fontSize:12,background:'var(--amber-100)',border:'1px solid var(--amber-400)',borderRadius:8,padding:'4px 10px',color:'#78350f',fontWeight:600}}>
+                            <span style={{fontSize:12,background:'#fef9c3',border:'1px solid #fde047',borderRadius:8,padding:'4px 10px',color:'#78350f',fontWeight:600}}>
                               💬 {r.note}
                             </span>
                           )}

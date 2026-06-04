@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../contexts/AuthContext';
 import { useLang } from '../contexts/LangContext';
 import { t } from '../i18n/translations';
 import { farmerAPI, publicAPI } from '../api';
@@ -33,8 +32,8 @@ const calcConsumption = (reading, prices) => {
   });
 };
 
-export default function FarmerDashboard({ onLogout }) {
-  const { farmer, logout } = useAuth();
+export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
+  const farmer = farmerProp || JSON.parse(localStorage.getItem('shl_farmer') || 'null');
   const { lang } = useLang();
   const [tab, setTab]     = useState('overview');
   const [data, setData]   = useState({ lands:[], readings:[], prices:{} });
@@ -53,7 +52,7 @@ export default function FarmerDashboard({ onLogout }) {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { publicAPI.getSettings().then(d => setPub(d||{})).catch(()=>{}); }, []);
 
-  const handleLogout = () => { logout(); onLogout(); };
+  const handleLogout = () => { onLogout && onLogout(); onLogout(); };
 
   if (loading) return (
     <div className="loading-screen">

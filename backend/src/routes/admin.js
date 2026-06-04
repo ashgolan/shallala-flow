@@ -1,11 +1,20 @@
 const express = require('express');
 const router  = express.Router();
-const { requireAdmin } = require('../middleware/auth');
+const { requireAdmin, requireAdminOnly } = require('../middleware/auth');
 const { uploadLimiter } = require('../middleware/rateLimiter');
 const ctrl = require('../controllers/adminController');
 const { getStorage } = require('../../config/firebase');
 
 router.use(requireAdmin);
+
+// ── منع المراقب من أي عملية كتابة ────────────────────────────
+router.use((req, res, next) => {
+  if (req.adminRole === 'viewer' && req.method !== 'GET') {
+    return res.status(403).json({ error: 'غير مصرح — المراقب يمكنه القراءة فقط' });
+  }
+  next();
+});
+
 
 // ── Farmers ──────────────────────────────
 router.get   ('/farmers',            ctrl.getFarmers);
@@ -84,6 +93,90 @@ router.delete('/image', async (req, res) => {
     await storage.bucket().file(imagePath).delete().catch(() => {});
     return res.json({ success: true });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
+});
+
+
+// ── Privileged Users ──────────────────────────────────────────
+router.get('/privileged', async (req, res) => {
+  try {
+    const { Privileged } = require('../models/Settings');
+    const doc = await Privileged.findOne({ key: 'privileged' });
+    const users = (doc?.users || []).map(u => ({
+      id: u._id.toString(), idNumber: u.idNumber,
+      role: u.role, label: u.label,
+    }));
+    return res.json({ users });
+  } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
+});
+
+router.post('/privileged', async (req, res) => {
+  try {
+    const { Privileged } = require('../models/Settings');
+    const { idNumber, role, label, password } = req.body;
+    if (!idNumber || !role || !password)
+      return res.status(400).json({ error: 'رقم الهوية والدور وكلمة المرور مطلوبة' });
+    if (!['admin','viewer'].includes(role))
+      return res.status(400).json({ error: 'الدور غير صالح' });
+    let doc = await Privileged.findOne({ key: 'privileged' });
+    if (!doc) doc = new Privileged({ key: 'privileged', users: [] });
+    const exists = doc.users.find(u => u.idNumber.trim() === idNumber.trim());
+    if (exists) return res.status(409).json({ error: 'رقم الهوية موجود مسبقاً' });
+    doc.users.push({ idNumber: idNumber.trim(), role, label: label||'', password });
+    doc.markModified('users');
+    await doc.save();
+    return res.json({ success: true });
+  } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
+});
+
+router.put('/privileged/:userId', async (req, res) => {
+  try {
+    const { Privileged } = require('../models/Settings');
+    const { password, label, role } = req.body;
+    const doc = await Privileged.findOne({ key: 'privileged' });
+    if (!doc) return res.status(404).json({ error: 'غير موجود' });
+    const user = doc.users.id(req.params.userId);
+    if (!user) return res.status(404).json({ error: 'المستخدم غير موجود' });
+    if (password) user.password = password;
+    if (label !== undefined) user.label = label;
+    if (role) user.role = role;
+    doc.markModified('users');
+    await doc.save();
+    return res.json({ success: true });
+  } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
+});
+
+router.delete('/privileged/:userId', async (req, res) => {
+  try {
+    const { Privileged } = require('../models/Settings');
+    const doc = await Privileged.findOne({ key: 'privileged' });
+    if (!doc) return res.json({ success: true });
+    doc.users = doc.users.filter(u => u._id.toString() !== req.params.userId);
+    doc.markModified('users');
+    await doc.save();
+    return res.json({ success: true });
+  } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
+});
+
+// ── Sync GPS from Lands to all Readings ──────────────────
+router.post('/sync-gps', async (req, res) => {
+  try {
+    const Reading = require('../models/Reading');
+    const Land    = require('../models/Land');
+    const readings = await Reading.find().lean();
+    let updated = 0;
+    for (const r of readings) {
+      const land = await Land.findById(r.landId).lean();
+      if (land?.stationNumber || land?.stationLat) {
+        await Reading.findByIdAndUpdate(r._id, {
+          stationNumber: land.stationNumber || '',
+          stationLat:    land.stationLat    || null,
+          stationLng:    land.stationLng    || null,
+        });
+        updated++;
+      }
+    }
+    return res.json({ success: true, updated });
+  } catch(err) { return res.status(500).json({ error: 'خطأ: ' + err.message }); }
 });
 
 // ── Reports ──────────────────────────────

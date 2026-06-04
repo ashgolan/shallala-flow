@@ -39,6 +39,17 @@ const regionSchema = new mongoose.Schema({
   notes:   { type: String, default: '' },
 }, { collection: 'regions', timestamps: true });
 
+// مستخدمون مخولون للوصول للإدارة
+const privilegedSchema = new mongoose.Schema({
+  key:      { type: String, default: 'privileged', unique: true },
+  users: [{
+    idNumber: { type: String, required: true }, // رقم الهوية
+    role:     { type: String, enum: ['admin', 'viewer'], required: true }, // الدور
+    label:    { type: String, default: '' }, // اسم للتعرف (اختياري)
+    password: { type: String, required: true }, // كلمة مرور خاصة لهذا الدور
+  }],
+}, { collection: 'settings_privileged', timestamps: true });
+
 module.exports = {
   Prices:       mongoose.model('Prices',       pricesSchema),
   Announcement: mongoose.model('Announcement', announcementSchema),
@@ -46,4 +57,5 @@ module.exports = {
   Video:        mongoose.model('Video',        videoSchema),
   Admin:        mongoose.model('Admin',        adminSchema),
   Region:       mongoose.model('Region',       regionSchema),
+  Privileged:   mongoose.model('Privileged',   privilegedSchema),
 };

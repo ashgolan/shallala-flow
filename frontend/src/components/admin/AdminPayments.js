@@ -13,7 +13,8 @@ const CATEGORIES = [
 
 const EMPTY = { date:'', recipient:'', amount:'', checkNumber:'', invoiceNumber:'', description:'', category:'general', notes:'' };
 
-export default function AdminPayments() {
+export default function AdminPayments({ adminRole='admin' }) {
+  const isViewer = adminRole === 'viewer';
   const { lang } = useLang();
   const ar = lang === 'ar';
   const [payments, setPayments] = useState([]);
@@ -112,9 +113,7 @@ export default function AdminPayments() {
             {ar?'مدفوعات اللجنة للمقاولين والشركات':'תשלומי הוועדה לקבלנים וחברות'}
           </p>
         </div>
-        <button className="btn btn-primary" onClick={openAdd}>
-          + {ar?'إضافة دفعة':'הוסף תשלום'}
-        </button>
+        <button className="btn btn-primary" onClick={openAdd} style={{display: isViewer?'none':''}}>{ ar?'+ إضافة دفعة':'+ הוסף תשלום'}</button>
       </div>
 
       {/* Filters */}
@@ -251,7 +250,7 @@ export default function AdminPayments() {
                       <strong style={{color:'#92400e',fontSize:15}}>₪{parseFloat(p.amount).toLocaleString()}</strong>
                     </td>
                     <td>
-                      <div className="flex-gap gap-4">
+                      <div className="flex-gap gap-4" style={{visibility:isViewer?'hidden':'visible'}}>
                         <button onClick={()=>openEdit(p)}
                           style={{width:28,height:28,borderRadius:7,border:'1.5px solid var(--border)',background:'var(--surface-2)',color:'var(--primary)',cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:13,transition:'all 0.18s'}}
                           onMouseEnter={e=>{e.currentTarget.style.background='var(--primary)';e.currentTarget.style.color='#fff';}}

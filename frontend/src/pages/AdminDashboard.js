@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
 import { useLang } from '../contexts/LangContext';
 import { t } from '../i18n/translations';
 import AdminFarmers  from '../components/admin/AdminFarmers';
@@ -11,17 +10,16 @@ import AdminDashboardPage from '../components/admin/AdminDashboardPage';
 import LangToggle         from '../components/shared/LangToggle';
 import AnnouncementBanner from '../components/shared/AnnouncementBanner';
 
-export default function AdminDashboard({ onLogout }) {
-  const { logout }      = useAuth();
+export default function AdminDashboard({ onLogout, adminRole='admin' }) {
   const { lang }        = useLang();
   const ar              = lang === 'ar';
   const [tab, setTab]   = useState('farmers');
   const [sideOpen, setSideOpen] = useState(false);
 
-  const handleLogout = () => { logout(); onLogout(); };
+  const handleLogout = () => { onLogout && onLogout(); onLogout(); };
 
   // Tabs defined inside component so they re-render with lang
-  const TABS = [
+  const allTabs = [
     { key:'farmers',  icon:'👨‍🌾', label: t('farmers', lang) },
     { key:'regions',  icon:'📍', label: t('regionsTab', lang) },
     { key:'readings', icon:'📏', label: t('readingsTab', lang) },
@@ -30,8 +28,12 @@ export default function AdminDashboard({ onLogout }) {
     { key:'gallery',  icon:'🖼️', label: t('galleryTab', lang) },
     { key:'payments',  icon:'💸', label: ar?'المدفوعات':'תשלומים' },
     { key:'dashboard', icon:'📊', label: ar?'لوحة التحكم':'לוח בקרה' },
-    { key:'settings',  icon:'⚙️', label: t('settingsTab', lang) },
+    ...(adminRole === 'admin' ? [{ key:'settings', icon:'⚙️', label: t('settingsTab', lang) }] : []),
   ];
+
+  const TABS = adminRole === 'viewer'
+    ? allTabs.filter(t => ['reports','payments','dashboard'].includes(t.key))
+    : allTabs;
 
   const current = TABS.find(tb => tb.key === tab);
 
@@ -131,15 +133,15 @@ export default function AdminDashboard({ onLogout }) {
 
         {/* Page content */}
         <div style={{ flex:1, padding:'clamp(16px,3vw,24px)', maxWidth:1200, width:'100%', margin:'0 auto' }} className="page-content">
-          {tab === 'farmers'  && <AdminFarmers />}
-          {tab === 'regions'  && <AdminRegions />}
-          {tab === 'readings' && <AdminReadings />}
-          {tab === 'prices'   && <AdminPrices />}
-          {tab === 'reports'  && <AdminReports />}
-          {tab === 'gallery'  && <AdminGallery />}
-          {tab === 'payments'  && <AdminPayments />}
-          {tab === 'dashboard' && <AdminDashboardPage />}
-          {tab === 'settings'  && <AdminSettings />}
+          {tab === 'farmers'  && <AdminFarmers  adminRole={adminRole} />}
+          {tab === 'regions'  && <AdminRegions  adminRole={adminRole} />}
+          {tab === 'readings' && <AdminReadings adminRole={adminRole} />}
+          {tab === 'prices'   && <AdminPrices   adminRole={adminRole} />}
+          {tab === 'reports'  && <AdminReports  adminRole={adminRole} />}
+          {tab === 'gallery'  && <AdminGallery  adminRole={adminRole} />}
+          {tab === 'payments'  && <AdminPayments adminRole={adminRole} />}
+          {tab === 'dashboard' && <AdminDashboardPage adminRole={adminRole} />}
+          {tab === 'settings'  && adminRole === 'admin' && <AdminSettings />}
         </div>
 
         {/* Footer */}

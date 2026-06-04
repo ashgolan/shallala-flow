@@ -7,12 +7,13 @@ const morgan       = require('morgan');
 const cookieParser = require('cookie-parser');
 const connectDB    = require('./config/database');
 const { generalLimiter } = require('./src/middleware/rateLimiter');
+const { startBackupScheduler } = require('./src/services/backupScheduler');
 
 const app  = express();
 const PORT = process.env.PORT || 5000;
 
 // ─── Connect MongoDB ───────────────────────────────────────────
-connectDB();
+connectDB().then(() => { startBackupScheduler(); }).catch(err => console.error('DB Error:', err.message));
 
 // ─── Security Middleware ───────────────────────────────────────
 app.use(helmet({

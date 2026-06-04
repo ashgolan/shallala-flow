@@ -101,26 +101,34 @@ const deleteFarmer = async (req, res) => {
 // ════════════════════════════════════════
 const getLands = async (req, res) => {
   try {
-    const lands = await Land.find().sort({ name: 1 }).lean();
+    const filter = {};
+    if (req.query.farmerId) filter.farmerId = req.query.farmerId;
+    const lands = await Land.find(filter).sort({ name: 1 }).lean();
     return res.json({ lands: lands.map(l => ({
       ...l,
-      id: l._id.toString(),
-      farmerId: l.farmerId ? l.farmerId.toString() : null,
-      regionId: l.regionId ? l.regionId.toString() : null,
+      id:            l._id.toString(),
+      farmerId:      l.farmerId ? l.farmerId.toString() : null,
+      regionId:      l.regionId ? l.regionId.toString() : null,
+      stationNumber: l.stationNumber || '',
+      stationLat:    l.stationLat    || null,
+      stationLng:    l.stationLng    || null,
     })) });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
 
 const createLand = async (req, res) => {
   try {
-    const { farmerId, regionId, name, nameHeb, area } = req.body;
+    const { farmerId, regionId, name, nameHeb, area, stationNumber, stationLat, stationLng } = req.body;
     if (!name) return res.status(400).json({ error: 'اسم الأرض مطلوب' });
     const land = await Land.create({
-      farmerId: farmerId || null,
-      regionId: regionId || null,
+      farmerId:      farmerId || null,
+      regionId:      regionId || null,
       name,
-      nameHeb: nameHeb || name,
-      area: area || '',
+      nameHeb:       nameHeb || name,
+      area:          area || '',
+      stationNumber: stationNumber || '',
+      stationLat:    stationLat    || null,
+      stationLng:    stationLng    || null,
     });
     return res.status(201).json({ success: true, id: land._id.toString() });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
@@ -128,12 +136,15 @@ const createLand = async (req, res) => {
 
 const updateLand = async (req, res) => {
   try {
-    const { regionId, name, nameHeb, area } = req.body;
+    const { regionId, name, nameHeb, area, stationNumber, stationLat, stationLng } = req.body;
     await Land.findByIdAndUpdate(req.params.landId, {
-      regionId: regionId || null,
-      name: name || '',
-      nameHeb: nameHeb || name || '',
-      area: area || '',
+      regionId:      regionId || null,
+      name:          name || '',
+      nameHeb:       nameHeb || name || '',
+      area:          area || '',
+      stationNumber: stationNumber || '',
+      stationLat:    stationLat    || null,
+      stationLng:    stationLng    || null,
     });
     return res.json({ success: true });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
@@ -178,17 +189,24 @@ const getReadings = async (req, res) => {
 
 const createReading = async (req, res) => {
   try {
-    const { farmerId, landId, year, readings, stationNumber, stationLat, stationLng, note, extra, extraPaid, extraNote } = req.body;
+    const { farmerId, landId, year, readings, note, extra, extraPaid, extraNote } = req.body;
     if (!farmerId || !landId || !year || !readings?.length)
       return res.status(400).json({ error: 'جميع الحقول مطلوبة' });
     if (readings.length < 2)
       return res.status(400).json({ error: 'يجب إدخال قراءتين على الأقل' });
+
+    // ── جلب بيانات المحطة من الأرض تلقائياً ──────────────
+    const land = await Land.findById(landId).lean();
+    const stationNumber = land?.stationNumber || '';
+    const stationLat    = land?.stationLat    || null;
+    const stationLng    = land?.stationLng    || null;
+
     const reading = await Reading.create({
       farmerId, landId, year: parseInt(year),
       readings: readings.map(r => parseFloat(r) || 0),
-      stationNumber: stationNumber || '',
-      stationLat: stationLat ? parseFloat(stationLat) : null,
-      stationLng: stationLng ? parseFloat(stationLng) : null,
+      stationNumber,
+      stationLat,
+      stationLng,
       extra: parseFloat(extra) || 0,
       extraPaid: parseFloat(extraPaid) || 0,
       extraNote: extraNote || '',
@@ -203,20 +221,20 @@ const createReading = async (req, res) => {
 
 const updateReading = async (req, res) => {
   try {
-    const { farmerId, landId, year, readings, stationNumber, stationLat, stationLng, note, extra, extraPaid, extraNote } = req.body;
-    console.log('updateReading body:', { stationNumber, stationLat, stationLng, note });
+    const { farmerId, landId, year, readings, note, extra, extraPaid, extraNote } = req.body;
+    // جلب الموقع من الأرض تلقائياً
+    const land = await Land.findById(landId).lean();
     const updateData = {
       farmerId, landId, year: parseInt(year),
       readings: readings.map(r => parseFloat(r) || 0),
-      stationNumber: stationNumber || '',
-      stationLat: (stationLat !== '' && stationLat !== null && stationLat !== undefined) ? parseFloat(stationLat) : null,
-      stationLng: (stationLng !== '' && stationLng !== null && stationLng !== undefined) ? parseFloat(stationLng) : null,
+      stationNumber: land?.stationNumber || '',
+      stationLat:    land?.stationLat    || null,
+      stationLng:    land?.stationLng    || null,
       extra: parseFloat(extra) || 0,
       extraPaid: parseFloat(extraPaid) || 0,
       extraNote: extraNote || '',
       note: note || '',
     };
-    console.log('updateData:', { stationLat: updateData.stationLat, stationLng: updateData.stationLng, extra: updateData.extra });
     await Reading.findByIdAndUpdate(req.params.readingId, { $set: updateData }, { new: true });
     return res.json({ success: true });
   } catch (err) {

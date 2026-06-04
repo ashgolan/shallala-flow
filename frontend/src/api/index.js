@@ -35,11 +35,21 @@ export const authAPI = {
     const d = await req('/auth/farmer-login', { method: 'POST', body: JSON.stringify({ idNumber, code }) });
     setTok(d.token); return d.farmer;
   },
-  adminLogin: async (password) => {
-    const d = await req('/auth/admin-login', { method: 'POST', body: JSON.stringify({ password }) });
+  adminLogin: async (idNumber, code, password) => {
+    // إذا أُعطي idNumber وcode → نظام الدخول الذكي الجديد
+    if (code !== undefined && password !== undefined) {
+      return req('/auth/admin-login', { method:'POST', body:JSON.stringify({ idNumber, code, password }) });
+    }
+    // الطريقة القديمة: adminLogin(password) فقط
+    const pw = idNumber; // idNumber هنا هو الـ password
+    const d = await req('/auth/admin-login', { method: 'POST', body: JSON.stringify({ password: pw }) });
     setTok(d.token); return true;
   },
   logout: clearTok,
+  // Smart login
+  checkIdentity: (idNumber, code) => req('/auth/check-identity', { method:'POST', body:JSON.stringify({ idNumber, code }) }),
+  loginAsFarmer: (idNumber, code) => req('/auth/farmer-login',   { method:'POST', body:JSON.stringify({ idNumber, code }) }),
+  loginAsAdmin:  (idNumber, code, password) => req('/auth/admin-login', { method:'POST', body:JSON.stringify({ idNumber, code, password }) }),
 };
 
 // ── Public ─────────────────────────────────────────────────────
@@ -48,6 +58,9 @@ export const publicAPI = {
 };
 
 // ── Farmer ─────────────────────────────────────────────────────
+// ── Auth API ─────────────────────────────────────────────────
+
+
 export const farmerAPI = {
   getMyData:   () => req('/farmer/my-data'),
   getNotes:    () => req('/farmer/notes'),
@@ -64,8 +77,10 @@ export const adminAPI = {
   updateFarmer:  (id, d)  => req(`/admin/farmers/${id}`, { method: 'PUT', body: JSON.stringify(d) }),
   deleteFarmer:  id       => req(`/admin/farmers/${id}`, { method: 'DELETE' }),
   // lands
-  getLands:      ()       => req('/admin/lands'),
-  createLand:    d        => req('/admin/lands',         { method: 'POST',   body: JSON.stringify(d) }),
+  getLands:      ()           => req('/admin/lands'),
+  getRegions:    ()           => req('/admin/regions'),
+  getLandsByFarmer: farmerId  => req(`/admin/lands?farmerId=${farmerId}`),
+  createLand:    d           => req('/admin/lands',         { method: 'POST',   body: JSON.stringify(d) }),
   updateLand:    (id, d)  => req(`/admin/lands/${id}`,   { method: 'PUT',    body: JSON.stringify(d) }),
   deleteLand:    id       => req(`/admin/lands/${id}`,   { method: 'DELETE' }),
   // readings
@@ -104,6 +119,14 @@ export const togglePaid        = id => req(`/admin/readings/${id}/paid`,        
 export const toggleExtraStatus = id => req(`/admin/readings/${id}/extra-status`, { method: 'POST' });
 // Update reading note
 export const updateNote        = (id, note) => req(`/admin/readings/${id}/note`,  { method: 'POST', body: JSON.stringify({ note }) });
+
+// ── Privileged Users API ─────────────────────────────────────
+export const privilegedAPI = {
+  getAll:  ()       => req('/admin/privileged'),
+  add:     d        => req('/admin/privileged',        { method:'POST',   body:JSON.stringify(d) }),
+  update:  (id, d)  => req('/admin/privileged/'+id,    { method:'PUT',    body:JSON.stringify(d) }),
+  remove:  id       => req('/admin/privileged/'+id,    { method:'DELETE' }),
+};
 
 // ── Payments API ─────────────────────────────────────────────
 export const paymentsAPI = {

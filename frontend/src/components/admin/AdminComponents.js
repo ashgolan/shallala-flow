@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { adminAPI } from '../../api';
+import * as XLSX from 'xlsx';
+import { adminAPI, privilegedAPI, regionsAPI } from '../../api';
+import { useLang } from '../../contexts/LangContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 // ════════════════════════════════════════════════════════════
@@ -346,17 +348,203 @@ export function AdminSettings() {
         </form>
       </div>
 
-      <div className="card">
-        <h3 className="mb-8">🔐 كلمة مرور الإدارة</h3>
-        <p style={{ color:'var(--text-muted)', fontSize:13, marginBottom:16 }}>غيّر كلمة مرور الدخول للوحة الإدارة</p>
-        <form onSubmit={savePass}>
-          <div className="grid-2">
-            <div className="form-group"><label>كلمة المرور الجديدة</label><input type="password" value={newPass.p} onChange={e=>setNewPass({...newPass,p:e.target.value})} placeholder="••••••••"/></div>
-            <div className="form-group"><label>تأكيد كلمة المرور</label><input type="password" value={newPass.c} onChange={e=>setNewPass({...newPass,c:e.target.value})} placeholder="••••••••"/></div>
-          </div>
-          <button type="submit" className="btn btn-primary" disabled={saving}>🔐 تغيير</button>
-        </form>
+
+
+      <PrivilegedUsers />
+    </div>
+  );
+}
+
+// ── إدارة المخولين ──────────────────────────────────────────
+function PrivilegedUsers() {
+  const [users, setUsers]     = useState([]);
+  const [farmers, setFarmers] = useState([]);
+  const [form, setForm]       = useState({ idNumber:'', role:'admin', label:'', password:'' });
+  const [selectedFarmer, setSelectedFarmer] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [editUser, setEditUser] = useState(null); // user being edited
+  const [newPass, setNewPassPriv] = useState('');
+  const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState('');
+  const [success, setSuccess] = useState('');
+
+  const load = () => privilegedAPI.getAll().then(d => setUsers(d.users||[])).catch(()=>{});
+  useEffect(() => { adminAPI.getFarmers().then(d => setFarmers(d.farmers||[])).catch(()=>{}); }, []);
+
+  const openEdit = (u) => { setEditUser(u); setNewPassPriv(''); setError(''); };
+
+  const saveEdit = async () => {
+    if (!newPass) { setError('أدخل كلمة المرور الجديدة'); return; }
+    if (newPass.length < 6) { setError('6 أحرف على الأقل'); return; }
+    setSaving(true); setError('');
+    try {
+      await privilegedAPI.update(editUser.id, { password: newPass, label: editUser.label, role: editUser.role });
+      setEditUser(null); setNewPassPriv('');
+      setSuccess('✅ تم تغيير كلمة المرور'); setTimeout(()=>setSuccess(''),3000);
+      load();
+    } catch(e) { setError(e.message); }
+    finally { setSaving(false); }
+  };
+  useEffect(() => { load(); }, []);
+
+  const submit = async e => {
+    e.preventDefault();
+    if (!form.idNumber || !form.password) { setError('رقم الهوية وكلمة المرور مطلوبان'); return; }
+    setSaving(true); setError('');
+    try {
+      await privilegedAPI.add(form);
+      setForm({ idNumber:'', role:'admin', label:'', password:'' });
+      setSelectedFarmer(null);
+      setShowForm(false);
+      setSuccess('✅ تم إضافة المخوّل');
+      setTimeout(()=>setSuccess(''),3000);
+      load();
+    } catch(e) { setError(e.message); }
+    finally { setSaving(false); }
+  };
+
+  const remove = async (id, label) => {
+    if (!window.confirm(`حذف "${label}"?`)) return;
+    await privilegedAPI.remove(id);
+    load();
+  };
+
+  const ROLES = { admin: '🔐 مدير رئيسي', viewer: '👁 مراقب' };
+
+  return (
+    <div className="card">
+      <div className="flex-between mb-16">
+        <div>
+          <h3 className="mb-4">👥 إدارة المخولين</h3>
+          <p style={{ color:'var(--text-muted)', fontSize:13 }}>
+            الأشخاص الذين يستطيعون الدخول كمدير أو مراقب بعد التحقق من هويتهم
+          </p>
+        </div>
+        <button className="btn btn-primary btn-sm" onClick={()=>{setShowForm(v=>!v);setError('');setSelectedFarmer(null);setForm({idNumber:'',role:'admin',label:'',password:''});}}>
+          {showForm ? 'إلغاء' : '+ إضافة مخوّل'}
+        </button>
       </div>
+
+      {success && <div className="alert alert-success mb-12">{success}</div>}
+
+      {showForm && (
+        <form onSubmit={submit} className="mb-16" style={{background:'var(--surface-2)',borderRadius:10,padding:16}}>
+          
+          {/* اختيار المزارع */}
+          <div className="form-group mb-16">
+            <label>اختر مزارعاً من القائمة *</label>
+            <select
+              value={selectedFarmer?.id || ''}
+              onChange={e => {
+                const f = farmers.find(x => x.id === e.target.value);
+                setSelectedFarmer(f || null);
+                if (f) setForm(prev => ({
+                  ...prev,
+                  idNumber: f.idNumber || '',
+                  label: f.nameHeb || f.name || '',
+                }));
+              }}
+              style={{ fontFamily:'Heebo,sans-serif', fontSize:15 }}>
+              <option value="">— اختر مزارعاً —</option>
+              {farmers.map(f => (
+                <option key={f.id} value={f.id}>
+                  {f.nameHeb || f.name} — {f.idNumber}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* بيانات المختار */}
+          {selectedFarmer && (
+            <div style={{background:'#f0fdf4',border:'1.5px solid #bbf7d0',borderRadius:10,padding:'12px 16px',marginBottom:16}}>
+              <div style={{display:'flex',gap:16,flexWrap:'wrap',fontSize:13}}>
+                <span>👤 <strong style={{fontFamily:'Heebo,sans-serif'}}>{selectedFarmer.nameHeb||selectedFarmer.name}</strong></span>
+                <span>🪪 {selectedFarmer.idNumber}</span>
+                {selectedFarmer.phone && <span>📱 {selectedFarmer.phone}</span>}
+              </div>
+            </div>
+          )}
+
+          <div className="grid-2">
+            <div className="form-group">
+              <label>الدور *</label>
+              <select value={form.role} onChange={e=>setForm({...form,role:e.target.value})}>
+                <option value="admin">🔐 مدير رئيسي (صلاحيات كاملة)</option>
+                <option value="viewer">👁 مراقب (قراءة فقط)</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>كلمة المرور الخاصة *</label>
+              <input type="password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})}
+                placeholder="••••••••" />
+            </div>
+          </div>
+          {error && <div className="alert alert-error mb-8">{error}</div>}
+          <button type="submit" className="btn btn-primary" disabled={saving || !selectedFarmer}>
+            {saving ? '⏳' : '💾 حفظ'}
+          </button>
+        </form>
+      )}
+
+      <div className="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>رقم الهوية</th>
+              <th>الدور</th>
+              <th>الاسم</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.length === 0 && (
+              <tr><td colSpan={4} style={{textAlign:'center',color:'var(--text-muted)',padding:20}}>لا يوجد مخولون</td></tr>
+            )}
+            {users.map(u => (
+              <tr key={u.id}>
+                <td><code style={{background:'var(--surface-2)',padding:'2px 8px',borderRadius:4}}>{u.idNumber}</code></td>
+                <td><span className="badge badge-blue">{ROLES[u.role]||u.role}</span></td>
+                <td style={{fontFamily:'Heebo,sans-serif',fontWeight:600}}>{u.label||'—'}</td>
+                <td>
+                  <div className="flex-gap gap-4">
+                  <button onClick={()=>openEdit(u)}
+                    style={{width:28,height:28,borderRadius:7,border:'1.5px solid var(--border)',background:'var(--surface-2)',color:'var(--primary)',cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:13}}
+                    onMouseEnter={e=>{e.currentTarget.style.background='var(--primary)';e.currentTarget.style.color='#fff';}}
+                    onMouseLeave={e=>{e.currentTarget.style.background='var(--surface-2)';e.currentTarget.style.color='var(--primary)';}}>✏</button>
+                  <button onClick={()=>remove(u.id, u.label||u.idNumber)}
+                    style={{width:28,height:28,borderRadius:7,border:'1.5px solid #fca5a5',background:'#fff1f2',color:'#dc2626',cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:13}}
+                    onMouseEnter={e=>{e.currentTarget.style.background='#dc2626';e.currentTarget.style.color='#fff';}}
+                    onMouseLeave={e=>{e.currentTarget.style.background='#fff1f2';e.currentTarget.style.color='#dc2626';}}>✕</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {/* مودال تغيير كلمة المرور */}
+      {editUser && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div style={{background:'#fff',borderRadius:16,padding:28,width:'100%',maxWidth:380,boxShadow:'0 8px 40px rgba(0,0,0,0.2)'}}>
+            <h3 className="mb-16">🔐 تغيير كلمة مرور</h3>
+            <p style={{color:'var(--text-muted)',fontSize:13,marginBottom:16}}>
+              {editUser.label || editUser.idNumber} — <span className="badge badge-blue">{ROLES[editUser.role]}</span>
+            </p>
+            <div className="form-group">
+              <label>كلمة المرور الجديدة *</label>
+              <input type="password" value={newPass} onChange={e=>setNewPassPriv(e.target.value)}
+                placeholder="••••••••" autoFocus />
+            </div>
+            {error && <div className="alert alert-error mb-8">{error}</div>}
+            <div className="flex-gap gap-8">
+              <button className="btn btn-primary" onClick={saveEdit} disabled={saving}>
+                {saving?'⏳':'💾 حفظ'}
+              </button>
+              <button className="btn btn-outline" onClick={()=>{setEditUser(null);setError('');}}>إلغاء</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -387,148 +575,417 @@ const calc = (r, prices) => {
 };
 
 export function AdminReports() {
-  const [data, setData]     = useState({ farmers:[], lands:[], readings:[], prices:{} });
-  const [loading, setLoading] = useState(true);
-  const [filterY, setFilterY] = useState('');
-  const [filterF, setFilterF] = useState('');
-  const [mode, setMode]     = useState('summary');
+  const { lang } = useLang();
+  const ar = lang === 'ar';
+  const [data, setData]         = useState({ farmers:[], lands:[], readings:[], prices:{} });
+  const [loading, setLoading]   = useState(true);
+  const [filterYear, setFilterYear] = useState('');
+  const [filterFarmer, setFilterFarmer] = useState('');
+  const [filterRegion, setFilterRegion] = useState('');
+  const [filterPaid, setFilterPaid]     = useState('');  // '' | 'paid' | 'unpaid'
+  const [regions, setRegions]   = useState([]);
+  const [expanded, setExpanded] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const d = await adminAPI.getReport();
+      const [d, rg] = await Promise.all([adminAPI.getReport(), regionsAPI.getRegions()]);
       setData(d);
-    } catch(e) {
-      console.error('Report error:', e);
-    } finally {
-      setLoading(false);
-    }
+      setRegions(rg.regions || []);
+    } catch(e) { console.error(e); }
+    finally { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
   const { farmers, lands, readings, prices } = data;
-  const farmerName = id => farmers.find(f=>String(f.id)===String(id))?.name||'—';
-  const landName   = id => lands.find(l=>String(l.id)===String(id))?.name||'—';
-  const years = [...new Set(readings.map(r=>r.year))].sort((a,b)=>b-a);
+  const farmerName = id => farmers.find(f => String(f.id) === String(id))?.nameHeb || farmers.find(f => String(f.id) === String(id))?.name || '—';
+  const landName   = id => lands.find(l => String(l.id) === String(id))?.nameHeb || lands.find(l => String(l.id) === String(id))?.name || '—';
+  const regionName = id => regions.find(r => String(r.id) === String(id))?.code || '—';
 
-  const filtered = readings.filter(r=>(!filterY||r.year===parseInt(filterY))&&(!filterF||String(r.farmerId)===String(filterF)));
-  const grandCups   = filtered.reduce((s,r) => s + calc(r,prices).reduce((ss,c) => ss + (c.cups||0), 0), 0);
-  const grandAmount = filtered.reduce((s,r) => s + calc(r,prices).reduce((ss,c) => ss + (c.amount||0), 0), 0);
+  // حساب السعر
+  const getP = (year, landId, idx) => {
+    if (!prices) return 0;
+    const lp = prices.landPrices?.[String(landId)];
+    if (lp?.[`reading_${idx}`]) return parseFloat(lp[`reading_${idx}`]) || 0;
+    if (lp?.default) return parseFloat(lp.default) || 0;
+    const yp = prices.yearPrices?.[String(year)];
+    if (yp?.[`reading_${idx}`]) return parseFloat(yp[`reading_${idx}`]) || 0;
+    if (yp?.default) return parseFloat(yp.default) || 0;
+    return parseFloat(prices?.globalPrice) || 0;
+  };
 
-  const summaryByFarmer = farmers.map(f => {
-    const fR     = filtered.filter(r => String(r.farmerId) === String(f.id));
-    const cups   = fR.reduce((s,r) => s + calc(r,prices).reduce((ss,c) => ss + (c.cups||0), 0), 0);
-    const amount = fR.reduce((s,r) => s + calc(r,prices).reduce((ss,c) => ss + (c.amount||0), 0), 0);
-    return { ...f, cups, amount, readingCount: fR.length };
-  }).filter(f => f.readingCount > 0);
+  const calcRow = r => {
+    const vals = r.readings || [];
+    const periods = vals.slice(1).map((v, i) => {
+      const cups = parseFloat(vals[i+1]) - parseFloat(vals[i]);
+      const price = getP(r.year, r.landId, i+1);
+      return { cups: cups > 0 ? cups : 0, price, amount: cups > 0 ? cups * price : 0 };
+    });
+    const totalCups = periods.reduce((s, p) => s + p.cups, 0);
+    const cupsAmount = periods.reduce((s, p) => s + p.amount, 0);
+    const extra = parseFloat(r.extra) || 0;
+    const extraPaid = parseFloat(r.extraPaid) || 0;
+    const total = cupsAmount + extra - extraPaid;
+    return { periods, totalCups, cupsAmount, extra, extraPaid, total };
+  };
+
+  const years = [...new Set(readings.map(r => r.year))].sort((a,b) => b-a);
+
+  const filtered = readings.filter(r => {
+    if (filterYear   && r.year !== parseInt(filterYear)) return false;
+    if (filterFarmer && String(r.farmerId) !== filterFarmer) return false;
+    if (filterPaid === 'paid'   && !r.paid) return false;
+    if (filterPaid === 'unpaid' && r.paid)  return false;
+    return true;
+  });
+
+  const grandTotal = filtered.reduce((s, r) => s + calcRow(r).total, 0);
+  const grandCups  = filtered.reduce((s, r) => s + calcRow(r).totalCups, 0);
+  const paidCount  = filtered.filter(r => r.paid).length;
+
+  // ── طباعة ──────────────────────────────────────────────────
+  const handlePrint = () => {
+    // بناء HTML للطباعة
+    const date = new Date().toLocaleDateString(ar?'ar-SA':'he-IL');
+    const yearLabel = filterYear || (ar?'جميع السنوات':'כל השנים');
+    const farmerLabel = filterFarmer
+      ? (farmers.find(f=>f.id===filterFarmer)?.nameHeb || '—')
+      : (ar?'جميع المزارعين':'כל החקלאים');
+
+    const rows = filtered.map(r => {
+      const { periods, totalCups, extra, extraPaid, total } = calcRow(r);
+      const isPaid = !!r.paid;
+      return `
+        <tr style="background:${isPaid?'#f0fdf4':'#fff5f5'}; border-right:3px solid ${isPaid?'#16a34a':'#ef4444'}">
+          <td>${farmerName(r.farmerId)}</td>
+          <td>${landName(r.landId)}</td>
+          <td style="text-align:center">${r.year}</td>
+          <td style="text-align:center">${r.stationNumber||'—'}</td>
+          <td style="text-align:center">${totalCups.toLocaleString()}</td>
+          <td style="text-align:center">${extra>0?'+₪'+extra.toLocaleString():'—'}</td>
+          <td style="text-align:center;font-weight:bold">₪${Math.round(total).toLocaleString()}</td>
+          <td style="text-align:center;color:${isPaid?'#16a34a':'#dc2626'};font-weight:bold">${isPaid?'✓':'○'}</td>
+          <td style="font-size:11px">${r.note||''}</td>
+        </tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<title>${ar?'تقرير القراءات':'דוח קריאות'} — ${yearLabel}</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 16px; font-size: 12px; direction: rtl; }
+  h1 { color: #14532d; margin: 0 0 4px; font-size: 18px; }
+  p  { color: #6b7280; margin: 0 0 12px; font-size: 11px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border: 1px solid #d1d5db; padding: 5px 8px; }
+  thead tr { background: #166534; color: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  tfoot tr { background: #14532d; color: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  @page { size: landscape; margin: 1cm; }
+</style>
+</head>
+<body>
+<h1>🌿 ${ar?'الشلالة — تقرير القراءات':'השלאלה — דוח קריאות'}</h1>
+<p>${ar?'تاريخ الطباعة':'תאריך הדפסה'}: ${date} | ${ar?'السنة':'שנה'}: ${yearLabel} | ${ar?'المزارع':'חקלאי'}: ${farmerLabel} | ${ar?'الحالة':'סטטוס'}: ${filterPaid===''?(ar?'الكل':'הכל'):filterPaid==='paid'?(ar?'مدفوع':'שולם'):(ar?'غير مدفوع':'לא שולם')}</p>
+<table>
+  <thead>
+    <tr>
+      <th>${ar?'المزارع':'חקלאי'}</th>
+      <th>${ar?'الأرض':'קרקע'}</th>
+      <th>${ar?'السنة':'שנה'}</th>
+      <th>${ar?'المحطة':'עמדה'}</th>
+      <th>${ar?'الأكواب':'קובים'}</th>
+      <th>${ar?'إضافات':'תוספות'}</th>
+      <th>${ar?'الإجمالي':'סה"כ'}</th>
+      <th>${ar?'دفع':'תשלום'}</th>
+      <th>${ar?'ملاحظة':'הערה'}</th>
+    </tr>
+  </thead>
+  <tbody>${rows}</tbody>
+  <tfoot>
+    <tr>
+      <td colspan="4" style="font-weight:bold">${ar?'الإجمالي الكلي':'סה"כ כללי'} (${filtered.length})</td>
+      <td style="text-align:center;font-weight:bold">${grandCups.toLocaleString()}</td>
+      <td></td>
+      <td style="text-align:center;font-weight:bold">₪${Math.round(grandTotal).toLocaleString()}</td>
+      <td style="text-align:center">${paidCount}/${filtered.length} ✓</td>
+      <td></td>
+    </tr>
+  </tfoot>
+</table>
+</body></html>`;
+
+    const win = window.open('', '_blank');
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 500);
+  };
+
+  // ── Excel للناطور ─────────────────────────────────────────
+  const handleWatchmanExcel = () => {
+    const year = filterYear || new Date().getFullYear();
+
+    // آخر قراءة لكل أرض في السنة المختارة
+    const landReadings = {};
+    readings
+      .filter(r => !filterYear || r.year === parseInt(filterYear))
+      .forEach(r => {
+        const key = String(r.landId);
+        if (!landReadings[key] || r.year > landReadings[key].year) {
+          landReadings[key] = r;
+        }
+      });
+
+    const rows = Object.values(landReadings).map(r => {
+      const vals = r.readings || [];
+      const lastReading = vals[vals.length - 1] || 0;
+      const farmer = farmers.find(f => String(f.id) === String(r.farmerId));
+      const land   = lands.find(l => String(l.id) === String(r.landId));
+      return {
+        'שם החקלאי':   farmer?.nameHeb || farmer?.name || '—',
+        'שם הקרקע':    land?.nameHeb   || land?.name   || '—',
+        'עמדה':        r.stationNumber || '—',
+        'טלפון':       farmer?.phone   || '—',
+        [`קריאה אחרונה (${r.year})`]: lastReading,
+        'קריאה חדשה':  '',  // فارغ للناطور
+        'הערות':       '',
+      };
+    }).sort((a,b) => (a['עמדה']||'').localeCompare(b['עמדה']||'', 'he'));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 20 }, // שם חקלאי
+      { wch: 18 }, // שם קרקע
+      { wch: 8  }, // עמדה
+      { wch: 14 }, // טלפון
+      { wch: 16 }, // קריאה אחרונה
+      { wch: 14 }, // קריאה חדשה
+      { wch: 16 }, // הערות
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, `שנה ${year}`);
+    XLSX.writeFile(wb, `alshallala-watchman-${year}.xlsx`);
+  };
 
   if (loading) return <div style={{textAlign:'center',padding:60}}><div className="spinner"/></div>;
 
   return (
-    <div>
-      <div className="card mb-16 flex-between" style={{ flexWrap:'wrap', gap:12, padding:'12px 16px' }}>
-        <div className="flex-gap gap-8">
-          <select value={filterY} onChange={e=>setFilterY(e.target.value)} style={{ width:150 }}>
-            <option value="">جميع السنوات</option>{years.map(y=><option key={y} value={y}>{y}</option>)}
-          </select>
-          <select value={filterF} onChange={e=>setFilterF(e.target.value)} style={{ width:180 }}>
-            <option value="">جميع المزارعين</option>{farmers.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}
-          </select>
-        </div>
-        <div className="flex-gap gap-8">
-          <button className={`btn btn-sm ${mode==='summary'?'btn-primary':'btn-outline'}`} onClick={()=>setMode('summary')}>📋 ملخص</button>
-          <button className={`btn btn-sm ${mode==='detail'?'btn-primary':'btn-outline'}`} onClick={()=>setMode('detail')}>📊 تفصيلي</button>
-          <button className="btn btn-outline btn-sm" onClick={()=>window.print()}>🖨️ طباعة</button>
-        </div>
-      </div>
-
-      <div className="grid-3 mb-20">
-        <div className="stat-card accent"><div style={{fontSize:28}}>👨‍🌾</div><div className="stat-value">{summaryByFarmer.length}</div><div className="stat-label">مزارع</div></div>
-        <div className="stat-card"><div style={{fontSize:28}}>💧</div><div className="stat-value">{grandCups.toLocaleString()}</div><div className="stat-label">إجمالي الأكواب</div></div>
-        <div className="stat-card" style={{ background:'linear-gradient(135deg,#d97706,#f59e0b)', border:'none' }}>
-          <div style={{fontSize:28}}>💰</div><div className="stat-value" style={{color:'#fff',fontSize:'1.5rem'}}>₪{grandAmount.toLocaleString()}</div><div className="stat-label" style={{color:'rgba(255,255,255,0.8)'}}>إجمالي المبالغ</div>
+    <div id="print-area">
+      {/* ── أزرار الأعلى ── */}
+      <div className="flex-between mb-16 no-print" style={{flexWrap:'wrap',gap:10}}>
+        <h2 style={{margin:0}}>📊 {ar?'التقارير':'דוחות'}</h2>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          <button className="btn btn-outline" onClick={handleWatchmanExcel}
+            style={{display:'flex',alignItems:'center',gap:6}}>
+            📋 {ar?'Excel للناطور':'Excel לשומר'}
+          </button>
+          <button className="btn btn-outline" onClick={handlePrint}
+            style={{display:'flex',alignItems:'center',gap:6}}>
+            🖨️ {ar?'طباعة':'הדפסה'}
+          </button>
         </div>
       </div>
 
-      {summaryByFarmer.length>0 && (
-        <div className="card mb-20">
-          <h3 className="mb-16">📊 مقارنة المزارعين</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={summaryByFarmer.map(f=>({name:f.name.split(' ')[0],cups:f.cups}))}>
-              <CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="name" tick={{fontFamily:'Tajawal',fontSize:12}}/><YAxis tick={{fontFamily:'Tajawal',fontSize:12}}/>
-              <Tooltip formatter={v=>[v.toLocaleString()+' كوب','الاستهلاك']} contentStyle={{fontFamily:'Tajawal'}}/>
-              <Bar dataKey="cups" fill="var(--primary)" radius={[4,4,0,0]}/>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-
-      {mode==='summary' && (
-        <div className="card">
-          <h3 className="mb-16">📋 ملخص المزارعين</h3>
-          <div className="tbl-wrap">
-            <table>
-              <thead><tr><th>#</th><th>المزارع</th><th>رقم الهوية</th><th>الهاتف</th><th>المنطقة</th><th>الأكواب</th><th>المبلغ</th><th>ملاحظة</th></tr></thead>
-              <tbody>
-                {summaryByFarmer.map((f,i)=>(
-                  <tr key={f.id}>
-                    <td>{i+1}</td>
-                    <td><strong>{f.name}</strong>{f.nameHeb&&<div style={{fontSize:11,color:'var(--text-muted)'}}>{f.nameHeb}</div>}</td>
-                    <td style={{fontSize:12}}>{f.idNumber}</td>
-                    <td style={{fontSize:12}}>{f.phone||'—'}</td>
-                    <td style={{fontSize:12}}>{f.area||'—'}</td>
-                    <td><strong>{f.cups.toLocaleString()}</strong></td>
-                    <td><strong style={{color:'var(--primary)'}}>₪{f.amount.toLocaleString()}</strong></td>
-                    <td style={{fontSize:12,color:'var(--text-muted)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.notes||'—'}</td>
-                  </tr>
-                ))}
-                <tr className="tbl-total"><td colSpan={4}>סה"כ</td><td><strong>{grandCups.toLocaleString()}</strong></td><td><strong>₪{grandAmount.toLocaleString()}</strong></td><td/></tr>
-              </tbody>
-            </table>
+      {/* ── فلاتر ── */}
+      <div className="card mb-16 no-print">
+        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:10}}>
+          <div className="form-group" style={{marginBottom:0}}>
+            <label style={{fontSize:12}}>{ar?'السنة':'שנה'}</label>
+            <select value={filterYear} onChange={e=>setFilterYear(e.target.value)}>
+              <option value="">{ar?'جميع السنوات':'כל השנים'}</option>
+              {years.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          <div className="form-group" style={{marginBottom:0}}>
+            <label style={{fontSize:12}}>{ar?'المزارع':'חקלאי'}</label>
+            <select value={filterFarmer} onChange={e=>setFilterFarmer(e.target.value)} style={{fontFamily:'Heebo,sans-serif'}}>
+              <option value="">{ar?'جميع المزارعين':'כל החקלאים'}</option>
+              {farmers.map(f => <option key={f.id} value={f.id}>{f.nameHeb||f.name}</option>)}
+            </select>
+          </div>
+          <div className="form-group" style={{marginBottom:0}}>
+            <label style={{fontSize:12}}>{ar?'حالة الدفع':'סטטוס תשלום'}</label>
+            <select value={filterPaid} onChange={e=>setFilterPaid(e.target.value)}>
+              <option value="">{ar?'الكل':'הכל'}</option>
+              <option value="paid">{ar?'مدفوع ✓':'שולם ✓'}</option>
+              <option value="unpaid">{ar?'غير مدفوع ○':'לא שולם ○'}</option>
+            </select>
+          </div>
+          <div style={{display:'flex', alignItems:'flex-end', gap:8}}>
+            <button className="btn btn-outline btn-sm" onClick={()=>{setFilterYear('');setFilterFarmer('');setFilterPaid('');}}>
+              {ar?'إعادة ضبط':'אפס'}
+            </button>
           </div>
         </div>
-      )}
+      </div>
 
-      {mode==='detail' && (
-        <div className="flex-col gap-16">
-          {farmers.map(farmer=>{
-            const fR=filtered.filter(r=>String(r.farmerId)===String(farmer.id)); if(!fR.length) return null;
-            const fCups=fR.reduce((s,r)=>s+calc(r,prices).reduce((ss,c)=>ss+c.cups,0),0);
-            const fAmt=fR.reduce((s,r)=>s+calc(r,prices).reduce((ss,c)=>ss+c.amount,0),0);
-            return (
-              <div key={farmer.id} className="card">
-                <div className="flex-between mb-16" style={{flexWrap:'wrap',gap:8}}>
-                  <div>
-                    <h3>{farmer.name}{farmer.nameHeb&&<span style={{fontSize:13,color:'var(--text-muted)',marginRight:8}}>{farmer.nameHeb}</span>}</h3>
-                    <div style={{fontSize:12,color:'var(--text-muted)',marginTop:4}}>🪪 {farmer.idNumber}{farmer.phone&&` | 📱 ${farmer.phone}`}{farmer.area&&` | 📍 ${farmer.area}`}</div>
-                  </div>
-                  <div style={{textAlign:'left'}}><div style={{fontSize:'1.3rem',fontWeight:900,color:'var(--primary)'}}>₪{fAmt.toLocaleString()}</div><div style={{fontSize:12,color:'var(--text-muted)'}}>{fCups.toLocaleString()} كوب</div></div>
-                </div>
-                {fR.map(r=>{
-                  const cons=calc(r,prices);
-                  return (
-                    <div key={r.id} style={{marginBottom:14,paddingBottom:14,borderBottom:'1px solid var(--border)'}}>
-                      <div style={{fontWeight:700,color:'var(--primary)',marginBottom:8,fontSize:14}}>📅 {r.year} — 🌾 {landName(r.landId)}</div>
-                      <div className="tbl-wrap">
-                        <table style={{minWidth:0}}>
-                          <thead><tr><th>ف</th><th>من</th><th>إلى</th><th>أكواب</th><th>سعر</th><th>مبلغ</th></tr></thead>
-                          <tbody>
-                            {cons.map((c,i)=><tr key={i}><td>{c.idx}</td><td>{c.from}</td><td>{c.to}</td><td><strong>{c.cups.toLocaleString()}</strong></td><td>₪{c.price}</td><td><strong>₪{c.amount.toLocaleString()}</strong></td></tr>)}
-                            <tr className="tbl-total"><td colSpan={3}>المجموع</td><td>{cons.reduce((s,c)=>s+c.cups,0).toLocaleString()}</td><td>—</td><td>₪{cons.reduce((s,c)=>s+c.amount,0).toLocaleString()}</td></tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })}
+      {/* ── ملخص ── */}
+      <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:10, marginBottom:16}}>
+        {[
+          { label: ar?'عدد القراءات':'קריאות', value: filtered.length, icon:'📏' },
+          { label: ar?'مدفوع':'שולם', value: `${paidCount}/${filtered.length}`, icon:'✅' },
+          { label: ar?'إجمالي الأكواب':'קובים', value: grandCups.toLocaleString(), icon:'🪣' },
+          { label: ar?'الإجمالي الكلي':'סה"כ', value: `₪${Math.round(grandTotal).toLocaleString()}`, icon:'💰', accent:true },
+        ].map((s,i) => (
+          <div key={i} className={`stat-card ${s.accent?'accent':''}`} style={{padding:'12px 16px'}}>
+            <div style={{fontSize:20, marginBottom:4}}>{s.icon}</div>
+            <div style={{fontWeight:900, fontSize:'1.2rem', color:s.accent?'#fff':'var(--primary)'}}>{s.value}</div>
+            <div style={{fontSize:11, opacity:0.75, color:s.accent?'#fff':'var(--text-muted)'}}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── جدول تفصيلي ── */}
+      <div className="card">
+        <div className="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style={{minWidth:30}}></th>
+                <th>{ar?'المزارع':'חקלאי'}</th>
+                <th>{ar?'الأرض':'קרקע'}</th>
+                <th style={{textAlign:'center'}}>{ar?'السنة':'שנה'}</th>
+                <th style={{textAlign:'center', fontFamily:'monospace'}}>{ar?'المحطة':'עמדה'}</th>
+                <th style={{textAlign:'center', background:'#e8f5e9'}}>{ar?'الكل':'כלל'} 🪣</th>
+                <th style={{textAlign:'center', background:'#fff3e0', color:'#e65100', fontSize:12, fontWeight:800}}>➕ {ar?'إضافات':'תוספות'}</th>
+                <th style={{textAlign:'center', background:'#fef9c3'}}>💰 {ar?'الإجمالي':'סה"כ'}</th>
+                <th style={{textAlign:'center'}}>{ar?'دفع':'תשלום'}</th>
+                <th style={{minWidth:150}}>💬 {ar?'ملاحظة':'הערה'}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 && (
+                <tr><td colSpan={10} style={{textAlign:'center',padding:40,color:'var(--text-muted)'}}>
+                  {ar?'لا توجد قراءات':'אין קריאות'}
+                </td></tr>
+              )}
+              {filtered.map(r => {
+                const { periods, totalCups, extra, extraPaid, total } = calcRow(r);
+                const isPaid = !!r.paid;
+                const isExp  = expanded === r.id;
+                return (
+                  <React.Fragment key={r.id}>
+                    <tr
+                      onClick={() => setExpanded(isExp ? null : r.id)}
+                      style={{cursor:'pointer', background: isPaid?'rgba(220,252,231,0.4)':'rgba(254,226,226,0.3)', borderRight:`3px solid ${isPaid?'#16a34a':'#ef4444'}`}}
+                      onMouseEnter={e=>e.currentTarget.style.filter='brightness(0.96)'}
+                      onMouseLeave={e=>e.currentTarget.style.filter=''}>
+                      <td style={{textAlign:'center', fontSize:11, color:'var(--text-muted)'}}>{isExp?'▲':'▼'}</td>
+                      <td><strong style={{fontFamily:'Heebo,sans-serif'}}>{farmerName(r.farmerId)}</strong></td>
+                      <td style={{fontFamily:'Heebo,sans-serif', fontSize:13}}>{landName(r.landId)}</td>
+                      <td style={{textAlign:'center'}}><span className="badge badge-blue">{r.year}</span></td>
+                      <td style={{textAlign:'center'}}>
+                        {r.stationNumber
+                          ? <span style={{fontFamily:'monospace',fontWeight:800,fontSize:13,color:'var(--primary)',background:'var(--surface-2)',padding:'2px 8px',borderRadius:6}}>{r.stationNumber}</span>
+                          : <span style={{color:'var(--border)'}}>—</span>}
+                      </td>
+                      <td style={{textAlign:'center', background:'#e8f5e9'}}>
+                        <strong style={{color:'var(--primary-dark)'}}>{totalCups.toLocaleString()}</strong>
+                      </td>
+                      <td style={{textAlign:'center', background:'#fff8e1', fontSize:13}}>
+                        {extra > 0
+                          ? <span style={{color:'#e65100', fontWeight:700}}>+₪{extra.toLocaleString()}{extraPaid>0&&<span style={{color:'#9ca3af',fontSize:10}}> (-₪{extraPaid})</span>}</span>
+                          : <span style={{color:'var(--border)'}}>—</span>}
+                      </td>
+                      <td style={{textAlign:'center', background:'#fefce8'}}>
+                        <strong style={{color:'#92400e', fontSize:15}}>₪{Math.round(total).toLocaleString()}</strong>
+                      </td>
+                      <td style={{textAlign:'center'}}>
+                        <span style={{
+                          fontWeight:800, fontSize:13,
+                          color: isPaid?'#16a34a':'#dc2626',
+                          background: isPaid?'#dcfce7':'#fee2e2',
+                          border: `1.5px solid ${isPaid?'#16a34a':'#ef4444'}`,
+                          borderRadius:6, padding:'2px 10px', display:'inline-block'
+                        }}>{isPaid ? '✓' : '○'}</span>
+                      </td>
+                      <td style={{fontSize:12, maxWidth:160}}>
+                        {r.note
+                          ? <span style={{background:'#fef9c3',border:'1px solid #fde047',borderRadius:6,padding:'2px 8px',display:'inline-block',maxWidth:150,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                              💬 {r.note}
+                            </span>
+                          : <span style={{color:'var(--border)'}}>—</span>
+                        }
+                      </td>
+                    </tr>
+                    {/* تفاصيل عند التوسيع */}
+                    {isExp && (
+                      <tr style={{background:'#f8fafc'}}>
+                        <td colSpan={10} style={{padding:'12px 20px'}}>
+                          <div style={{display:'flex', gap:16, flexWrap:'wrap', alignItems:'center'}}>
+                            <span style={{fontSize:12, color:'var(--text-muted)', fontWeight:700}}>📟 {ar?'أرقام العداد:':'קריאות:'}</span>
+                            {(r.readings||[]).map((v,i) => (
+                              <React.Fragment key={i}>
+                                <div style={{textAlign:'center'}}>
+                                  <div style={{fontSize:10,color:'var(--text-muted)',marginBottom:2}}>{ar?`ق${i+1}`:`ק${i+1}`}</div>
+                                  <div style={{background:'white',border:'1.5px solid var(--border)',borderRadius:8,padding:'4px 12px',fontWeight:800,fontSize:14,fontFamily:'monospace'}}>
+                                    {Number(v).toLocaleString()}
+                                  </div>
+                                </div>
+                                {i < (r.readings||[]).length-1 && <span style={{color:'var(--border)'}}>←</span>}
+                              </React.Fragment>
+                            ))}
+                            {periods.map((p,i) => (
+                              <div key={i} style={{background:'#e8f5e9',borderRadius:8,padding:'4px 10px',fontSize:12}}>
+                                <span style={{color:'var(--text-muted)'}}>{ar?`ف${i+1}`:`ת${i+1}`}: </span>
+                                <strong>{p.cups.toLocaleString()} {ar?'كوب':'קוב'}</strong>
+                                <span style={{color:'var(--text-muted)'}}> × ₪{p.price}</span>
+                                <strong style={{color:'var(--primary)'}}> = ₪{Math.round(p.amount).toLocaleString()}</strong>
+                              </div>
+                            ))}
+                            {r.note && (
+                              <span style={{background:'#fef9c3',border:'1px solid #fde047',borderRadius:8,padding:'4px 10px',fontSize:12}}>
+                                💬 {r.note}
+                              </span>
+                            )}
+                            {r.extraNote && (
+                              <span style={{background:'#fff3e0',border:'1px solid #fed7aa',borderRadius:8,padding:'4px 10px',fontSize:12}}>
+                                ➕ {r.extraNote}
+                              </span>
+                            )}
+                            {isPaid && r.paidAt && (
+                              <span style={{fontSize:11,color:'#16a34a',fontWeight:700}}>
+                                ✓ {ar?'دُفع في':'שולם ב-'} {new Date(r.paidAt).toLocaleDateString(ar?'ar-SA':'he-IL')}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+            {filtered.length > 0 && (
+              <tfoot>
+                <tr style={{background:'linear-gradient(90deg,#14532d,#166534)'}}>
+                  <td colSpan={5} style={{fontWeight:900,color:'#fff',fontSize:14,padding:'11px 14px'}}>
+                    ⚡ {ar?'الإجمالي الكلي':'סה"כ כללי'}
+                  </td>
+                  <td style={{textAlign:'center',padding:'11px 8px'}}>
+                    <span style={{fontWeight:900,color:'#a3e635',fontSize:16}}>{grandCups.toLocaleString()}</span>
+                  </td>
+                  <td/>
+                  <td style={{textAlign:'center',padding:'11px 8px',borderLeft:'2px solid #a3e635'}}>
+                    <span style={{fontWeight:900,color:'#fde68a',fontSize:18}}>₪{Math.round(grandTotal).toLocaleString()}</span>
+                  </td>
+                  <td style={{textAlign:'center',padding:'11px 8px'}}>
+                    <span style={{color:'#a3e635',fontSize:13,fontWeight:700}}>✓ {paidCount}/{filtered.length}</span>
+                  </td>
+                  <td/>
+                </tr>
+              </tfoot>
+            )}
+          </table>
         </div>
-      )}
+      </div>
     </div>
   );
 }
+
 
 export default AdminPrices;
