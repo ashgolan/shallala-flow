@@ -1,34 +1,78 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { regionsAPI } from '../../api';
+import { regionsAPI, adminAPI } from '../../api';
 import { useLang } from '../../contexts/LangContext';
 import { t } from '../../i18n/translations';
+
+const parseKML = (xmlText) => {
+  const parser = new DOMParser();
+  const doc    = parser.parseFromString(xmlText, 'text/xml');
+  const placemarks = Array.from(doc.querySelectorAll('Placemark'));
+  const stationPattern = /^[A-Za-z]{1,3}\d+$/;
+
+  const points = [];
+  for (const pm of placemarks) {
+    const name = pm.querySelector('name')?.textContent?.trim() || '';
+    if (!stationPattern.test(name)) continue;
+    const coordsEl = pm.querySelector('Point coordinates');
+    if (!coordsEl) continue;
+    const [lngStr, latStr] = coordsEl.textContent.trim().split(',');
+    const lat = parseFloat(latStr);
+    const lng = parseFloat(lngStr);
+    if (isNaN(lat) || isNaN(lng)) continue;
+    const desc = pm.querySelector('description')?.textContent || '';
+    const farmers = desc
+      .replace(/<[^>]+>/g, '\n').split('\n')
+      .map(s => s.replace(/&nbsp;/g,'').trim())
+      .filter(s => s.length > 1);
+    const regionCode = name.match(/^([A-Za-z]+)/)?.[1]?.toUpperCase() || '';
+    points.push({ name, lat, lng, farmers, regionCode });
+  }
+  points.sort((a,b) => {
+    if (a.regionCode !== b.regionCode) return a.regionCode.localeCompare(b.regionCode);
+    return (parseInt(a.name.replace(/\D/g,''))||0) - (parseInt(b.name.replace(/\D/g,''))||0);
+  });
+  return points;
+};
 
 export default function AdminRegions({ adminRole = 'admin' }) {
   const { lang } = useLang();
   const ar = lang === 'ar';
   const isViewer = adminRole === 'viewer';
 
-  const [regions, setRegions]     = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [showForm, setShowForm]   = useState(false);
-  const [edit, setEdit]           = useState(null);
-  const [rCode, setRCode]         = useState('');
-  const [rName, setRName]         = useState('');
-  const [error, setError]         = useState('');
-  const [saving, setSaving]       = useState(false);
+  const [regions,  setRegions]  = useState([]);
+  const [loadingR, setLoadingR] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [edit,     setEdit]     = useState(null);
+  const [rCode,    setRCode]    = useState('');
+  const [rName,    setRName]    = useState('');
+  const [error,    setError]    = useState('');
+  const [saving,   setSaving]   = useState(false);
+
+  const [kmlPoints,    setKmlPoints]    = useState([]);
+  const [kmlSelected,  setKmlSelected]  = useState({});
+  const [kmlImporting, setKmlImporting] = useState(false);
+  const [kmlDone,      setKmlDone]      = useState(null);
+  const [showKml,      setShowKml]      = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    setLoadingR(true);
     try { const d = await regionsAPI.getRegions(); setRegions(d.regions || []); }
     catch(e) { setError(e.message); }
-    finally { setLoading(false); }
+    finally { setLoadingR(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  const openAdd = () => {
-    setEdit(null); setRCode(''); setRName(''); setError(''); setShowForm(true);
-  };
+  // ── عند تغيير المناطق نحدّث ربط نقاط KML تلقائياً ─────────
+  useEffect(() => {
+    if (kmlPoints.length === 0) return;
+    setKmlPoints(prev => prev.map(p => ({
+      ...p,
+      regionId: regions.find(r => r.name?.toUpperCase() === p.regionCode)?.id || p.regionId || null,
+    })));
+  }, [regions]);
+
+  const openAdd = () => { setEdit(null); setRCode(''); setRName(''); setError(''); setShowForm(true); };
   const openEdit = r => {
     setEdit(r);
     setRCode(r.name || '');
@@ -38,15 +82,11 @@ export default function AdminRegions({ adminRole = 'admin' }) {
 
   const submit = async e => {
     e.preventDefault();
-    if (!rCode.trim()) { setError(ar ? 'أدخل كود المنطقة' : 'הזן קוד אזור'); return; }
-    if (!rName.trim()) { setError(ar ? 'أدخل اسم المنطقة' : 'הזן שם אזור'); return; }
+    if (!rCode.trim()) { setError(ar?'أدخل كود المنطقة':'הזן קוד אזור'); return; }
+    if (!rName.trim()) { setError(ar?'أدخل اسم المنطقة':'הזן שם אזור'); return; }
     setSaving(true); setError('');
     try {
-      const data = {
-        name:    rCode.trim().toUpperCase(),
-        nameHeb: rName.trim(),
-        notes:   '',
-      };
+      const data = { name: rCode.trim().toUpperCase(), nameHeb: rName.trim(), notes: '' };
       if (edit) await regionsAPI.updateRegion(edit.id, data);
       else      await regionsAPI.createRegion(data);
       setShowForm(false); load();
@@ -55,100 +95,136 @@ export default function AdminRegions({ adminRole = 'admin' }) {
   };
 
   const del = async (id, name) => {
-    if (!window.confirm(`${ar ? 'حذف المنطقة' : 'מחיקת אזור'} "${name}"?`)) return;
+    if (!window.confirm(`${ar?'حذف المنطقة':'מחיקת אזור'} "${name}"?`)) return;
     await regionsAPI.deleteRegion(id); load();
   };
 
+  const handleKmlFile = e => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const raw = parseKML(ev.target.result);
+      // ربط تلقائي بالمناطق الموجودة
+      const points = raw.map(p => ({
+        ...p,
+        regionId: regions.find(r => r.name?.toUpperCase() === p.regionCode)?.id || null,
+      }));
+      const sel = {};
+      points.forEach(p => { sel[p.name] = true; });
+      setKmlPoints(points);
+      setKmlSelected(sel);
+      setKmlDone(null);
+      setShowKml(true);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const toggleAll = val => {
+    const sel = {};
+    kmlPoints.forEach(p => { sel[p.name] = val; });
+    setKmlSelected(sel);
+  };
+
+  const importKml = async () => {
+    const toImport = kmlPoints.filter(p => kmlSelected[p.name]);
+    if (!toImport.length) return;
+    setKmlImporting(true);
+    let imported = 0, skipped = 0;
+    for (const p of toImport) {
+      try {
+        await adminAPI.createLand({
+          name:          p.name,
+          nameHeb:       p.name,
+          stationNumber: p.name,
+          regionId:      p.regionId || null,
+          stationLat:    p.lat,
+          stationLng:    p.lng,
+          description:   p.farmers.join('، '),
+        });
+        imported++;
+      } catch { skipped++; }
+    }
+    setKmlImporting(false);
+    setKmlDone({ imported, skipped });
+  };
+
+  // ألوان تلقائية لكل منطقة
+  const regionColors = ['#dcfce7','#dbeafe','#fef9c3','#fce7f3','#ede9fe','#ffedd5','#f0f9ff','#fff7ed'];
+  const regionColorMap = {};
+  [...new Set(kmlPoints.map(p=>p.regionCode))].forEach((code,i) => {
+    regionColorMap[code] = regionColors[i % regionColors.length];
+  });
+
+  const selectedCount = Object.values(kmlSelected).filter(Boolean).length;
+
+  // تجميع النقاط حسب المنطقة للعرض
+  const groupedPoints = kmlPoints.reduce((acc, p) => {
+    if (!acc[p.regionCode]) acc[p.regionCode] = [];
+    acc[p.regionCode].push(p);
+    return acc;
+  }, {});
+
   return (
     <div>
-      {/* Header */}
+      {/* ══ المناطق ══ */}
       <div className="flex-between mb-20" style={{ flexWrap:'wrap', gap:12 }}>
         <div>
-          <h2 className="mb-4">📍 {ar ? 'المناطق' : 'אזורים חקלאיים'}</h2>
+          <h2 className="mb-4">📍 {ar?'المناطق':'אזורים חקלאיים'}</h2>
           <p style={{ color:'var(--text-muted)', fontSize:13 }}>
-            {ar
-              ? 'كل منطقة = حرف (أو حرفان) + اسم — مثال: A = אלעברה'
-              : 'כל אזור = קוד (אות/שתי אותיות) + שם — לדוג׳: A = אלעברה'}
+            {ar?'كود (حرف/حرفان) + اسم — مثال: A = אלעברה':'קוד (אות/שתיים) + שם — לדוג׳: A = אלעברה'}
           </p>
         </div>
         {!isViewer && (
           <button className="btn btn-primary" onClick={openAdd}>
-            + {ar ? 'إضافة منطقة' : 'הוסף אזור'}
+            + {ar?'إضافة منطقة':'הוסף אזור'}
           </button>
         )}
       </div>
 
-      {/* نموذج الإضافة/التعديل */}
       {showForm && (
         <div className="card mb-20 fade-in-fast" style={{ border:'2px solid var(--primary)', maxWidth:500 }}>
-          <h3 className="mb-16">
-            {edit
-              ? `✏️ ${ar ? 'تعديل منطقة' : 'עריכת אזור'}`
-              : `+ ${ar ? 'منطقة جديدة' : 'אזור חדש'}`}
-          </h3>
+          <h3 className="mb-16">{edit ? `✏️ ${ar?'تعديل':'עריכה'}` : `+ ${ar?'منطقة جديدة':'אזור חדש'}`}</h3>
           <form onSubmit={submit}>
             <div style={{ display:'grid', gridTemplateColumns:'120px 1fr', gap:12, marginBottom:12 }}>
-              {/* الكود */}
               <div className="form-group" style={{ margin:0 }}>
-                <label style={{ fontSize:13 }}>{ar ? 'الكود' : 'קוד'} *</label>
-                <input
-                  value={rCode}
-                  onChange={e => setRCode(e.target.value.toUpperCase())}
-                  placeholder="A / B / FC"
-                  maxLength={5}
-                  style={{ fontSize:22, fontWeight:900, letterSpacing:4, textAlign:'center', fontFamily:'monospace' }}
-                  autoFocus
-                />
+                <label style={{ fontSize:13 }}>{ar?'الكود':'קוד'} *</label>
+                <input value={rCode} onChange={e=>setRCode(e.target.value.toUpperCase())}
+                  placeholder="A / B / FC" maxLength={5} autoFocus
+                  style={{ fontSize:22, fontWeight:900, letterSpacing:4, textAlign:'center', fontFamily:'monospace' }} />
               </div>
-              {/* الاسم */}
               <div className="form-group" style={{ margin:0 }}>
-                <label style={{ fontSize:13, fontFamily:'Heebo,sans-serif' }}>
-                  {ar ? 'اسم المنطقة' : 'שם האזור'} *
-                </label>
-                <input
-                  value={rName}
-                  onChange={e => setRName(e.target.value)}
+                <label style={{ fontSize:13, fontFamily:'Heebo,sans-serif' }}>{ar?'اسم المنطقة':'שם האזור'} *</label>
+                <input value={rName} onChange={e=>setRName(e.target.value)}
                   placeholder="אלעברה / עין אלעוחלאן"
-                  style={{ fontFamily:'Heebo,sans-serif', fontSize:15 }}
-                />
+                  style={{ fontFamily:'Heebo,sans-serif', fontSize:15 }} />
               </div>
             </div>
             {error && <div className="alert alert-error mb-8">{error}</div>}
             <div className="flex-gap gap-12">
               <button type="submit" className="btn btn-primary" disabled={saving}>
-                {saving ? t('saving', lang) : `💾 ${t('save', lang)}`}
+                {saving ? t('saving',lang) : `💾 ${t('save',lang)}`}
               </button>
-              <button type="button" className="btn btn-outline" onClick={() => setShowForm(false)}>
-                {t('cancel', lang)}
-              </button>
+              <button type="button" className="btn btn-outline" onClick={()=>setShowForm(false)}>{t('cancel',lang)}</button>
             </div>
           </form>
         </div>
       )}
 
-      {/* الجدول */}
-      {loading ? (
-        <div style={{ textAlign:'center', padding:40 }}><div className="spinner" /></div>
+      {loadingR ? (
+        <div style={{ textAlign:'center', padding:30 }}><div className="spinner" /></div>
       ) : regions.length === 0 ? (
-        <div className="card empty-state">
-          <span className="icon">📍</span>
-          <p>{ar ? 'لا توجد مناطق بعد' : 'אין אזורים עדיין'}</p>
-        </div>
+        <div className="card empty-state mb-32"><span className="icon">📍</span><p>{ar?'لا توجد مناطق':'אין אזורים'}</p></div>
       ) : (
-        <div className="card">
-          <p style={{ color:'var(--text-muted)', fontSize:13, marginBottom:12 }}>
-            {regions.length} {ar ? 'منطقة' : 'אזורים'}
-          </p>
+        <div className="card mb-32">
+          <p style={{ color:'var(--text-muted)', fontSize:13, marginBottom:12 }}>{regions.length} {ar?'منطقة':'אזורים'}</p>
           <div className="tbl-wrap">
             <table>
               <thead>
                 <tr>
-                  <th style={{ width:100, textAlign:'center', fontFamily:'monospace' }}>
-                    {ar ? 'الكود' : 'קוד'}
-                  </th>
-                  <th style={{ fontFamily:'Heebo,sans-serif' }}>
-                    {ar ? 'اسم المنطقة' : 'שם האזור'}
-                  </th>
+                  <th style={{ width:100, textAlign:'center' }}>{ar?'الكود':'קוד'}</th>
+                  <th style={{ fontFamily:'Heebo,sans-serif' }}>{ar?'اسم المنطقة':'שם האזור'}</th>
                   {!isViewer && <th style={{ width:80 }}></th>}
                 </tr>
               </thead>
@@ -156,34 +232,21 @@ export default function AdminRegions({ adminRole = 'admin' }) {
                 {regions.map(r => (
                   <tr key={r.id}>
                     <td style={{ textAlign:'center' }}>
-                      <code style={{
-                        background:'#f0fdf4', border:'1.5px solid #bbf7d0',
-                        padding:'4px 14px', borderRadius:8,
-                        fontWeight:900, fontSize:18, letterSpacing:4,
-                        color:'var(--primary)',
-                      }}>
-                        {r.name}
-                      </code>
+                      <code style={{ background:'#f0fdf4', border:'1.5px solid #bbf7d0', padding:'4px 14px', borderRadius:8, fontWeight:900, fontSize:18, letterSpacing:4, color:'var(--primary)' }}>{r.name}</code>
                     </td>
                     <td style={{ fontFamily:'Heebo,sans-serif', fontWeight:600, fontSize:15 }}>
-                      {r.nameHeb && r.nameHeb !== r.name
-                        ? r.nameHeb
-                        : <span style={{ color:'var(--text-muted)', fontStyle:'italic', fontSize:12 }}>
-                            {ar ? '— بدون اسم' : '— ללא שם'}
-                          </span>
-                      }
+                      {r.nameHeb && r.nameHeb !== r.name ? r.nameHeb
+                        : <span style={{ color:'var(--text-muted)', fontStyle:'italic', fontSize:12 }}>{ar?'— بدون اسم':'— ללא שם'}</span>}
                     </td>
                     {!isViewer && (
                       <td>
                         <div className="flex-gap gap-4">
-                          <button onClick={() => openEdit(r)}
-                            style={{ width:26, height:26, borderRadius:6, border:'1.5px solid var(--border)', background:'var(--surface-2)', color:'var(--primary)', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:12 }}
-                            onMouseEnter={e => { e.currentTarget.style.background='var(--primary)'; e.currentTarget.style.color='#fff'; }}
-                            onMouseLeave={e => { e.currentTarget.style.background='var(--surface-2)'; e.currentTarget.style.color='var(--primary)'; }}>✏</button>
-                          <button onClick={() => del(r.id, r.name)}
-                            style={{ width:26, height:26, borderRadius:6, border:'1.5px solid #fca5a5', background:'#fff1f2', color:'#dc2626', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:12 }}
-                            onMouseEnter={e => { e.currentTarget.style.background='#dc2626'; e.currentTarget.style.color='#fff'; }}
-                            onMouseLeave={e => { e.currentTarget.style.background='#fff1f2'; e.currentTarget.style.color='#dc2626'; }}>✕</button>
+                          <button onClick={()=>openEdit(r)} style={{ width:26,height:26,borderRadius:6,border:'1.5px solid var(--border)',background:'var(--surface-2)',color:'var(--primary)',cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:12 }}
+                            onMouseEnter={e=>{e.currentTarget.style.background='var(--primary)';e.currentTarget.style.color='#fff';}}
+                            onMouseLeave={e=>{e.currentTarget.style.background='var(--surface-2)';e.currentTarget.style.color='var(--primary)';}}>✏</button>
+                          <button onClick={()=>del(r.id,r.name)} style={{ width:26,height:26,borderRadius:6,border:'1.5px solid #fca5a5',background:'#fff1f2',color:'#dc2626',cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:12 }}
+                            onMouseEnter={e=>{e.currentTarget.style.background='#dc2626';e.currentTarget.style.color='#fff';}}
+                            onMouseLeave={e=>{e.currentTarget.style.background='#fff1f2';e.currentTarget.style.color='#dc2626';}}>✕</button>
                         </div>
                       </td>
                     )}
@@ -192,6 +255,149 @@ export default function AdminRegions({ adminRole = 'admin' }) {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* ══ استيراد KML ══ */}
+      {!isViewer && (
+        <div>
+          <div className="flex-between mb-12" style={{ flexWrap:'wrap', gap:12 }}>
+            <div>
+              <h2 className="mb-4">🗺️ {ar?'استيراد من Google Earth':'ייבוא מ-Google Earth'}</h2>
+              <p style={{ color:'var(--text-muted)', fontSize:13 }}>
+                {ar
+                  ? 'المحطات تُجمَّع تلقائياً حسب الحرف — A → منطقة A، B → منطقة B'
+                  : 'תחנות מקובצות אוטומטית לפי אות — A → אזור A, B → אזור B'}
+              </p>
+            </div>
+            <label style={{ background:'var(--primary)',color:'#fff',padding:'10px 20px',borderRadius:10,cursor:'pointer',fontWeight:700,fontSize:14,display:'inline-flex',alignItems:'center',gap:8,boxShadow:'0 2px 8px rgba(0,0,0,0.15)' }}>
+              📥 {ar?'رفع ملف KML':'העלה קובץ KML'}
+              <input type="file" accept=".kml,.kmz" onChange={handleKmlFile} style={{ display:'none' }} />
+            </label>
+          </div>
+
+          {showKml && kmlPoints.length > 0 && (
+            <div className="card fade-in">
+              {/* شريط التحكم */}
+              <div className="flex-between mb-12" style={{ flexWrap:'wrap', gap:10 }}>
+                <div className="flex-gap gap-12">
+                  <span style={{ fontWeight:700, fontSize:14 }}>📍 {kmlPoints.length} {ar?'محطة':'תחנות'}</span>
+                  <span style={{ color:'var(--primary)', fontWeight:700, fontSize:13 }}>✓ {selectedCount} {ar?'محددة':'נבחרו'}</span>
+                </div>
+                <div className="flex-gap gap-8">
+                  <button className="btn btn-outline btn-sm" onClick={()=>toggleAll(true)}>{ar?'تحديد الكل':'בחר הכל'}</button>
+                  <button className="btn btn-outline btn-sm" onClick={()=>toggleAll(false)}>{ar?'إلغاء الكل':'בטל הכל'}</button>
+                  <button className="btn btn-primary" onClick={importKml}
+                    disabled={kmlImporting||selectedCount===0} style={{ minWidth:160 }}>
+                    {kmlImporting ? `⏳ ${ar?'جاري...':'מייבא...'}` : `📥 ${ar?`استيراد ${selectedCount} محطة`:`ייבא ${selectedCount} תחנות`}`}
+                  </button>
+                </div>
+              </div>
+
+              {/* نتيجة الاستيراد */}
+              {kmlDone && (
+                <div style={{ background:kmlDone.skipped>0?'#fef9c3':'#f0fdf4', border:`1.5px solid ${kmlDone.skipped>0?'#fde047':'#bbf7d0'}`, borderRadius:10, padding:'12px 16px', marginBottom:16, display:'flex', gap:12, alignItems:'center' }}>
+                  <span style={{ fontSize:24 }}>{kmlDone.skipped>0?'⚠️':'🎉'}</span>
+                  <div>
+                    <div style={{ fontWeight:700 }}>{ar?'اكتمل الاستيراد!':'הייבוא הושלם!'}</div>
+                    <div style={{ fontSize:13, color:'var(--text-muted)', marginTop:2 }}>
+                      ✅ {kmlDone.imported} {ar?'محطة أضيفت':'תחנות נוספו'}
+                      {kmlDone.skipped>0 && <span style={{ color:'#ca8a04' }}> | ⚠️ {kmlDone.skipped} {ar?'تخطيت':'דולגו'}</span>}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* تلميح */}
+              <div style={{ background:'#f0f9ff', border:'1px solid #bae6fd', borderRadius:8, padding:'8px 14px', marginBottom:16, fontSize:12, color:'#0369a1' }}>
+                💡 {ar
+                  ? 'المحطات مجمّعة حسب المنطقة. المنطقة تُعيَّن تلقائياً إذا كانت موجودة. اضغط على صف لتحديده/إلغائه.'
+                  : 'תחנות מקובצות לפי אזור. האזור מוקצה אוטומטית אם קיים. לחץ שורה לבחירה/ביטול.'}
+              </div>
+
+              {/* عرض مجمّع حسب المنطقة */}
+              {Object.entries(groupedPoints).map(([code, pts]) => {
+                const reg = regions.find(r => r.name?.toUpperCase() === code);
+                const allChecked = pts.every(p => kmlSelected[p.name]);
+                const someChecked = pts.some(p => kmlSelected[p.name]);
+                return (
+                  <div key={code} style={{ marginBottom:20 }}>
+                    {/* رأس المنطقة */}
+                    <div style={{ background: regionColorMap[code]||'#f0fdf4', border:'1.5px solid #bbf7d0', borderRadius:10, padding:'10px 16px', marginBottom:8, display:'flex', alignItems:'center', gap:12 }}>
+                      <input type="checkbox"
+                        checked={allChecked}
+                        ref={el => { if (el) el.indeterminate = someChecked && !allChecked; }}
+                        onChange={e => {
+                          const sel = {...kmlSelected};
+                          pts.forEach(p => { sel[p.name] = e.target.checked; });
+                          setKmlSelected(sel);
+                        }}
+                        style={{ width:16, height:16, cursor:'pointer' }} />
+                      <code style={{ background:'var(--primary)', color:'#fff', padding:'3px 14px', borderRadius:6, fontWeight:900, fontSize:18, letterSpacing:3 }}>{code}</code>
+                      {reg
+                        ? <span style={{ fontFamily:'Heebo,sans-serif', fontWeight:700, fontSize:15 }}>
+                            {reg.nameHeb || reg.name}
+                          </span>
+                        : <span style={{ fontSize:13, color:'#ca8a04', fontWeight:600 }}>
+                            ⚠️ {ar?'المنطقة غير موجودة — أضفها أولاً':'האזור לא קיים — הוסף תחילה'}
+                          </span>}
+                      <span style={{ marginRight:'auto', fontSize:12, color:'var(--text-muted)' }}>
+                        {pts.filter(p=>kmlSelected[p.name]).length}/{pts.length} {ar?'محددة':'נבחרו'}
+                      </span>
+                    </div>
+
+                    {/* نقاط المنطقة */}
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:8, paddingRight:16 }}>
+                      {pts.map(p => {
+                        const isChecked = !!kmlSelected[p.name];
+                        return (
+                          <div key={p.name}
+                            onClick={()=>setKmlSelected(prev=>({...prev,[p.name]:!prev[p.name]}))}
+                            style={{
+                              background: isChecked ? '#fff' : '#f3f4f6',
+                              border: `2px solid ${isChecked ? 'var(--primary)' : '#d1d5db'}`,
+                              borderRadius:10, padding:'8px 12px', cursor:'pointer',
+                              opacity: isChecked ? 1 : 0.5, transition:'all 0.15s',
+                              minWidth:120,
+                            }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
+                              <code style={{ background:'var(--primary)', color:'#fff', padding:'1px 8px', borderRadius:4, fontWeight:900, fontSize:14 }}>
+                                {p.name}
+                              </code>
+                              {isChecked && <span style={{ color:'var(--primary)', fontSize:14 }}>✓</span>}
+                            </div>
+                            <div style={{ fontSize:10, color:'#64748b' }}>
+                              📍 {p.lat.toFixed(4)}, {p.lng.toFixed(4)}
+                            </div>
+                            {p.farmers.length > 0 && (
+                              <div style={{ fontSize:10, color:'#374151', marginTop:2, maxWidth:130, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                                👥 {p.farmers.join('، ')}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* زر استيراد في الأسفل */}
+              <div style={{ marginTop:20, textAlign:'center' }}>
+                <button className="btn btn-primary" onClick={importKml}
+                  disabled={kmlImporting||selectedCount===0}
+                  style={{ minWidth:220, fontSize:15, padding:'12px 28px' }}>
+                  {kmlImporting ? `⏳ ${ar?'جاري الاستيراد...':'מייבא...'}` : `📥 ${ar?`استيراد ${selectedCount} محطة`:`ייבא ${selectedCount} תחנות`}`}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {showKml && kmlPoints.length === 0 && (
+            <div className="card" style={{ textAlign:'center', padding:32, color:'var(--text-muted)' }}>
+              ⚠️ {ar?'لم يتم العثور على محطات':'לא נמצאו תחנות'}
+            </div>
+          )}
         </div>
       )}
     </div>

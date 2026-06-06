@@ -40,6 +40,7 @@ export default function AdminFarmers({ adminRole='admin' }) {
 
   const [farmers,  setFarmers]  = useState([]);
   const [regions,  setRegions]  = useState([]);
+  const [allLands, setAllLands] = useState([]);  // ✅ كل المحطات المستوردة
   const [loading,  setLoading]  = useState(true);
   const [readings, setReadings] = useState([]);
   const [prices,   setPrices]   = useState({});
@@ -68,20 +69,23 @@ export default function AdminFarmers({ adminRole='admin' }) {
   const [landFormData,   setLandFormData]   = useState(EMPTY_LAND);
   const [savingLand,     setSavingLand]     = useState(false);
   const [landError,      setLandError]      = useState('');
+  const [manualMode,     setManualMode]     = useState(false); // ✅ وضع الإدخال اليدوي
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [d, rg, rd, pr] = await Promise.all([
+      const [d, rg, rd, pr, ld] = await Promise.all([
         adminAPI.getFarmers(),
         adminAPI.getRegions(),
         adminAPI.getReadings(),
         adminAPI.getPrices(),
+        adminAPI.getLands(),
       ]);
       setFarmers(d.farmers || []);
       setRegions(rg.regions || []);
       setReadings(rd.readings || []);
       setPrices(pr || {});
+      setAllLands(ld.lands || []);
     } catch(e) { setError(e.message); }
     finally { setLoading(false); }
   }, []);
@@ -172,6 +176,7 @@ export default function AdminFarmers({ adminRole='admin' }) {
     setEditLand(null);
     setLandFormData({ ...EMPTY_LAND, farmerId });
     setLandError('');
+    setManualMode(false);
     setLandForm('add');
   };
 
@@ -188,6 +193,7 @@ export default function AdminFarmers({ adminRole='admin' }) {
       description:   land.description || '',
     });
     setLandError('');
+    setManualMode(true); // التعديل دائماً يدوي
     setLandForm('edit');
   };
 
@@ -457,68 +463,175 @@ export default function AdminFarmers({ adminRole='admin' }) {
                                 <div style={{background:'#fff',border:'1.5px solid var(--primary)',borderRadius:10,padding:14,marginBottom:12}}>
                                   <h4 style={{margin:'0 0 12px'}}>{editLand ? (ar?'✏ تعديل أرض':'✏ עריכת קרקע') : (ar?'+ أرض جديدة':'+ קרקע חדשה')}</h4>
                                   <form onSubmit={submitLand}>
-                                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12,marginBottom:12}}>
-                                      <div className="form-group">
-                                        <label style={{fontFamily:'Heebo,sans-serif'}}>
-                                          עמדה (מס׳ תחנה) *
-                                        </label>
-                                        <input
-                                          value={landFormData.stationNumber}
-                                          onChange={e=>setLandFormData({...landFormData,stationNumber:e.target.value})}
-                                          placeholder="A14 / B3 / FC7"
-                                          style={{fontFamily:'monospace',fontWeight:900,textAlign:'center',fontSize:18,letterSpacing:3}}
-                                          autoFocus
-                                        />
+
+                                    {/* ── اختيار من القائمة أو يدوي ── */}
+                                    {!editLand && (
+                                      <div style={{display:'flex',gap:8,marginBottom:14}}>
+                                        <button type="button"
+                                          onClick={()=>{ setManualMode(false); setLandFormData(EMPTY_LAND); }}
+                                          style={{flex:1,padding:'8px',borderRadius:8,border:`2px solid ${!manualMode?'var(--primary)':'var(--border)'}`,background:!manualMode?'#f0fdf4':'var(--surface-2)',fontWeight:700,fontSize:13,cursor:'pointer',color:!manualMode?'var(--primary)':'var(--text-muted)'}}>
+                                          📋 {ar?'اختر من القائمة':'בחר מרשימה'}
+                                        </button>
+                                        <button type="button"
+                                          onClick={()=>{ setManualMode(true); setLandFormData(EMPTY_LAND); }}
+                                          style={{flex:1,padding:'8px',borderRadius:8,border:`2px solid ${manualMode?'var(--primary)':'var(--border)'}`,background:manualMode?'#f0fdf4':'var(--surface-2)',fontWeight:700,fontSize:13,cursor:'pointer',color:manualMode?'var(--primary)':'var(--text-muted)'}}>
+                                          ✏️ {ar?'إدخال يدوي':'הזנה ידנית'}
+                                        </button>
                                       </div>
-                                      <div className="form-group">
-                                        <label>{ar?'المنطقة':'אזור'} *</label>
-                                        <select value={landFormData.regionId} onChange={e=>setLandFormData({...landFormData,regionId:e.target.value})}>
-                                          <option value="">{ar?'— اختر منطقة —':'— בחר אזור —'}</option>
-                                          {regions.map(r => (
-                                            <option key={r.id} value={r.id}>
-                                              {r.name}{r.nameHeb && r.nameHeb !== r.name ? ` — ${r.nameHeb}` : ''}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      </div>
-                                      <div className="form-group">
-                                        <label>📍 {ar?'الموقع (GPS)':'מיקום GPS'}</label>
-                                        <input value={landFormData.gpsRaw}
-                                          onChange={e=>handleGpsChange(e.target.value)}
-                                          placeholder="32.123456, 35.123456" style={{fontFamily:'monospace',fontSize:12}} />
-                                        {landFormData.stationLat && landFormData.stationLng && (
-                                          <div style={{display:'flex',alignItems:'center',gap:8,marginTop:5}}>
-                                            <span style={{fontSize:11,color:'#16a34a',flex:1}}>✓ {parseFloat(landFormData.stationLat).toFixed(5)}, {parseFloat(landFormData.stationLng).toFixed(5)}</span>
-                                            <button type="button"
-                                              onClick={()=>setMapModal({lat:landFormData.stationLat,lng:landFormData.stationLng,name:landFormData.stationNumber||'📍'})}
-                                              style={{background:'var(--primary)',color:'#fff',border:'none',borderRadius:6,padding:'3px 10px',fontSize:11,fontWeight:700,cursor:'pointer'}}>
-                                              🗺️ {ar?'معاينة':'תצוגה מקדימה'}
-                                            </button>
+                                    )}
+
+                                    {/* ── وضع الاختيار من القائمة ── */}
+                                    {!manualMode && !editLand ? (
+                                      <div>
+                                        <div className="form-group">
+                                          <label style={{fontFamily:'Heebo,sans-serif'}}>
+                                            {ar?'اختر المحطة':'בחר תחנה'} *
+                                          </label>
+                                          <select
+                                            value={landFormData.stationNumber}
+                                            onChange={e => {
+                                              const selected = allLands.find(l => l.stationNumber === e.target.value && !l.farmerId);
+                                              if (selected) {
+                                                setLandFormData({
+                                                  regionId:      selected.regionId || '',
+                                                  stationNumber: selected.stationNumber,
+                                                  gpsRaw:        (selected.stationLat && selected.stationLng) ? `${selected.stationLat}, ${selected.stationLng}` : '',
+                                                  stationLat:    selected.stationLat || '',
+                                                  stationLng:    selected.stationLng || '',
+                                                  description:   selected.description || '',
+                                                });
+                                              } else {
+                                                setLandFormData({...EMPTY_LAND, stationNumber: e.target.value});
+                                              }
+                                            }}
+                                            style={{fontSize:15,fontFamily:'monospace',fontWeight:700}}>
+                                            <option value="">{ar?'— اختر محطة —':'— בחר תחנה —'}</option>
+                                            {/* تجميع حسب المنطقة */}
+                                            {(() => {
+                                              const available = allLands.filter(l => l.stationNumber);
+                                              const grouped = available.reduce((acc, l) => {
+                                                const code = l.stationNumber?.match(/^([A-Za-z]+)/)?.[1]?.toUpperCase() || '?';
+                                                if (!acc[code]) acc[code] = [];
+                                                acc[code].push(l);
+                                                return acc;
+                                              }, {});
+                                              return Object.entries(grouped).sort(([a],[b])=>a.localeCompare(b)).map(([code, lands]) => (
+                                                <optgroup key={code} label={`── ${code} ──`}>
+                                                  {lands.map(l => {
+                                                    const reg = regions.find(r => r.id === l.regionId);
+                                                    return (
+                                                      <option key={l.id} value={l.stationNumber}>
+                                                        {l.stationNumber}
+                                                        {reg?.nameHeb && reg.nameHeb !== reg.name ? ` (${reg.nameHeb})` : reg?.name ? ` (${reg.name})` : ''}
+                                                        {l.stationLat ? ' 📍' : ''}
+                                                      </option>
+                                                    );
+                                                  })}
+                                                </optgroup>
+                                              ));
+                                            })()}
+                                          </select>
+                                          {allLands.filter(l=>l.stationNumber).length === 0 && (
+                                            <p style={{fontSize:12,color:'#ca8a04',marginTop:6}}>
+                                              ⚠️ {ar?'لا توجد محطات — استورد من KML أولاً في صفحة المناطق':'אין תחנות — ייבא KML תחילה בדף האזורים'}
+                                            </p>
+                                          )}
+                                        </div>
+
+                                        {/* معاينة المحطة المختارة */}
+                                        {landFormData.stationNumber && (
+                                          <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:8,padding:'10px 14px',marginBottom:12,fontSize:13}}>
+                                            <div style={{display:'flex',gap:16,flexWrap:'wrap',alignItems:'center'}}>
+                                              <strong style={{color:'var(--primary)',fontFamily:'monospace',fontSize:16}}>
+                                                {landFormData.stationNumber}
+                                              </strong>
+                                              {landFormData.regionId && (
+                                                <span>
+                                                  📍 {regions.find(r=>r.id===landFormData.regionId)?.nameHeb || regions.find(r=>r.id===landFormData.regionId)?.name}
+                                                </span>
+                                              )}
+                                              {landFormData.stationLat && landFormData.stationLng ? (
+                                                <span style={{color:'#16a34a',fontWeight:600}}>
+                                                  ✓ GPS: {parseFloat(landFormData.stationLat).toFixed(4)}, {parseFloat(landFormData.stationLng).toFixed(4)}
+                                                </span>
+                                              ) : (
+                                                <span style={{color:'#ca8a04'}}>⚠️ {ar?'لا يوجد GPS':'אין GPS'}</span>
+                                              )}
+                                            </div>
+                                            {landFormData.description && (
+                                              <div style={{marginTop:6,fontSize:12,color:'#1e40af'}}>
+                                                🏡 {landFormData.description}
+                                              </div>
+                                            )}
                                           </div>
                                         )}
                                       </div>
-                                    </div>
-                                    {landError && <div className="alert alert-error mb-8">{landError}</div>}
-                                    {/* ── وصف الأرض ── */}
+                                    ) : (
+                                      /* ── وضع الإدخال اليدوي ── */
+                                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12,marginBottom:12}}>
+                                        <div className="form-group">
+                                          <label style={{fontFamily:'Heebo,sans-serif'}}>עמדה (מס׳ תחנה) *</label>
+                                          <input
+                                            value={landFormData.stationNumber}
+                                            onChange={e=>setLandFormData({...landFormData,stationNumber:e.target.value})}
+                                            placeholder="A14 / B3 / FC7"
+                                            style={{fontFamily:'monospace',fontWeight:900,textAlign:'center',fontSize:18,letterSpacing:3}}
+                                            autoFocus={manualMode && !editLand}
+                                          />
+                                        </div>
+                                        <div className="form-group">
+                                          <label>{ar?'المنطقة':'אזור'}</label>
+                                          <select value={landFormData.regionId} onChange={e=>setLandFormData({...landFormData,regionId:e.target.value})}>
+                                            <option value="">{ar?'— اختر —':'— בחר —'}</option>
+                                            {regions.map(r => (
+                                              <option key={r.id} value={r.id}>
+                                                {r.name}{r.nameHeb && r.nameHeb!==r.name ? ` — ${r.nameHeb}` : ''}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                        <div className="form-group">
+                                          <label>📍 {ar?'الموقع (GPS)':'מיקום GPS'}</label>
+                                          <input value={landFormData.gpsRaw}
+                                            onChange={e=>handleGpsChange(e.target.value)}
+                                            placeholder="32.123456, 35.123456"
+                                            style={{fontFamily:'monospace',fontSize:12}} />
+                                          {landFormData.stationLat && landFormData.stationLng && (
+                                            <div style={{display:'flex',alignItems:'center',gap:8,marginTop:5}}>
+                                              <span style={{fontSize:11,color:'#16a34a',flex:1}}>
+                                                ✓ {parseFloat(landFormData.stationLat).toFixed(5)}, {parseFloat(landFormData.stationLng).toFixed(5)}
+                                              </span>
+                                              <button type="button"
+                                                onClick={()=>setMapModal({lat:landFormData.stationLat,lng:landFormData.stationLng,name:landFormData.stationNumber||'📍'})}
+                                                style={{background:'var(--primary)',color:'#fff',border:'none',borderRadius:6,padding:'3px 10px',fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                                                🗺️ {ar?'معاينة':'תצוגה מקדימה'}
+                                              </button>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* وصف الأرض — مشترك بين الوضعين */}
                                     <div className="form-group">
                                       <label style={{fontSize:13}}>
-                                        📝 {ar ? 'وصف الأرض (اختياري)' : 'תיאור התחנה (אופציונלי)'}
+                                        📝 {ar?'وصف الأرض (اختياري)':'תיאור התחנה (אופציונלי)'}
                                       </label>
-                                      <textarea
-                                        rows={2}
+                                      <textarea rows={2}
                                         value={landFormData.description}
                                         onChange={e=>setLandFormData({...landFormData,description:e.target.value})}
-                                        placeholder={ar
-                                          ? 'مثال: الأرض الكبيرة بجانب البئر، عند المدخل الشمالي...'
-                                          : 'לדוג׳: השדה הגדול ליד הבאר, בכניסה הצפונית...'}
-                                        style={{fontSize:13, resize:'vertical'}}
-                                      />
+                                        placeholder={ar?'مثال: الأرض الكبيرة بجانب البئر...':'לדוג׳: השדה הגדול ליד הבאר...'}
+                                        style={{fontSize:13,resize:'vertical'}} />
                                     </div>
+
+                                    {landError && <div className="alert alert-error mb-8">{landError}</div>}
                                     <div className="flex-gap gap-8">
                                       <button type="submit" className="btn btn-primary btn-sm" disabled={savingLand}>
                                         {savingLand ? '⏳' : `💾 ${ar?'حفظ':'שמור'}`}
                                       </button>
-                                      <button type="button" className="btn btn-outline btn-sm" onClick={()=>setLandForm(null)}>{ar?'إلغاء':'ביטול'}</button>
+                                      <button type="button" className="btn btn-outline btn-sm" onClick={()=>setLandForm(null)}>
+                                        {ar?'إلغاء':'ביטול'}
+                                      </button>
                                     </div>
                                   </form>
                                 </div>

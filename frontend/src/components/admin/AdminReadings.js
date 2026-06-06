@@ -83,12 +83,24 @@ export default function AdminReadings({ adminRole='admin' }) {
   const farmerName = id => farmers.find(f => String(f.id) === String(id))?.nameHeb
                         || farmers.find(f => String(f.id) === String(id))?.name || '—';
   // ✅ يعرض اسم المنطقة بدل اسم الأرض
-  const landName = id => {
-    const land = lands.find(l => String(l.id) === String(id));
-    if (!land) return '—';
+const landName = id => {
+  const land = lands.find(l => String(l.id) === String(id));
+  if (!land) return '—';
+  // أولاً: جرب regionId
+  if (land.regionId) {
     const reg = regions.find(r => String(r.id) === String(land.regionId));
-    return (reg?.nameHeb && reg.nameHeb !== reg.name) ? reg.nameHeb : (reg?.name || land.stationNumber || '—');
-  };
+    if (reg?.nameHeb && reg.nameHeb !== reg.name) return reg.nameHeb;
+    if (reg?.name) return reg.name;
+  }
+  // ثانياً: جرب استخراج الحرف من stationNumber → ابحث عن المنطقة
+  const code = land.stationNumber?.match(/^([A-Za-z]+)/)?.[1]?.toUpperCase();
+  if (code) {
+    const reg = regions.find(r => r.name?.toUpperCase() === code);
+    if (reg?.nameHeb && reg.nameHeb !== reg.name) return reg.nameHeb;
+    if (reg?.name) return reg.name;
+  }
+  return land.stationNumber || '—';
+};
   const regionName = id => id ? (regions.find(r => String(r.id) === String(id))?.name || '') : '';
   const landRegion = lid => {
     const l = lands.find(x => String(x.id) === String(lid));

@@ -257,9 +257,9 @@ export default function ReadingsTable({
                     <td style={{textAlign:'center'}} onClick={e => e.stopPropagation()}>
                       {(() => {
                         const land = lands.find(l => String(l.id) === String(r.landId));
-                        const lat  = r.stationLat || land?.stationLat;
-                        const lng  = r.stationLng || land?.stationLng;
-                        const num  = r.stationNumber || land?.stationNumber;
+                        const lat  = land?.stationLat || r.stationLat;
+                        const lng  = land?.stationLng || r.stationLng;
+                        const num  = land?.stationNumber || r.stationNumber;
                         if (!num) return <span style={{color:'var(--border)'}}>—</span>;
                         if (lat && lng) return (
                           <button
