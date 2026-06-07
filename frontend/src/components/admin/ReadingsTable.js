@@ -143,7 +143,8 @@ export default function ReadingsTable({
   const MapModal = () => {
     if (!mapModal) return null;
     const { lat, lng, name } = mapModal;
-    const embedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${lng-0.005},${lat-0.005},${lng+0.005},${lat+0.005}&layer=mapnik&marker=${lat},${lng}`;
+    const embedUrl = `https://maps.google.com/maps?q=${lat},${lng}&z=17&t=k&output=embed`;
+    const esriUrl  = `https://maps.google.com/maps?q=${lat},${lng}&z=18&t=k&output=embed&markers=${lat},${lng}`;
     const earthUrl = `https://earth.google.com/web/@${lat},${lng},400a,800d,30y,0h,0t,0r/data=CgRCAggBMikKJwolCiExS0M0V193eFlWeTQ2UFR6RW81VkFtVVlvMDNHemUtUHQgAToDCgEwQgIIAEoICLG2obACEAE`;
     return (
       <div onClick={() => setMapModal(null)}
@@ -169,7 +170,51 @@ export default function ReadingsTable({
               </button>
             </div>
           </div>
-          <iframe src={embedUrl} width="100%" height="380" style={{ border:0, display:'block' }} allowFullScreen loading="lazy" referrerPolicy="no-referrer-when-downgrade" title="map" />
+          {/* overlay — وصف الموقع + دبوس ملون فوق الخريطة */}
+          <div style={{ position:'relative' }}>
+            <iframe src={esriUrl} width="100%" height="380" style={{ border:0, display:'block' }} allowFullScreen loading="lazy" referrerPolicy="no-referrer-when-downgrade" title="map" />
+            {/* دبوس + وصف في المنتصف */}
+            <div style={{
+              position:'absolute', top:'50%', left:'50%',
+              transform:'translate(-50%, -100%)',
+              pointerEvents:'none', display:'flex', flexDirection:'column', alignItems:'center',
+            }}>
+              {/* وصف الأرض إن وجد */}
+              {(() => {
+                const land = mapModal && lands.find(l => l.stationNumber === mapModal.name);
+                const desc = land?.description;
+                if (!desc) return null;
+                // تقسيم الأسماء (مفصولة بـ ، أو سطر جديد)
+                const lines = desc.split(/[،,\n]/).map(s=>s.trim()).filter(Boolean);
+                return (
+                  <div style={{
+                    background:'rgba(22,163,74,0.95)',
+                    color:'#fff',
+                    borderRadius:10,
+                    padding:'6px 12px',
+                    marginBottom:6,
+                    boxShadow:'0 3px 12px rgba(0,0,0,0.35)',
+                    border:'2px solid #fff',
+                    maxWidth:220,
+                    textAlign:'center',
+                    fontFamily:'Heebo,sans-serif',
+                    fontSize:13,
+                    fontWeight:700,
+                    lineHeight:1.6,
+                  }}>
+                    {lines.join(' • ')}
+                  </div>
+                );
+              })()}
+              {/* الدبوس */}
+              <svg width="28" height="36" viewBox="0 0 28 36">
+                <ellipse cx="14" cy="34" rx="6" ry="2" fill="rgba(0,0,0,0.3)"/>
+                <path d="M14 0 C6.3 0 0 6.3 0 14 C0 24.5 14 36 14 36 C14 36 28 24.5 28 14 C28 6.3 21.7 0 14 0Z" fill="#16a34a"/>
+                <circle cx="14" cy="14" r="7" fill="#fff"/>
+                <circle cx="14" cy="14" r="4" fill="#16a34a"/>
+              </svg>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -290,14 +335,41 @@ export default function ReadingsTable({
                     </td>
 
                     {/* الإضافات */}
-                    <td style={{textAlign:'center', background:'#fff3e0'}}>
-                      {(parseFloat(r.extra)||0) > 0 ? (
-                        <span style={{fontSize:12,color:'#e65100',fontWeight:700}}>
-                          +₪{Number(r.extra).toLocaleString()}
-                          {(parseFloat(r.extraPaid)||0) > 0 &&
-                            <span style={{color:'#16a34a'}}> (-{Number(r.extraPaid).toLocaleString()})</span>}
-                        </span>
-                      ) : <span style={{color:'var(--border)'}}>—</span>}
+                    <td style={{textAlign:'center', background:'#fff3e0', padding:'6px 8px'}}>
+                      {(parseFloat(r.extra)||0) > 0 ? (() => {
+                        const extra     = parseFloat(r.extra) || 0;
+                        const extraPaid = parseFloat(r.extraPaid) || 0;
+                        const fullPaid  = extraPaid >= extra;
+                        return (
+                          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+                            {/* العنوان / السبب */}
+                            {r.extraNote && (
+                              <span style={{fontSize:10,color:'#92400e',fontWeight:700,background:'#fef3c7',padding:'1px 6px',borderRadius:4}}>
+                                {r.extraNote}
+                              </span>
+                            )}
+                            {/* المبلغ */}
+                            {fullPaid ? (
+                              // مدفوع كاملاً — رمادي
+                              <span style={{fontSize:12,color:'#9ca3af',fontWeight:600,textDecoration:'line-through'}}>
+                                ₪{extra.toLocaleString()}
+                              </span>
+                            ) : (
+                              // غير مدفوع كلياً
+                              <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:1}}>
+                                <span style={{fontSize:12,color:'#e65100',fontWeight:700}}>
+                                  ₪{extra.toLocaleString()}
+                                </span>
+                                {extraPaid > 0 && (
+                                  <span style={{fontSize:11,color:'#16a34a',fontWeight:600}}>
+                                    ✓ ₪{extraPaid.toLocaleString()}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })() : <span style={{color:'var(--border)'}}>—</span>}
                     </td>
 
                     {/* المبلغ الإجمالي */}
