@@ -9,7 +9,7 @@ const parseKML = (xmlText) => {
   const placemarks = Array.from(doc.querySelectorAll('Placemark'));
   const stationPattern = /^[A-Za-z]{1,3}\d+$/;
 
-  const points = [];
+  const pointsMap = {}; // ✅ نستخدم map لمنع التكرار
   for (const pm of placemarks) {
     const name = pm.querySelector('name')?.textContent?.trim() || '';
     if (!stationPattern.test(name)) continue;
@@ -25,8 +25,18 @@ const parseKML = (xmlText) => {
       .map(s => s.replace(/&nbsp;/g,'').trim())
       .filter(s => s.length > 1);
     const regionCode = name.match(/^([A-Za-z]+)/)?.[1]?.toUpperCase() || '';
-    points.push({ name, lat, lng, farmers, regionCode });
+
+    if (pointsMap[name]) {
+      // ✅ نقطة موجودة — أضف المزارعين الجدد فقط
+      farmers.forEach(f => {
+        if (!pointsMap[name].farmers.includes(f)) pointsMap[name].farmers.push(f);
+      });
+    } else {
+      pointsMap[name] = { name, lat, lng, farmers, regionCode };
+    }
   }
+
+  const points = Object.values(pointsMap);
   points.sort((a,b) => {
     if (a.regionCode !== b.regionCode) return a.regionCode.localeCompare(b.regionCode);
     return (parseInt(a.name.replace(/\D/g,''))||0) - (parseInt(b.name.replace(/\D/g,''))||0);
@@ -53,6 +63,7 @@ export default function AdminRegions({ adminRole = 'admin' }) {
   const [kmlImporting, setKmlImporting] = useState(false);
   const [kmlDone,      setKmlDone]      = useState(null);
   const [showKml,      setShowKml]      = useState(false);
+  const [cleaning,     setCleaning]     = useState(false);  // ✅ تنظيف التكرار
 
   const load = useCallback(async () => {
     setLoadingR(true);
@@ -127,27 +138,66 @@ export default function AdminRegions({ adminRole = 'admin' }) {
     setKmlSelected(sel);
   };
 
+  // ✅ تنظيف المحطات المكررة
+  const cleanDuplicates = async () => {
+    if (!window.confirm(ar
+      ? 'سيتم حذف المحطات المكررة والاحتفاظ بنسخة واحدة فقط من كل محطة. القراءات ستُنقل تلقائياً. متابعة؟'
+      : 'יימחקו תחנות כפולות ותישמר רק עותק אחד. הקריאות יועברו אוטומטית. להמשיך?'
+    )) return;
+    setCleaning(true);
+    try {
+      const res = await adminAPI.cleanDuplicateLands();
+      alert(ar
+        ? `✅ تم! حُذف ${res.deleted} محطة مكررة.`
+        : `✅ הסתיים! נמחקו ${res.deleted} תחנות כפולות.`
+      );
+    } catch(e) {
+      alert(ar ? 'خطأ: ' + e.message : 'שגיאה: ' + e.message);
+    } finally { setCleaning(false); }
+  };
+
   const importKml = async () => {
     const toImport = kmlPoints.filter(p => kmlSelected[p.name]);
     if (!toImport.length) return;
     setKmlImporting(true);
-    let imported = 0, skipped = 0;
+    let imported = 0, updated = 0, skipped = 0;
+
+    // ✅ جلب الأراضي الموجودة مسبقاً
+    let existingLands = [];
+    try { const d = await adminAPI.getLands(); existingLands = d.lands || []; } catch {}
+
     for (const p of toImport) {
       try {
-        await adminAPI.createLand({
-          name:          p.name,
-          nameHeb:       p.name,
-          stationNumber: p.name,
-          regionId:      p.regionId || null,
-          stationLat:    p.lat,
-          stationLng:    p.lng,
-          description:   p.farmers.join('، '),
-        });
-        imported++;
+        // ✅ تحقق إذا كانت المحطة موجودة مسبقاً
+        const existing = existingLands.find(l => l.stationNumber === p.name);
+        if (existing) {
+          // تحديث الموجود بدل إنشاء جديد
+          await adminAPI.updateLand(existing.id, {
+            name:          p.name,
+            nameHeb:       p.name,
+            stationNumber: p.name,
+            regionId:      p.regionId || existing.regionId || null,
+            stationLat:    p.lat,
+            stationLng:    p.lng,
+            description:   p.farmers.join('، '),
+          });
+          updated++;
+        } else {
+          await adminAPI.createLand({
+            name:          p.name,
+            nameHeb:       p.name,
+            stationNumber: p.name,
+            regionId:      p.regionId || null,
+            stationLat:    p.lat,
+            stationLng:    p.lng,
+            description:   p.farmers.join('، '),
+          });
+          imported++;
+        }
       } catch { skipped++; }
     }
     setKmlImporting(false);
-    setKmlDone({ imported, skipped });
+    setKmlDone({ imported, updated, skipped });
   };
 
   // ألوان تلقائية لكل منطقة
@@ -258,22 +308,60 @@ export default function AdminRegions({ adminRole = 'admin' }) {
         </div>
       )}
 
+      {/* ══ فاصل بين القسمين ══ */}
+      {!isViewer && (
+        <div style={{ margin:'32px 0', display:'flex', alignItems:'center', gap:16 }}>
+          <div style={{ flex:1, height:1, background:'linear-gradient(90deg, transparent, var(--border))' }}/>
+          <span style={{ fontSize:20 }}>🗺️</span>
+          <div style={{ flex:1, height:1, background:'linear-gradient(90deg, var(--border), transparent)' }}/>
+        </div>
+      )}
+
       {/* ══ استيراد KML ══ */}
       {!isViewer && (
         <div>
-          <div className="flex-between mb-12" style={{ flexWrap:'wrap', gap:12 }}>
-            <div>
-              <h2 className="mb-4">🗺️ {ar?'استيراد من Google Earth':'ייבוא מ-Google Earth'}</h2>
-              <p style={{ color:'var(--text-muted)', fontSize:13 }}>
-                {ar
-                  ? 'المحطات تُجمَّع تلقائياً حسب الحرف — A → منطقة A، B → منطقة B'
-                  : 'תחנות מקובצות אוטומטית לפי אות — A → אזור A, B → אזור B'}
-              </p>
+          {/* رأس القسم */}
+          <div style={{ marginBottom:20 }}>
+            <h2 style={{ margin:'0 0 6px' }}>
+              {ar?'استيراد من Google Earth':'ייבוא מ-Google Earth'}
+            </h2>
+            <p style={{ color:'var(--text-muted)', fontSize:13, margin:'0 0 16px' }}>
+              {ar
+                ? 'المحطات تُجمَّع تلقائياً حسب الحرف — A → منطقة A، B → منطقة B'
+                : 'תחנות מקובצות אוטומטית לפי אות — A → אזור A, B → אזור B'}
+            </p>
+            {/* أزرار بنفس الحجم */}
+            <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
+              {/* زر رفع KML */}
+              <label style={{
+                height:44, minWidth:190, padding:'0 20px',
+                borderRadius:10, cursor:'pointer', boxSizing:'border-box',
+                fontWeight:600, fontSize:14, display:'inline-flex', alignItems:'center', justifyContent:'center', gap:8,
+                background:'#f0fdf4', color:'var(--primary)',
+                border:'1.5px solid #86efac',
+                transition:'all 0.2s',
+              }}
+              onMouseEnter={e=>{e.currentTarget.style.background='#dcfce7';e.currentTarget.style.borderColor='#4ade80';}}
+              onMouseLeave={e=>{e.currentTarget.style.background='#f0fdf4';e.currentTarget.style.borderColor='#86efac';}}>
+                📥 {ar?'رفع ملف KML':'העלה קובץ KML'}
+                <input type="file" accept=".kml,.kmz" onChange={handleKmlFile} style={{ display:'none' }} />
+              </label>
+
+              {/* زر تنظيف التكرار */}
+              <button onClick={cleanDuplicates} disabled={cleaning}
+                style={{
+                  height:44, minWidth:190, padding:'0 20px', boxSizing:'border-box',
+                  borderRadius:10, cursor: cleaning ? 'wait' : 'pointer',
+                  fontWeight:600, fontSize:14, display:'inline-flex', alignItems:'center', justifyContent:'center', gap:8,
+                  background:'#fff7ed', color:'#c2410c',
+                  border:'1.5px solid #fed7aa',
+                  transition:'all 0.2s',
+                }}
+                onMouseEnter={e=>{ if(!cleaning){ e.currentTarget.style.background='#ffedd5'; e.currentTarget.style.borderColor='#fb923c'; }}}
+                onMouseLeave={e=>{ if(!cleaning){ e.currentTarget.style.background='#fff7ed'; e.currentTarget.style.borderColor='#fed7aa'; }}}>
+                {cleaning ? `⏳ ${ar?'جاري...':'מנקה...'}` : `🧹 ${ar?'تنظيف التكرار':'נקה כפילויות'}`}
+              </button>
             </div>
-            <label style={{ background:'var(--primary)',color:'#fff',padding:'10px 20px',borderRadius:10,cursor:'pointer',fontWeight:700,fontSize:14,display:'inline-flex',alignItems:'center',gap:8,boxShadow:'0 2px 8px rgba(0,0,0,0.15)' }}>
-              📥 {ar?'رفع ملف KML':'העלה קובץ KML'}
-              <input type="file" accept=".kml,.kmz" onChange={handleKmlFile} style={{ display:'none' }} />
-            </label>
           </div>
 
           {showKml && kmlPoints.length > 0 && (
@@ -284,12 +372,42 @@ export default function AdminRegions({ adminRole = 'admin' }) {
                   <span style={{ fontWeight:700, fontSize:14 }}>📍 {kmlPoints.length} {ar?'محطة':'תחנות'}</span>
                   <span style={{ color:'var(--primary)', fontWeight:700, fontSize:13 }}>✓ {selectedCount} {ar?'محددة':'נבחרו'}</span>
                 </div>
-                <div className="flex-gap gap-8">
-                  <button className="btn btn-outline btn-sm" onClick={()=>toggleAll(true)}>{ar?'تحديد الكل':'בחר הכל'}</button>
-                  <button className="btn btn-outline btn-sm" onClick={()=>toggleAll(false)}>{ar?'إلغاء الكل':'בטל הכל'}</button>
-                  <button className="btn btn-primary" onClick={importKml}
-                    disabled={kmlImporting||selectedCount===0} style={{ minWidth:160 }}>
-                    {kmlImporting ? `⏳ ${ar?'جاري...':'מייבא...'}` : `📥 ${ar?`استيراد ${selectedCount} محطة`:`ייבא ${selectedCount} תחנות`}`}
+                <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+                  {/* بحر الكل */}
+                  <button onClick={()=>toggleAll(true)} style={{
+                    height:40, padding:'0 18px', boxSizing:'border-box', borderRadius:8,
+                    fontWeight:600, fontSize:13, cursor:'pointer',
+                    display:'inline-flex', alignItems:'center', justifyContent:'center', gap:6,
+                    background:'#f8fafc', color:'#475569', border:'1.5px solid #cbd5e1', transition:'all 0.2s',
+                  }}
+                  onMouseEnter={e=>{e.currentTarget.style.background='#f1f5f9';e.currentTarget.style.borderColor='#94a3b8';}}
+                  onMouseLeave={e=>{e.currentTarget.style.background='#f8fafc';e.currentTarget.style.borderColor='#cbd5e1';}}>
+                    ✓ {ar?'تحديد الكل':'בחר הכל'}
+                  </button>
+                  {/* بطل الكل */}
+                  <button onClick={()=>toggleAll(false)} style={{
+                    height:40, padding:'0 18px', boxSizing:'border-box', borderRadius:8,
+                    fontWeight:600, fontSize:13, cursor:'pointer',
+                    display:'inline-flex', alignItems:'center', justifyContent:'center', gap:6,
+                    background:'#f8fafc', color:'#475569', border:'1.5px solid #cbd5e1', transition:'all 0.2s',
+                  }}
+                  onMouseEnter={e=>{e.currentTarget.style.background='#f1f5f9';e.currentTarget.style.borderColor='#94a3b8';}}
+                  onMouseLeave={e=>{e.currentTarget.style.background='#f8fafc';e.currentTarget.style.borderColor='#cbd5e1';}}>
+                    ○ {ar?'إلغاء الكل':'בטל הכל'}
+                  </button>
+                  {/* زر الاستيراد */}
+                  <button onClick={importKml} disabled={kmlImporting||selectedCount===0} style={{
+                    height:40, padding:'0 22px', boxSizing:'border-box', borderRadius:8,
+                    fontWeight:700, fontSize:13, cursor: kmlImporting||selectedCount===0 ? 'not-allowed' : 'pointer',
+                    display:'inline-flex', alignItems:'center', justifyContent:'center', gap:6,
+                    background: kmlImporting||selectedCount===0 ? '#f1f5f9' : 'var(--primary)',
+                    color: kmlImporting||selectedCount===0 ? '#94a3b8' : '#fff',
+                    border: 'none', transition:'all 0.2s',
+                    boxShadow: kmlImporting||selectedCount===0 ? 'none' : '0 2px 6px rgba(22,163,74,0.3)',
+                  }}
+                  onMouseEnter={e=>{ if(!kmlImporting&&selectedCount>0) e.currentTarget.style.opacity='0.9'; }}
+                  onMouseLeave={e=>{ e.currentTarget.style.opacity='1'; }}>
+                    {kmlImporting ? `⏳ ${ar?'جاري...':'מייבא...'}` : `📥 ${ar?`استيراد ${selectedCount}`:`ייבא ${selectedCount}`} ${ar?'محطة':'תחנות'}`}
                   </button>
                 </div>
               </div>
@@ -301,8 +419,9 @@ export default function AdminRegions({ adminRole = 'admin' }) {
                   <div>
                     <div style={{ fontWeight:700 }}>{ar?'اكتمل الاستيراد!':'הייבוא הושלם!'}</div>
                     <div style={{ fontSize:13, color:'var(--text-muted)', marginTop:2 }}>
-                      ✅ {kmlDone.imported} {ar?'محطة أضيفت':'תחנות נוספו'}
-                      {kmlDone.skipped>0 && <span style={{ color:'#ca8a04' }}> | ⚠️ {kmlDone.skipped} {ar?'تخطيت':'דולגו'}</span>}
+                      ✅ {kmlDone.imported} {ar?'محطة جديدة':'תחנות חדשות'}
+                      {kmlDone.updated > 0 && <span style={{ color:'#0369a1' }}> | 🔄 {kmlDone.updated} {ar?'محطة محدّثة':'תחנות עודכנו'}</span>}
+                      {kmlDone.skipped > 0 && <span style={{ color:'#ca8a04' }}> | ⚠️ {kmlDone.skipped} {ar?'فشل':'נכשלו'}</span>}
                     </div>
                   </div>
                 </div>
@@ -386,7 +505,7 @@ export default function AdminRegions({ adminRole = 'admin' }) {
               <div style={{ marginTop:20, textAlign:'center' }}>
                 <button className="btn btn-primary" onClick={importKml}
                   disabled={kmlImporting||selectedCount===0}
-                  style={{ minWidth:220, fontSize:15, padding:'12px 28px' }}>
+                  style={{ height:44, padding:'0 32px', borderRadius:10, fontSize:15, fontWeight:700, boxSizing:'border-box' }}>
                   {kmlImporting ? `⏳ ${ar?'جاري الاستيراد...':'מייבא...'}` : `📥 ${ar?`استيراد ${selectedCount} محطة`:`ייבא ${selectedCount} תחנות`}`}
                 </button>
               </div>

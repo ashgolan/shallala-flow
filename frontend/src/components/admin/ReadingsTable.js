@@ -21,21 +21,35 @@ const cupsDiff = (readings, idx) => {
 // ── زر الدفع ─────────────────────────────────────────────────
 const PaidBtn = ({ paid, loading, onClick }) => (
   <button onClick={onClick} disabled={loading}
-    title={paid ? 'שולם ✓' : 'לא שולם ✕'}
+    title={paid ? 'שולם ✓' : 'לא שולם'}
     style={{
-      width:28, height:28, borderRadius:'50%',
-      border: paid ? '2px solid #16a34a' : '2px solid #ef4444',
-      background: paid ? '#dcfce7' : '#fee2e2',
-      color: paid ? '#15803d' : '#dc2626',
+      width:18, height:18, borderRadius:'50%',
+      border: paid ? '2px solid #4ade80' : '2px solid #f87171',
+      background: 'transparent',
       cursor: loading ? 'wait' : 'pointer',
       display:'inline-flex', alignItems:'center', justifyContent:'center',
-      fontSize:13, fontWeight:900, transition:'all 0.18s',
-      opacity: loading ? 0.5 : 1, flexShrink:0,
-      boxShadow: paid ? '0 1px 4px rgba(22,163,74,0.3)' : '0 1px 4px rgba(239,68,68,0.2)',
+      transition:'all 0.25s', opacity: loading ? 0.5 : 1, flexShrink:0,
+      position:'relative',
+      animation: !paid && !loading ? 'pulse-red 2.5s ease-in-out infinite' : 'none',
     }}
     onMouseEnter={e => { if(!loading) e.currentTarget.style.transform='scale(1.15)'; }}
-    onMouseLeave={e => { e.currentTarget.style.transform='scale(1)'; }}
-  >{loading ? '·' : paid ? '✓' : '✕'}</button>
+    onMouseLeave={e => { e.currentTarget.style.transform='scale(1)'; }}>
+    <span style={{
+      width: paid ? 7 : 6,
+      height: paid ? 7 : 6,
+      borderRadius:'50%',
+      background: paid ? '#4ade80' : '#f87171',
+      display:'block',
+      transition:'all 0.25s',
+    }}/>
+    <style>{`
+      @keyframes pulse-red {
+        0%   { box-shadow: 0 0 0 0 rgba(248,113,113,0.3); }
+        60%  { box-shadow: 0 0 0 5px rgba(248,113,113,0); }
+        100% { box-shadow: 0 0 0 0 rgba(248,113,113,0); }
+      }
+    `}</style>
+  </button>
 );
 
 // ── زر أيقونة صغير ───────────────────────────────────────────
@@ -310,13 +324,13 @@ export default function ReadingsTable({
                           <button
                             onClick={e => { e.stopPropagation(); setMapModal({ lat, lng, name:num }); }}
                             title={ar?'عرض الموقع':'הצג מיקום'}
-                            style={{ display:'inline-flex', alignItems:'center', gap:5, fontFamily:'monospace', fontWeight:900, fontSize:13, color:'var(--primary)', background:'#dcfce7', padding:'4px 10px', borderRadius:6, border:'1.5px solid #16a34a', cursor:'pointer', transition:'all 0.2s' }}
+                            style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', gap:5, fontFamily:'monospace', fontWeight:900, fontSize:13, color:'var(--primary)', background:'#dcfce7', padding:'4px 0', borderRadius:6, border:'1.5px solid #16a34a', cursor:'pointer', transition:'all 0.2s', minWidth:68, textAlign:'center' }}
                             onMouseEnter={e=>{e.currentTarget.style.background='#16a34a';e.currentTarget.style.color='#fff';}}
                             onMouseLeave={e=>{e.currentTarget.style.background='#dcfce7';e.currentTarget.style.color='var(--primary)';}}>
                             {num} <span style={{fontSize:12}}>📍</span>
                           </button>
                         );
-                        return <span style={{fontFamily:'monospace',fontWeight:900,fontSize:13,color:'var(--primary)',background:'var(--surface-2)',padding:'3px 10px',borderRadius:6}}>{num}</span>;
+                        return <span style={{fontFamily:'monospace',fontWeight:900,fontSize:13,color:'var(--primary)',background:'var(--surface-2)',padding:'3px 0',borderRadius:6,display:'inline-block',minWidth:68,textAlign:'center'}}>{num}</span>;
                       })()}
                     </td>
 
@@ -381,7 +395,12 @@ export default function ReadingsTable({
 
                     {/* ملاحظة */}
                     <td style={{textAlign:'center'}} onClick={e=>e.stopPropagation()}>
-                      {editNoteId===r.id ? (
+                      {isViewer ? (
+                        // المراقب/الدوحات: يرى الملاحظة فقط بدون تعديل
+                        r.note
+                          ? <span style={{background:'#fef9c3',border:'1px solid #fde047',borderRadius:6,padding:'2px 8px',fontSize:12,color:'#78350f',fontWeight:600}}>💬 {r.note}</span>
+                          : <span style={{color:'var(--border)'}}>—</span>
+                      ) : editNoteId===r.id ? (
                         <div style={{display:'flex',gap:4,alignItems:'center'}}>
                           <input value={noteText} onChange={e=>setNoteText(e.target.value)}
                             style={{width:100,fontSize:12,padding:'3px 6px'}}
@@ -411,7 +430,7 @@ export default function ReadingsTable({
                   {/* ── صف التفاصيل الموسّع ── */}
                   {expanded && (
                     <tr style={{background: isPaid?'#f0fdf4':'#fff5f5'}}>
-                      <td colSpan={5 + cupsCols + 4} style={{padding:'10px 18px'}}>
+                      <td colSpan={99} style={{padding:'10px 18px'}}>
                         <div style={{display:'flex',flexWrap:'wrap',gap:16,alignItems:'flex-start'}}>
 
                           {/* أرقام القراءات */}

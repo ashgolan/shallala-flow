@@ -5,7 +5,6 @@ const FarmerNote = require('../models/FarmerNote');
 const { Prices, Announcement, Gallery, Video, Admin } = require('../models/Settings');
 const { getStorage } = require('../../config/firebase');
 
-// helper: plain object with string ids
 const plain = (doc) => {
   const o = doc.toObject ? doc.toObject() : { ...doc };
   o.id = o._id?.toString();
@@ -14,7 +13,6 @@ const plain = (doc) => {
   return o;
 };
 
-// ✅ helper آمن لتحويل float مع منع NaN
 const safeFloat = (v) => {
   const f = parseFloat(v);
   return (!isNaN(f) && v !== '' && v !== null && v !== undefined) ? f : null;
@@ -30,12 +28,10 @@ const getFarmers = async (req, res) => {
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
 
-// توليد كود 4 أرقام فريد
 const generateUniqueCode = async () => {
   const existing = await Farmer.find({}, 'code').lean();
   const usedCodes = new Set(existing.map(f => f.code));
-  let code;
-  let attempts = 0;
+  let code; let attempts = 0;
   do {
     code = String(Math.floor(1000 + Math.random() * 9000));
     attempts++;
@@ -47,21 +43,9 @@ const generateUniqueCode = async () => {
 const createFarmer = async (req, res) => {
   try {
     const { name, nameHeb, idNumber, phone, notes, area } = req.body;
-    if (!name || !idNumber)
-      return res.status(400).json({ error: 'الاسم ورقم الهوية مطلوبان' });
-
+    if (!name || !idNumber) return res.status(400).json({ error: 'الاسم ورقم الهوية مطلوبان' });
     const code = await generateUniqueCode();
-
-    const farmer = await Farmer.create({
-      name,
-      nameHeb: nameHeb || '',
-      idNumber: idNumber.trim(),
-      code,
-      phone: phone || '',
-      notes: notes || '',
-      area: area || '',
-    });
-
+    const farmer = await Farmer.create({ name, nameHeb: nameHeb || '', idNumber: idNumber.trim(), code, phone: phone || '', notes: notes || '', area: area || '' });
     return res.status(201).json({ success: true, id: farmer._id.toString(), code });
   } catch (err) {
     if (err.code === 11000) return res.status(409).json({ error: 'رقم الهوية موجود مسبقاً' });
@@ -80,8 +64,7 @@ const getFarmerCode = async (req, res) => {
 const updateFarmer = async (req, res) => {
   try {
     const { code } = req.body;
-    if (code && !/^\d{4}$/.test(code.toString()))
-      return res.status(400).json({ error: 'الكود يجب أن يكون 4 أرقام' });
+    if (code && !/^\d{4}$/.test(code.toString())) return res.status(400).json({ error: 'الكود يجب أن يكون 4 أرقام' });
     await Farmer.findByIdAndUpdate(req.params.farmerId, { ...req.body });
     return res.json({ success: true });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
@@ -109,14 +92,13 @@ const getLands = async (req, res) => {
     if (req.query.farmerId) filter.farmerId = req.query.farmerId;
     const lands = await Land.find(filter).sort({ stationNumber: 1 }).lean();
     return res.json({ lands: lands.map(l => ({
-      ...l,
-      id:            l._id.toString(),
-      farmerId:      l.farmerId ? l.farmerId.toString() : null,
-      regionId:      l.regionId ? l.regionId.toString() : null,
+      ...l, id: l._id.toString(),
+      farmerId:    l.farmerId  ? l.farmerId.toString()  : null,
+      regionId:    l.regionId  ? l.regionId.toString()  : null,
       stationNumber: l.stationNumber || '',
-      stationLat:    l.stationLat    || null,
-      stationLng:    l.stationLng    || null,
-      description:   l.description   || '',
+      stationLat:  l.stationLat  || null,
+      stationLng:  l.stationLng  || null,
+      description: l.description || '',
     })) });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
@@ -126,14 +108,10 @@ const createLand = async (req, res) => {
     const { farmerId, regionId, name, nameHeb, stationNumber, stationLat, stationLng, description } = req.body;
     if (!stationNumber) return res.status(400).json({ error: 'رقم المحطة مطلوب' });
     const land = await Land.create({
-      farmerId:      farmerId || null,
-      regionId:      regionId || null,
-      name:          name || stationNumber,
-      nameHeb:       nameHeb || stationNumber,
-      description:   description || '',
-      stationNumber: stationNumber,
-      stationLat:    safeFloat(stationLat),
-      stationLng:    safeFloat(stationLng),
+      farmerId: farmerId || null, regionId: regionId || null,
+      name: name || stationNumber, nameHeb: nameHeb || stationNumber,
+      description: description || '', stationNumber,
+      stationLat: safeFloat(stationLat), stationLng: safeFloat(stationLng),
     });
     return res.status(201).json({ success: true, id: land._id.toString() });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
@@ -143,13 +121,10 @@ const updateLand = async (req, res) => {
   try {
     const { regionId, name, nameHeb, stationNumber, stationLat, stationLng, description } = req.body;
     await Land.findByIdAndUpdate(req.params.landId, {
-      regionId:      regionId || null,
-      name:          name || stationNumber || '',
-      nameHeb:       nameHeb || stationNumber || '',
-      description:   description || '',
-      stationNumber: stationNumber || '',
-      stationLat:    safeFloat(stationLat),
-      stationLng:    safeFloat(stationLng),
+      regionId: regionId || null,
+      name: name || stationNumber || '', nameHeb: nameHeb || stationNumber || '',
+      description: description || '', stationNumber: stationNumber || '',
+      stationLat: safeFloat(stationLat), stationLng: safeFloat(stationLng),
     });
     return res.json({ success: true });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
@@ -158,12 +133,44 @@ const updateLand = async (req, res) => {
 const deleteLand = async (req, res) => {
   try {
     const id = req.params.landId;
-    await Promise.all([
-      Land.findByIdAndDelete(id),
-      Reading.deleteMany({ landId: id }),
-    ]);
+    await Promise.all([ Land.findByIdAndDelete(id), Reading.deleteMany({ landId: id }) ]);
     return res.json({ success: true });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
+};
+
+// ════════════════════════════════════════
+//  CLEAN DUPLICATE LANDS ✅
+// ════════════════════════════════════════
+const cleanDuplicateLands = async (req, res) => {
+  try {
+    const lands = await Land.find({}).sort({ createdAt: 1 }).lean();
+
+    // تجميع حسب stationNumber
+    const groups = {};
+    for (const land of lands) {
+      const key = land.stationNumber?.trim() || land._id.toString();
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(land);
+    }
+
+    let deleted = 0;
+    for (const [station, group] of Object.entries(groups)) {
+      if (group.length <= 1) continue;
+      // الأول هو الأصلي — احذف الباقي
+      const toDelete = group.slice(1);
+      for (const land of toDelete) {
+        // انقل القراءات للأصل قبل الحذف
+        await Reading.updateMany({ landId: land._id }, { $set: { landId: group[0]._id } });
+        await Land.findByIdAndDelete(land._id);
+        deleted++;
+      }
+    }
+
+    return res.json({ success: true, deleted });
+  } catch (err) {
+    console.error('cleanDuplicateLands:', err);
+    return res.status(500).json({ error: err.message });
+  }
 };
 
 // ════════════════════════════════════════
@@ -177,17 +184,10 @@ const getReadings = async (req, res) => {
     const readings = await Reading.find(filter).sort({ year: -1 }).lean();
     return res.json({ readings: readings.map(r => ({
       ...r, id: r._id.toString(),
-      farmerId: r.farmerId.toString(),
-      landId: r.landId.toString(),
-      stationNumber: r.stationNumber || '',
-      stationLat: r.stationLat || null,
-      stationLng: r.stationLng || null,
-      extra: r.extra || 0,
-      extraPaid: r.extraPaid || 0,
-      extraNote: r.extraNote || '',
-      note: r.note || '',
-      paid: r.paid || false,
-      paidAt: r.paidAt || null,
+      farmerId: r.farmerId.toString(), landId: r.landId.toString(),
+      stationNumber: r.stationNumber || '', stationLat: r.stationLat || null, stationLng: r.stationLng || null,
+      extra: r.extra || 0, extraPaid: r.extraPaid || 0, extraNote: r.extraNote || '',
+      note: r.note || '', paid: r.paid || false, paidAt: r.paidAt || null,
     })) });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
@@ -195,27 +195,17 @@ const getReadings = async (req, res) => {
 const createReading = async (req, res) => {
   try {
     const { farmerId, landId, year, readings, note, extra, extraPaid, extraNote } = req.body;
-    if (!farmerId || !landId || !year || !readings?.length)
-      return res.status(400).json({ error: 'جميع الحقول مطلوبة' });
-    if (readings.length < 2)
-      return res.status(400).json({ error: 'يجب إدخال قراءتين على الأقل' });
-
-    // جلب بيانات المحطة من الأرض تلقائياً
+    if (!farmerId || !landId || !year || !readings?.length) return res.status(400).json({ error: 'جميع الحقول مطلوبة' });
+    if (readings.length < 2) return res.status(400).json({ error: 'يجب إدخال قراءتين على الأقل' });
     const land = await Land.findById(landId).lean();
-    const stationNumber = land?.stationNumber || '';
-    const stationLat    = land?.stationLat    || null;
-    const stationLng    = land?.stationLng    || null;
-
     const reading = await Reading.create({
       farmerId, landId, year: parseInt(year),
       readings: readings.map(r => parseFloat(r) || 0),
-      stationNumber,
-      stationLat,
-      stationLng,
-      extra: parseFloat(extra) || 0,
-      extraPaid: parseFloat(extraPaid) || 0,
-      extraNote: extraNote || '',
-      note: note || '',
+      stationNumber: land?.stationNumber || '',
+      stationLat:    land?.stationLat    || null,
+      stationLng:    land?.stationLng    || null,
+      extra: parseFloat(extra) || 0, extraPaid: parseFloat(extraPaid) || 0,
+      extraNote: extraNote || '', note: note || '',
     });
     return res.status(201).json({ success: true, id: reading._id.toString() });
   } catch (err) {
@@ -227,25 +217,17 @@ const createReading = async (req, res) => {
 const updateReading = async (req, res) => {
   try {
     const { farmerId, landId, year, readings, note, extra, extraPaid, extraNote } = req.body;
-    // جلب الموقع من الأرض تلقائياً
     const land = await Land.findById(landId).lean();
     const updateData = {
       farmerId, landId, year: parseInt(year),
       readings: readings.map(r => parseFloat(r) || 0),
-      stationNumber: land?.stationNumber || '',
-      stationLat:    land?.stationLat    || null,
-      stationLng:    land?.stationLng    || null,
-      extra: parseFloat(extra) || 0,
-      extraPaid: parseFloat(extraPaid) || 0,
-      extraNote: extraNote || '',
-      note: note || '',
+      stationNumber: land?.stationNumber || '', stationLat: land?.stationLat || null, stationLng: land?.stationLng || null,
+      extra: parseFloat(extra) || 0, extraPaid: parseFloat(extraPaid) || 0,
+      extraNote: extraNote || '', note: note || '',
     };
     await Reading.findByIdAndUpdate(req.params.readingId, { $set: updateData }, { new: true });
     return res.json({ success: true });
-  } catch (err) {
-    console.error('updateReading error:', err);
-    return res.status(500).json({ error: 'خطأ في الخادم: ' + err.message });
-  }
+  } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم: ' + err.message }); }
 };
 
 const deleteReading = async (req, res) => {
@@ -262,32 +244,19 @@ const getPrices = async (req, res) => {
   try {
     const doc = await Prices.findOne({ key: 'prices' }).lean();
     if (!doc) return res.json({ globalPrice: 0, yearPrices: {}, landPrices: {} });
-    return res.json({
-      globalPrice: doc.globalPrice || 0,
-      yearPrices:  doc.yearPrices  || {},
-      landPrices:  doc.landPrices  || {},
-    });
+    return res.json({ globalPrice: doc.globalPrice || 0, yearPrices: doc.yearPrices || {}, landPrices: doc.landPrices || {} });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
 
 const updatePrices = async (req, res) => {
   try {
     const { globalPrice, yearPrices, landPrices } = req.body;
-    const doc = await Prices.findOneAndUpdate(
-      { key: 'prices' },
-      { $set: { globalPrice: parseFloat(globalPrice) || 0 } },
-      { upsert: true, new: true }
-    );
-    doc.yearPrices = yearPrices || {};
-    doc.landPrices = landPrices || {};
-    doc.markModified('yearPrices');
-    doc.markModified('landPrices');
+    const doc = await Prices.findOneAndUpdate({ key: 'prices' }, { $set: { globalPrice: parseFloat(globalPrice) || 0 } }, { upsert: true, new: true });
+    doc.yearPrices = yearPrices || {}; doc.landPrices = landPrices || {};
+    doc.markModified('yearPrices'); doc.markModified('landPrices');
     await doc.save();
     return res.json({ success: true });
-  } catch (err) {
-    console.error('updatePrices:', err);
-    return res.status(500).json({ error: 'خطأ في الخادم' });
-  }
+  } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
 
 // ════════════════════════════════════════
@@ -302,11 +271,7 @@ const getAnnouncement = async (req, res) => {
 
 const updateAnnouncement = async (req, res) => {
   try {
-    await Announcement.findOneAndUpdate(
-      { key: 'announcement' },
-      { text: req.body.text || '' },
-      { upsert: true, new: true }
-    );
+    await Announcement.findOneAndUpdate({ key: 'announcement' }, { text: req.body.text || '' }, { upsert: true, new: true });
     return res.json({ success: true });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
@@ -314,8 +279,7 @@ const updateAnnouncement = async (req, res) => {
 const updateAdminPassword = async (req, res) => {
   try {
     const { password } = req.body;
-    if (!password || password.length < 6)
-      return res.status(400).json({ error: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' });
+    if (!password || password.length < 6) return res.status(400).json({ error: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' });
     await Admin.findOneAndUpdate({ key: 'admin' }, { password }, { upsert: true });
     return res.json({ success: true });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
@@ -323,11 +287,7 @@ const updateAdminPassword = async (req, res) => {
 
 const updateVideo = async (req, res) => {
   try {
-    await Video.findOneAndUpdate(
-      { key: 'video' },
-      { url: req.body.url || '', title: req.body.title || '' },
-      { upsert: true }
-    );
+    await Video.findOneAndUpdate({ key: 'video' }, { url: req.body.url || '', title: req.body.title || '' }, { upsert: true });
     return res.json({ success: true });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
@@ -344,11 +304,7 @@ const getGallery = async (req, res) => {
 
 const updateGallery = async (req, res) => {
   try {
-    await Gallery.findOneAndUpdate(
-      { key: 'gallery' },
-      { images: req.body.images || [] },
-      { upsert: true }
-    );
+    await Gallery.findOneAndUpdate({ key: 'gallery' }, { images: req.body.images || [] }, { upsert: true });
     return res.json({ success: true });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
@@ -361,53 +317,29 @@ const getReport = async (req, res) => {
     const filter = {};
     if (req.query.year)     filter.year = parseInt(req.query.year);
     if (req.query.farmerId) filter.farmerId = req.query.farmerId;
-
     const [farmers, lands, readings, pricesDoc] = await Promise.all([
       Farmer.find().sort({ name: 1 }).lean(),
       Land.find().lean(),
       Reading.find(filter).sort({ year: -1 }).lean(),
       Prices.findOne({ key: 'prices' }).lean(),
     ]);
-
-    const prices = pricesDoc
-      ? { globalPrice: pricesDoc.globalPrice || 0, yearPrices: pricesDoc.yearPrices || {}, landPrices: pricesDoc.landPrices || {} }
-      : {};
-
+    const prices = pricesDoc ? { globalPrice: pricesDoc.globalPrice || 0, yearPrices: pricesDoc.yearPrices || {}, landPrices: pricesDoc.landPrices || {} } : {};
     return res.json({
       farmers:  farmers.map(f => { delete f.code; return { ...f, id: f._id.toString() }; }),
-      lands:    lands.map(l => ({ ...l, id: l._id.toString(), farmerId: l.farmerId?.toString() || null, regionId: l.regionId?.toString() || null })),
+      lands:    lands.map(l => ({ ...l, id: l._id.toString(), farmerId: l.farmerId?.toString() || null, regionId: l.regionId?.toString() || null, description: l.description || '' })),
       readings: readings.map(r => ({
-        ...r,
-        id:            r._id.toString(),
-        farmerId:      r.farmerId?.toString() || '',
-        landId:        r.landId?.toString()   || '',
-        stationNumber: r.stationNumber || '',
-        extra:         r.extra     || 0,
-        extraPaid:     r.extraPaid || 0,
-        extraNote:     r.extraNote || '',
-        paid:          r.paid || false,
-        paidAt:        r.paidAt || null,
+        ...r, id: r._id.toString(),
+        farmerId: r.farmerId?.toString() || '', landId: r.landId?.toString() || '',
+        stationNumber: r.stationNumber || '', extra: r.extra || 0, extraPaid: r.extraPaid || 0,
+        extraNote: r.extraNote || '', paid: r.paid || false, paidAt: r.paidAt || null,
       })),
       prices,
     });
-  } catch (err) {
-    console.error('getReport:', err);
-    return res.status(500).json({ error: 'خطأ في الخادم' });
-  }
-};
-
-module.exports = {
-  getFarmers, createFarmer, getFarmerCode, updateFarmer, deleteFarmer,
-  getLands, createLand, updateLand, deleteLand,
-  getReadings, createReading, updateReading, deleteReading,
-  getPrices, updatePrices,
-  getAnnouncement, updateAnnouncement, updateAdminPassword, updateVideo,
-  getGallery, updateGallery,
-  getReport,
+  } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
 
 // ════════════════════════════════════════
-//  REGIONS — إضافة في آخر الملف
+//  REGIONS
 // ════════════════════════════════════════
 const { Region } = require('../models/Settings');
 
@@ -443,6 +375,12 @@ const deleteRegion = async (req, res) => {
 };
 
 module.exports = {
-  ...module.exports,
+  getFarmers, createFarmer, getFarmerCode, updateFarmer, deleteFarmer,
+  getLands, createLand, updateLand, deleteLand, cleanDuplicateLands,
+  getReadings, createReading, updateReading, deleteReading,
+  getPrices, updatePrices,
+  getAnnouncement, updateAnnouncement, updateAdminPassword, updateVideo,
+  getGallery, updateGallery,
+  getReport,
   getRegions, createRegion, updateRegion, deleteRegion,
 };
