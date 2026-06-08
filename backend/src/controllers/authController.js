@@ -1,4 +1,5 @@
-const Farmer = require('../models/Farmer');
+const bcrypt  = require('bcryptjs');
+const Farmer  = require('../models/Farmer');
 const { Admin, Privileged } = require('../models/Settings');
 const { generateFarmerToken, generateAdminToken, generateViewerToken } = require('../utils/jwt');
 const { recordFailedAttempt, recordSuccess } = require('../middleware/loginProtection');
@@ -104,7 +105,27 @@ const adminLogin = async (req, res) => {
 
     if (!privilegedUser) return res.status(403).json({ error: 'غير مخول' });
 
-    if (privilegedUser.password !== password) {
+    // ✅ مقارنة مع bcrypt — يدعم كلمات المرور القديمة (plaintext) والجديدة (hashed)
+    const stored = privilegedUser.password;
+    let passwordMatch = false;
+
+    if (stored.startsWith('$2a$') || stored.startsWith('$2b$')) {
+      // كلمة مرور مشفرة → مقارنة بـ bcrypt
+      passwordMatch = await bcrypt.compare(password, stored);
+    } else {
+      // كلمة مرور قديمة plaintext → مقارنة مباشرة ثم ترقية
+      passwordMatch = (stored === password);
+      if (passwordMatch) {
+        // ✅ ترقية تلقائية: تشفير كلمة المرور القديمة
+        const hashed = await bcrypt.hash(password, 12);
+        privilegedUser.password = hashed;
+        privilegedDoc.markModified('users');
+        await privilegedDoc.save();
+        console.log(`✅ Password upgraded to bcrypt for user ${idNumber}`);
+      }
+    }
+
+    if (!passwordMatch) {
       await new Promise(r => setTimeout(r, 1500));
       const remaining = recordFailedAttempt(req);
       return res.status(401).json({

@@ -1,3 +1,4 @@
+const bcrypt     = require('bcryptjs');
 const Farmer     = require('../models/Farmer');
 const Land       = require('../models/Land');
 const Reading    = require('../models/Reading');
@@ -315,7 +316,9 @@ const updateAdminPassword = async (req, res) => {
   try {
     const { password } = req.body;
     if (!password || password.length < 6) return res.status(400).json({ error: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' });
-    await Admin.findOneAndUpdate({ key: 'admin' }, { password }, { upsert: true });
+    // ✅ تشفير كلمة المرور قبل الحفظ
+    const hashedPassword = await bcrypt.hash(password, 12);
+    await Admin.findOneAndUpdate({ key: 'admin' }, { password: hashedPassword }, { upsert: true });
     return res.json({ success: true });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };

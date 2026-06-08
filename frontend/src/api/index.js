@@ -113,9 +113,9 @@ export const regionsAPI = {
 };
 
 // ── Reading actions ────────────────────────────────────────────
-export const togglePaid        = id       => req(`/admin/readings/${id}/paid`, { method: 'POST' });
-export const toggleExtraStatus = id       => req(`/admin/readings/${id}/extra-status`, { method: 'POST' });
-export const updateNote        = (id, note) => req(`/admin/readings/${id}/note`, { method: 'POST', body: JSON.stringify({ note }) });
+export const togglePaid        = id         => req(`/admin/readings/${id}/paid`,         { method: 'POST' });
+export const toggleExtraStatus = id         => req(`/admin/readings/${id}/extra-status`,  { method: 'POST' }); // ✅ Route موجود الآن في admin.js
+export const updateNote        = (id, note) => req(`/admin/readings/${id}/note`,          { method: 'POST', body: JSON.stringify({ note }) });
 
 // ── Privileged Users API ───────────────────────────────────────
 export const privilegedAPI = {
