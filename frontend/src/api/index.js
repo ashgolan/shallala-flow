@@ -33,7 +33,8 @@ const upload = async (path, file) => {
 export const authAPI = {
   farmerLogin: async (idNumber, code) => {
     const d = await req('/auth/farmer-login', { method: 'POST', body: JSON.stringify({ idNumber, code }) });
-    setTok(d.token); return d.farmer;
+    setTok(d.token);
+    return d; // ✅ نرجع كل الـ response { token, farmer }
   },
   adminLogin: async (idNumber, code, password) => {
     if (code !== undefined && password !== undefined) {
