@@ -135,7 +135,8 @@ export default function AdminReadings({ adminRole='admin' }) {
   const submitR = async e => {
     e.preventDefault();
     if (!rForm.farmerId || !rForm.landId) { setError(ar ? 'اختر المزارع والأرض' : 'בחר חקלאי וקרקע'); return; }
-    if (rForm.readings.some(r => r === '')) { setError(ar ? 'أدخل جميع القراءات' : 'הזן את כל הקריאות'); return; }
+    // ✅ فقط القراءة الأولى إلزامية
+    if (!rForm.readings[0] && rForm.readings[0] !== 0) { setError(ar ? "القراءة الأولى مطلوبة" : "קריאה ראשונה חובה"); return; }
     setSaving(true); setError('');
     try {
       if (editR) await adminAPI.updateReading(editR.id, rForm);
@@ -303,44 +304,37 @@ export default function AdminReadings({ adminRole='admin' }) {
                 {rForm.readings.map((v,i) => {
                   const prev  = parseFloat(rForm.readings[i-1]);
                   const curr  = parseFloat(v);
-                  const cups  = i > 0 && !isNaN(prev) && !isNaN(curr) ? curr - prev : null;
-                  // ✅ حساب التكلفة للفترة
+                  const cups  = i > 0 && !isNaN(prev) && !isNaN(curr) && v !== '' ? curr - prev : null;
                   const price  = i > 0 ? getPrice(prices, rForm.year, rForm.landId, i) : 0;
                   const amount = cups !== null && cups > 0 ? cups * price : null;
+                  const isEmpty = v === '' || v === null;
                   return (
                     <div key={i} style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
-                      <span style={{ width:130, fontSize:13, fontWeight:700, color:'var(--text-muted)', flexShrink:0 }}>
+                      <span style={{ width:130, fontSize:13, fontWeight:700, color: i===0 ? 'var(--primary)' : 'var(--text-muted)', flexShrink:0 }}>
                         {ar ? 'قراءة' : 'קריאה'} {i+1}
-                        {i===0 ? ` (${ar ? 'بداية' : 'התחלה'})` : ` (${ar ? 'فترة' : 'תקופה'} ${i})`}
+                        {i===0 ? ` (${ar ? 'بداية *' : 'התחלה *'})` : ` (${ar ? 'فترة' : 'תקופה'} ${i})`}
                       </span>
                       <input type="number" step="any" value={v}
                         onChange={e => updateReadingField(i, e.target.value)}
-                        placeholder="0" style={{ width:130, fontWeight:700 }} />
+                        placeholder={i===0 ? (ar?'مطلوب':'חובה') : (ar?'لم تؤخذ بعد':'טרם נלקחה')}
+                        style={{ width:130, fontWeight:700, borderColor: i===0 && isEmpty ? '#ef4444' : '', background: isEmpty && i>0 ? '#f9fafb' : '' }} />
+                      {/* لم تؤخذ بعد */}
+                      {isEmpty && i > 0 && (
+                        <span style={{ fontSize:11, color:'#9ca3af', fontStyle:'italic' }}>
+                          ⏳ {ar?'لم تؤخذ بعد':'טרם נלקחה'}
+                        </span>
+                      )}
                       {/* الأكواب */}
                       {cups !== null && (
-                        <span style={{
-                          fontSize:12, fontWeight:700, minWidth:90,
-                          color: cups >= 0 ? '#16a34a' : '#dc2626',
-                          background: cups >= 0 ? '#f0fdf4' : '#fff1f2',
-                          border: `1px solid ${cups >= 0 ? '#bbf7d0' : '#fca5a5'}`,
-                          padding:'2px 10px', borderRadius:6,
-                        }}>
+                        <span style={{ fontSize:12, fontWeight:700, minWidth:90, color:cups>=0?'#16a34a':'#dc2626', background:cups>=0?'#f0fdf4':'#fff1f2', border:`1px solid ${cups>=0?'#bbf7d0':'#fca5a5'}`, padding:'2px 10px', borderRadius:6 }}>
                           {cups >= 0 ? `🪣 ${cups}` : `⚠️ ${cups}`} {ar ? 'م³' : 'קוב'}
                         </span>
                       )}
-                      {/* ✅ التكلفة */}
+                      {/* التكلفة */}
                       {amount !== null && (
-                        <span style={{
-                          fontSize:12, fontWeight:700,
-                          color:'#854d0e',
-                          background:'#fef9c3',
-                          border:'1px solid #fde047',
-                          padding:'2px 10px', borderRadius:6,
-                        }}>
+                        <span style={{ fontSize:12, fontWeight:700, color:'#854d0e', background:'#fef9c3', border:'1px solid #fde047', padding:'2px 10px', borderRadius:6 }}>
                           💰 ₪{Math.round(amount).toLocaleString()}
-                          <span style={{ fontSize:10, color:'#92400e', marginRight:4 }}>
-                            ({cups} × ₪{price})
-                          </span>
+                          <span style={{ fontSize:10, color:'#92400e', marginRight:4 }}>({cups} × ₪{price})</span>
                         </span>
                       )}
                       {i >= 2 && (

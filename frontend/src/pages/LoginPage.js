@@ -90,10 +90,10 @@ export default function LoginPage({ onFarmerLogin, onAdminLogin }) {
         <div style={{ textAlign:'center', marginBottom:28 }}>
           <div style={{ fontSize:48, marginBottom:8 }}>🌿</div>
           <h1 style={{ fontFamily:'Heebo,Tajawal,sans-serif', color:'var(--primary-dark)', margin:0, fontSize:28 }}>
-            {ar ? 'الشلالة' : 'השלאלה'}
+            {ar ? 'الشلالة' : 'אלשללאלה'}
           </h1>
           <p style={{ color:'var(--text-muted)', fontSize:13, margin:'4px 0 0' }}>
-            {ar ? 'نظام إدارة المياه' : 'מערכת ניהול מים'}
+            {ar ? 'نظام إدارة المياه الزراعيه' : 'מערכת ניהול מים חקלאים'}
           </p>
         </div>
 

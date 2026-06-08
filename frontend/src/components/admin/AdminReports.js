@@ -201,7 +201,7 @@ export function AdminReports() {
 table{width:100%;border-collapse:collapse;}th,td{border:1px solid #d1d5db;padding:5px 8px;}
 thead tr{background:#166534;color:white;}tfoot tr{background:#14532d;color:white;}
 @page{size:landscape;margin:1cm;}</style></head><body>
-<h1>🌿 ${ar?'الشلالة — تقرير':'השלאלה — דוח'}</h1>
+<h1>🌿 ${ar?'الشلالة — تقرير':'אלשללאלה — דוח'}</h1>
 <p>${ar?'تاريخ':'תאריך'}: ${date} | ${yearLabel} | ${farmerLabel}</p>
 <table><thead><tr>
   <th>${ar?'المزارع':'חקלאי'}</th><th>${ar?'المنطقة':'אזור'}</th>

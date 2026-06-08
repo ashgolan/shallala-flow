@@ -71,13 +71,13 @@ async function sendBackupEmail() {
     });
 
     await transporter.sendMail({
-      from: `"🌿 השלאלה — גיבוי" <${process.env.BACKUP_EMAIL_USER}>`,
+      from: `"🌿 אלשללאלה — גיבוי" <${process.env.BACKUP_EMAIL_USER}>`,
       to:   process.env.BACKUP_EMAIL_TO || process.env.BACKUP_EMAIL_USER,
-      subject: `💾 גיבוי אוטומטי — השלאלה | ${date}`,
+      subject: `💾 גיבוי אוטומטי — אלשללאלה | ${date}`,
       html: `
         <div dir="rtl" style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;">
           <div style="text-align:center;background:linear-gradient(135deg,#14532d,#166534);border-radius:12px;padding:20px;margin-bottom:20px;">
-            <h1 style="color:#fff;margin:0;font-size:24px;">🌿 השלאלה</h1>
+            <h1 style="color:#fff;margin:0;font-size:24px;">🌿 אלשללאלה</h1>
             <p style="color:rgba(255,255,255,0.8);font-size:13px;margin:4px 0 0;">מערכת ניהול מים חקלאיים</p>
           </div>
           <div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:10px;padding:20px;margin-bottom:16px;">
@@ -99,7 +99,7 @@ async function sendBackupEmail() {
             </p>
           </div>
           <p style="color:#9ca3af;font-size:11px;text-align:center;">
-            גיבוי אוטומטי יומי — השלאלה 🌿
+            גיבוי אוטומטי יומי — אלשללאלה 🌿
           </p>
         </div>
       `,

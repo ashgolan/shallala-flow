@@ -57,7 +57,7 @@ export default function AdminDashboard({ onLogout, adminRole='admin' }) {
         <div style={{ padding:'22px 16px 16px', textAlign:'center', borderBottom:'1px solid rgba(255,255,255,0.08)' }}>
           <div style={{ fontSize:42, marginBottom:6 }}>🌿</div>
           <div style={{ color:'#fff', fontWeight:900, fontSize:18 }}>
-            {lang === 'ar' ? 'الشلالة' : 'השלאלה'}
+            {lang === 'ar' ? 'الشلالة' : 'אלשללאלה'}
           </div>
           <div style={{ color:'rgba(255,255,255,0.45)', fontSize:11, marginTop:2 }}>
             {t('adminPanel', lang)}
@@ -146,7 +146,7 @@ export default function AdminDashboard({ onLogout, adminRole='admin' }) {
 
         {/* Footer */}
         <div style={{ textAlign:'center', padding:'12px', fontSize:12, color:'var(--text-muted)', borderTop:'1px solid var(--border)' }}>
-          {lang === 'ar' ? 'الشلالة' : 'השלאלה'} © {new Date().getFullYear()}
+          {lang === 'ar' ? 'الشلالة' : 'אלשללאלה'} © {new Date().getFullYear()}
         </div>
       </main>
 

@@ -94,7 +94,7 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
             <span style={{ fontSize:26 }}>🌿</span>
             <div>
               <div style={{ color:'#fff', fontWeight:900, fontSize:16 }}>
-                {lang === 'ar' ? 'الشلالة' : 'השלאלה'}
+                {lang === 'ar' ? 'الشلالة' : 'אלשללאלה'}
               </div>
               <div style={{ color:'rgba(255,255,255,0.6)', fontSize:12 }}>
                 {t('welcome', lang)} {farmer?.name}

@@ -42,10 +42,16 @@ const generateUniqueCode = async () => {
 
 const createFarmer = async (req, res) => {
   try {
-    const { name, nameHeb, idNumber, phone, notes, area } = req.body;
-    if (!name || !idNumber) return res.status(400).json({ error: 'الاسم ورقم الهوية مطلوبان' });
+    const { firstName, lastName, idNumber, phone, notes, area } = req.body;
+    if (!firstName || !lastName || !idNumber) return res.status(400).json({ error: 'الاسم والعائلة ورقم الهوية مطلوبان' });
+    const fullName = `${firstName.trim()} ${lastName.trim()}`;
     const code = await generateUniqueCode();
-    const farmer = await Farmer.create({ name, nameHeb: nameHeb || '', idNumber: idNumber.trim(), code, phone: phone || '', notes: notes || '', area: area || '' });
+    const farmer = await Farmer.create({
+      firstName: firstName.trim(), lastName: lastName.trim(),
+      name: fullName, nameHeb: fullName,
+      idNumber: idNumber.trim(), code,
+      phone: phone || '', notes: notes || '', area: area || '',
+    });
     return res.status(201).json({ success: true, id: farmer._id.toString(), code });
   } catch (err) {
     if (err.code === 11000) return res.status(409).json({ error: 'رقم الهوية موجود مسبقاً' });
@@ -63,9 +69,21 @@ const getFarmerCode = async (req, res) => {
 
 const updateFarmer = async (req, res) => {
   try {
-    const { code } = req.body;
+    const { code, firstName, lastName, phone, notes } = req.body;
     if (code && !/^\d{4}$/.test(code.toString())) return res.status(400).json({ error: 'الكود يجب أن يكون 4 أرقام' });
-    await Farmer.findByIdAndUpdate(req.params.farmerId, { ...req.body });
+    const updateData = { ...req.body };
+    // ✅ إذا أُرسل firstName أو lastName نحدّث name و nameHeb تلقائياً
+    if (firstName || lastName) {
+      const fn = (firstName || '').trim();
+      const ln = (lastName  || '').trim();
+      if (fn && ln) {
+        updateData.firstName = fn;
+        updateData.lastName  = ln;
+        updateData.name      = `${fn} ${ln}`;
+        updateData.nameHeb   = `${fn} ${ln}`;
+      }
+    }
+    await Farmer.findByIdAndUpdate(req.params.farmerId, updateData);
     return res.json({ success: true });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
@@ -196,11 +214,22 @@ const createReading = async (req, res) => {
   try {
     const { farmerId, landId, year, readings, note, extra, extraPaid, extraNote } = req.body;
     if (!farmerId || !landId || !year || !readings?.length) return res.status(400).json({ error: 'جميع الحقول مطلوبة' });
-    if (readings.length < 2) return res.status(400).json({ error: 'يجب إدخال قراءتين على الأقل' });
+    // ✅ فقط القراءة الأولى إلزامية
+    if (readings[0] === '' || readings[0] === null || readings[0] === undefined)
+      return res.status(400).json({ error: 'القراءة الأولى (البداية) مطلوبة' });
     const land = await Land.findById(landId).lean();
     const reading = await Reading.create({
       farmerId, landId, year: parseInt(year),
-      readings: readings.map(r => parseFloat(r) || 0),
+      // ✅ القراءات الفارغة أو 0 في المواضع اللاحقة تُحفظ كـ null
+      readings: readings.map((r, i) => {
+        if (r === '' || r === null || r === undefined) return null;
+        const f = parseFloat(r);
+        if (isNaN(f)) return null;
+        // الموضع الأول (القراءة الأولى) يمكن أن يكون 0
+        // المواضع اللاحقة: 0 يعني "لم تؤخذ بعد"
+        if (i > 0 && f === 0) return null;
+        return f;
+      }),
       stationNumber: land?.stationNumber || '',
       stationLat:    land?.stationLat    || null,
       stationLng:    land?.stationLng    || null,
@@ -220,7 +249,13 @@ const updateReading = async (req, res) => {
     const land = await Land.findById(landId).lean();
     const updateData = {
       farmerId, landId, year: parseInt(year),
-      readings: readings.map(r => parseFloat(r) || 0),
+      readings: readings.map((r, i) => {
+        if (r === '' || r === null || r === undefined) return null;
+        const f = parseFloat(r);
+        if (isNaN(f)) return null;
+        if (i > 0 && f === 0) return null;
+        return f;
+      }),
       stationNumber: land?.stationNumber || '', stationLat: land?.stationLat || null, stationLng: land?.stationLng || null,
       extra: parseFloat(extra) || 0, extraPaid: parseFloat(extraPaid) || 0,
       extraNote: extraNote || '', note: note || '',
