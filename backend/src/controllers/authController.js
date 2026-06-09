@@ -43,6 +43,13 @@ const checkIdentity = async (req, res) => {
       });
     }
 
+    // ✅ منع تسجيل الدخول إذا كان رقم الهوية مؤقتاً
+    if (farmer.idNumber?.startsWith('TMP-')) {
+      return res.status(403).json({
+        error: 'هذا الحساب لا يملك رقم هوية حقيقي بعد. يرجى التواصل مع المدير لتحديث البيانات.',
+      });
+    }
+
     const privilegedDoc  = await Privileged.findOne({ key: 'privileged' });
     const privilegedUser = privilegedDoc?.users?.find(
       u => u.idNumber.trim() === idNumber.toString().trim()

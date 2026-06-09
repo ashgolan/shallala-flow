@@ -104,14 +104,16 @@ export default function AdminFarmers({ adminRole='admin' }) {
 
   const submitFarmer = async e => {
     e.preventDefault();
-    if (!form.firstName.trim() || !form.lastName.trim() || !form.idNumber) { setError(ar?'الاسم والعائلة ورقم الهوية مطلوبان':'שם פרטי, שם משפחה ות"ז חובה'); return; }
+    if (!form.firstName.trim() || !form.lastName.trim()) { setError(ar?'الاسم والاسم العائلة مطلوبان':'שם פרטי ושם משפחה חובה'); return; }
+    // ✅ إذا رقم الهوية فارغ → يولَّد رقم مؤقت TMP تلقائياً، لا يمكنه تسجيل الدخول حتى يُحدَّث
+    const idToUse = form.idNumber.trim() || `TMP-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
     setSaving(true); setError('');
     try {
       if (edit) {
-        await adminAPI.updateFarmer(edit.id, { firstName:form.firstName.trim(), lastName:form.lastName.trim(), idNumber:form.idNumber, phone:form.phone, notes:form.notes });
+        await adminAPI.updateFarmer(edit.id, { firstName:form.firstName.trim(), lastName:form.lastName.trim(), idNumber:idToUse, phone:form.phone, notes:form.notes });
         setShowForm(false);
       } else {
-        const res = await adminAPI.createFarmer({ firstName:form.firstName.trim(), lastName:form.lastName.trim(), idNumber:form.idNumber, phone:form.phone, notes:form.notes });
+        const res = await adminAPI.createFarmer({ firstName:form.firstName.trim(), lastName:form.lastName.trim(), idNumber:idToUse, phone:form.phone, notes:form.notes });
         setShowForm(false); setNewCode(res.code || null);
       }
       load();
@@ -208,6 +210,9 @@ export default function AdminFarmers({ adminRole='admin' }) {
     } catch(e) { alert(ar?'خطأ في التصدير':'שגיאה בייצוא'); }
   };
 
+  // ✅ ترتيب: افتراضي أبجدي حسب العائلة، أو حسب الرصيد عند الضغط
+  const [sortBalance, setSortBalance] = React.useState(null); // null | 'asc' | 'desc'
+
   const filtered = farmers.filter(f => {
     if (!search) return true;
     const q = search.toLowerCase();
@@ -218,7 +223,7 @@ export default function AdminFarmers({ adminRole='admin' }) {
   const MapModal = () => {
     if (!mapModal) return null;
     const { lat, lng, name } = mapModal;
-    const earthUrl = `https://earth.google.com/web/@${lat},${lng},400a,800d,30y,0h,0t,0r`;
+    const earthUrl = `https://earth.google.com/web/@${lat},${lng},400a,800d,30y,0h,0t,0r/data=CgRCAggBMikKJwolCiExS0M0V193eFlWeTQ2UFR6RW81VkFtVVlvMDNHemUtUHQgAToDCgEwQgIIAEoICIXm6fQFEAE?hl=ar`;
     const osmUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${lng-0.002},${lat-0.002},${lng+0.002},${lat+0.002}&marker=${lat},${lng}`;
     return (
       <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={()=>setMapModal(null)}>
@@ -262,12 +267,12 @@ export default function AdminFarmers({ adminRole='admin' }) {
                 <input value={form.lastName} onChange={e=>setForm({...form,lastName:e.target.value})} placeholder={ar?'عمران':'עמראן'} style={{fontFamily:'Heebo,sans-serif',fontSize:15}} />
               </div>
               <div className="form-group">
-                <label>{t('idNumber',lang)} *</label>
-                <input value={form.idNumber} onChange={e=>setForm({...form,idNumber:e.target.value})} placeholder="039444682" />
+                <label>{t('idNumber',lang)} <span style={{fontSize:11,color:'var(--text-muted)',fontWeight:400}}>{ar?'(اختياري — سيُولَّد مؤقت إن تُرك فارغاً)':'(אופציונלי — יוגרל זמני אם ריק)'}</span></label>
+                <input value={form.idNumber} onChange={e=>setForm({...form,idNumber:e.target.value})} placeholder={ar?'اتركه فارغاً أو أدخل الرقم':"השאר ריק או הכנס ת\"ז"} />
               </div>
               <div className="form-group">
                 <label>{t('phone',lang)}</label>
-                <input value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="050-1234567" />
+                <input value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="050-1234567" type="tel" autoComplete="off" />
               </div>
               {!edit && (
                 <div className="form-group">
@@ -308,17 +313,37 @@ export default function AdminFarmers({ adminRole='admin' }) {
               <thead>
                 <tr>
                   <th style={{width:30}}></th>
-                  <th>{ar?'الاسم':'שם'}</th>
+                  <th
+                    onClick={()=>setSortBalance(null)}
+                    style={{cursor:'pointer',userSelect:'none'}}
+                    title={ar?'اضغط للعودة للترتيب الأبجدي':'לחץ למיון אלפביתי'}
+                  >
+                    {ar?'الاسم':'שם'}{sortBalance !== null ? ' ↺' : ''}
+                  </th>
                   <th>{t('idNumber',lang)}</th>
                   <th>{ar?'الكود':'קוד'}</th>
                   <th>{t('phone',lang)}</th>
-                  <th style={{color:'#dc2626',background:'#fff1f2'}}>{ar?'غير مدفوع':'יתרה'}</th>
+                  <th
+                    onClick={()=>setSortBalance(s => s === 'desc' ? 'asc' : 'desc')}
+                    style={{color:'#dc2626',background:'#fff1f2',cursor:'pointer',userSelect:'none',whiteSpace:'nowrap'}}
+                    title={ar?'اضغط للترتيب':'לחץ למיון'}
+                  >
+                    {ar?'غير مدفوع':'יתרה'}
+                    {sortBalance === 'desc' ? ' ↓' : sortBalance === 'asc' ? ' ↑' : ' ↕'}
+                  </th>
                   <th>{t('notes',lang)}</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(f => {
+                {[...filtered].sort((a,b) => {
+                    if (sortBalance === 'asc')  return calcUnpaid(a.id) - calcUnpaid(b.id);
+                    if (sortBalance === 'desc') return calcUnpaid(b.id) - calcUnpaid(a.id);
+                    // ✅ ترتيب أبجدي افتراضي حسب اسم العائلة
+                    const nameA = (a.lastName || a.name || '').trim();
+                    const nameB = (b.lastName || b.name || '').trim();
+                    return nameA.localeCompare(nameB, 'ar');
+                  }).map(f => {
                   const unpaid = calcUnpaid(f.id);
                   const isOpen = expandedFarmer === f.id;
                   return (
@@ -331,11 +356,16 @@ export default function AdminFarmers({ adminRole='admin' }) {
                         </td>
                         <td>
                           <div style={{fontFamily:'Heebo,sans-serif'}}>
-                            <span style={{fontWeight:700,fontSize:15}}>{f.firstName||''} </span>
-                            <span style={{fontWeight:900,fontSize:15,color:'var(--primary)'}}>{f.lastName||f.nameHeb||f.name}</span>
+                            <span style={{fontWeight:900,fontSize:15,color:'var(--primary)'}}>{f.lastName||f.nameHeb||f.name} </span>
+                            <span style={{fontWeight:700,fontSize:15}}>{f.firstName||''}</span>
                           </div>
                         </td>
-                        <td><code style={{background:'var(--surface-2)',padding:'2px 8px',borderRadius:4,fontSize:12}}>{f.idNumber}</code></td>
+                        <td>
+                          {f.idNumber?.startsWith('TMP-')
+                            ? <span title={f.idNumber} style={{background:'#fff7ed',border:'1px solid #fed7aa',color:'#c2410c',padding:'2px 8px',borderRadius:6,fontSize:11,fontWeight:700}}>⏳ {ar?'مؤقت':'זמני'}</span>
+                            : <code style={{background:'var(--surface-2)',padding:'2px 8px',borderRadius:4,fontSize:12}}>{f.idNumber}</code>
+                          }
+                        </td>
                         <td>
                           <div style={{display:'flex',alignItems:'center',gap:5}}>
                             <code style={{background:'#f0fdf4',border:'1px solid #bbf7d0',padding:'3px 10px',borderRadius:6,fontSize:13,fontWeight:700,letterSpacing:3,color:'#15803d'}}>{revealCode?.id===f.id?revealCode.code:'••••'}</code>
@@ -394,12 +424,12 @@ export default function AdminFarmers({ adminRole='admin' }) {
                                             const s = allLands.find(l => l.stationNumber === val);
                                             if (s) {
                                               if (editLand) {
-                                                // في التعديل: نملأ النموذج فقط
-                                                setLandFormData({ regionId:s.regionId||'', stationNumber:s.stationNumber, stationLat:s.stationLat||'', stationLng:s.stationLng||'', gpsRaw:(s.stationLat&&s.stationLng)?`${s.stationLat}, ${s.stationLng}`:'', description:landFormData.description });
+                                                // في التعديل: نملأ النموذج + ننسخ الوصف من المحطة تلقائياً (قابل للتعديل)
+                                                setLandFormData({ regionId:s.regionId||'', stationNumber:s.stationNumber, stationLat:s.stationLat||'', stationLng:s.stationLng||'', gpsRaw:(s.stationLat&&s.stationLng)?`${s.stationLat}, ${s.stationLng}`:'', description: s.description || '' });
                                               } else {
-                                                // في الإضافة: نضيف للقائمة فوراً
+                                                // في الإضافة: نضيف للقائمة فوراً + ننسخ الوصف من المحطة تلقائياً
                                                 if (!pendingLands.find(p=>p.stationNumber===val))
-                                                  setPendingLands(prev=>[...prev,{regionId:s.regionId||'',stationNumber:s.stationNumber,stationLat:s.stationLat||'',stationLng:s.stationLng||'',description:''}]);
+                                                  setPendingLands(prev=>[...prev,{regionId:s.regionId||'',stationNumber:s.stationNumber,stationLat:s.stationLat||'',stationLng:s.stationLng||'',description: s.description || ''}]);
                                                 e.target.value='';
                                               }
                                             }

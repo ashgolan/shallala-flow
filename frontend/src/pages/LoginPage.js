@@ -103,7 +103,7 @@ export default function LoginPage({ onFarmerLogin, onAdminLogin }) {
             <div className="form-group">
               <label>{ar?'رقم الهوية':'מספר ת"ז'}</label>
               <input value={idNumber} onChange={e=>setIdNumber(e.target.value)}
-                placeholder="039444682" inputMode="numeric" autoFocus />
+                placeholder="012345678" inputMode="numeric" autoFocus />
             </div>
             <div className="form-group">
               <label>{ar?'كود الدخول (4 أرقام)':'קוד כניסה (4 ספרות)'}</label>

@@ -16,6 +16,11 @@ const farmerSchema = new mongoose.Schema({
   collection: 'farmers',
 });
 
+// ✅ virtual: هل رقم الهوية مؤقت؟
+farmerSchema.virtual('isTemp').get(function () {
+  return this.idNumber?.startsWith('TMP-');
+});
+
 farmerSchema.methods.toSafeObject = function () {
   const obj = this.toObject();
   delete obj.code;
