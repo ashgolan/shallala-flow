@@ -61,6 +61,7 @@ export default function AdminFarmers({ adminRole='admin' }) {
   const [manualMode,     setManualMode]     = useState(false);
   const [pendingLands,   setPendingLands]   = useState([]);
   const [savingBatch,    setSavingBatch]    = useState(false);
+  const [askLandFor,     setAskLandFor]     = useState(null); // { id, name } للمزارع الجديد
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -114,7 +115,9 @@ export default function AdminFarmers({ adminRole='admin' }) {
         setShowForm(false);
       } else {
         const res = await adminAPI.createFarmer({ firstName:form.firstName.trim(), lastName:form.lastName.trim(), idNumber:idToUse, phone:form.phone, notes:form.notes });
+        const newFarmerName = `${form.firstName.trim()} ${form.lastName.trim()}`;
         setShowForm(false); setNewCode(res.code || null);
+        if (res.id) setAskLandFor({ id: res.id, name: newFarmerName });
       }
       load();
     } catch(e) { setError(e.message); }
@@ -242,8 +245,50 @@ export default function AdminFarmers({ adminRole='admin' }) {
   };
 
   return (
+    <>
     <div>
       <MapModal />
+
+      {/* ── مودال: هل تريد إضافة أراضي للمزارع الجديد؟ ── */}
+      {askLandFor && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div style={{background:'#fff',borderRadius:20,padding:32,maxWidth:380,width:'100%',boxShadow:'0 12px 50px rgba(0,0,0,0.25)',textAlign:'center'}}>
+            <div style={{fontSize:48,marginBottom:12}}>🌱</div>
+            <h3 style={{margin:'0 0 8px',fontSize:20,color:'var(--primary)'}}>{ar?'إضافة أراضي':'הוספת קרקעות'}</h3>
+            <p style={{color:'var(--text-muted)',fontSize:14,marginBottom:24,lineHeight:1.6}}>
+              {ar
+                ? <>هل تريد إضافة أراضي للمزارع<br/><strong style={{color:'var(--primary)'}}>{askLandFor.name}</strong> الآن؟</>
+                : <>האם ברצונך להוסיף קרקעות לחקלאי<br/><strong style={{color:'var(--primary)'}}>{askLandFor.name}</strong> עכשיו?</>
+              }
+            </p>
+            <div style={{display:'flex',gap:12,justifyContent:'center'}}>
+              <button
+                className="btn btn-primary"
+                onClick={async () => {
+                  const farmerId = askLandFor.id;
+                  setAskLandFor(null);
+                  setExpandedFarmer(farmerId);
+                  await loadFarmerLands(farmerId);
+                  openAddLand(farmerId);
+                  // نسكرول لنموذج الأرض بعد أن يكتمل الـ render
+                  setTimeout(() => {
+                    const el = document.getElementById(`land-form-${farmerId}`);
+                    if (el) { const top = el.getBoundingClientRect().top + window.scrollY - 80; window.scrollTo({ top, behavior: 'smooth' }); }
+                  }, 350);
+                }}
+              >
+                ✅ {ar?'نعم، أضف الآن':'כן, הוסף עכשיו'}
+              </button>
+              <button
+                className="btn btn-outline"
+                onClick={() => setAskLandFor(null)}
+              >
+                {ar?'لاحقاً':'מאוחר יותר'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex-between mb-20" style={{flexWrap:'wrap',gap:12}}>
         <input type="text" placeholder={`🔍 ${t('search',lang)}`} value={search} onChange={e=>setSearch(e.target.value)} style={{maxWidth:280}} />
         <div className="flex-gap gap-8">
@@ -348,7 +393,7 @@ export default function AdminFarmers({ adminRole='admin' }) {
                   const isOpen = expandedFarmer === f.id;
                   return (
                     <React.Fragment key={f.id}>
-                      <tr style={{background:isOpen?'#f0fdf4':''}}>
+                      <tr id={`farmer-row-${f.id}`} style={{background:isOpen?'#f0fdf4':''}}>
                         <td style={{textAlign:'center'}}>
                           <button onClick={()=>toggleFarmerExpand(f.id)} style={{width:26,height:26,borderRadius:6,border:'1px solid var(--border)',background:isOpen?'var(--primary)':'var(--surface-2)',color:isOpen?'#fff':'var(--text-muted)',cursor:'pointer',fontSize:12,display:'inline-flex',alignItems:'center',justifyContent:'center'}}>
                             {isOpen?'▲':'▼'}
@@ -397,7 +442,7 @@ export default function AdminFarmers({ adminRole='admin' }) {
                               </div>
 
                               {landForm && (
-                                <div style={{background:'#fff',border:'1.5px solid var(--primary)',borderRadius:10,padding:14,marginBottom:12}}>
+                                <div id={`land-form-${f.id}`} style={{background:'#fff',border:'1.5px solid var(--primary)',borderRadius:10,padding:14,marginBottom:12}}>
                                   <h4 style={{margin:'0 0 12px'}}>{editLand?(ar?'✏ تعديل':'✏ עריכה'):(ar?'+ إضافة أراضي':'+ הוסף קרקעות')}</h4>
                                   <form onSubmit={editLand?submitLand:e=>e.preventDefault()}>
 
@@ -427,9 +472,16 @@ export default function AdminFarmers({ adminRole='admin' }) {
                                                 // في التعديل: نملأ النموذج + ننسخ الوصف من المحطة تلقائياً (قابل للتعديل)
                                                 setLandFormData({ regionId:s.regionId||'', stationNumber:s.stationNumber, stationLat:s.stationLat||'', stationLng:s.stationLng||'', gpsRaw:(s.stationLat&&s.stationLng)?`${s.stationLat}, ${s.stationLng}`:'', description: s.description || '' });
                                               } else {
-                                                // في الإضافة: نضيف للقائمة فوراً + ننسخ الوصف من المحطة تلقائياً
-                                                if (!pendingLands.find(p=>p.stationNumber===val))
-                                                  setPendingLands(prev=>[...prev,{regionId:s.regionId||'',stationNumber:s.stationNumber,stationLat:s.stationLat||'',stationLng:s.stationLng||'',description: s.description || ''}]);
+                                                // في الإضافة: نسمح بالتكرار (مزارع يملك أكثر من ساعة في نفس المحطة)
+                                                const isDuplicate = pendingLands.some(p => p.stationNumber === val);
+                                                setPendingLands(prev => [...prev, {
+                                                  regionId: s.regionId||'',
+                                                  stationNumber: s.stationNumber,
+                                                  stationLat: s.stationLat||'',
+                                                  stationLng: s.stationLng||'',
+                                                  description: isDuplicate ? '' : (s.description || ''),
+                                                  _duplicate: isDuplicate,
+                                                }]);
                                                 e.target.value='';
                                               }
                                             }
@@ -437,7 +489,7 @@ export default function AdminFarmers({ adminRole='admin' }) {
                                           style={{fontSize:15,fontFamily:'monospace',fontWeight:700}}>
                                           <option value="">{editLand ? (landFormData.stationNumber||ar?'— اختر —':'— בחר —') : (ar?`— اختر (${pendingLands.length} في القائمة) —`:`— בחר (${pendingLands.length} בתור) —`)}</option>
                                           {(() => {
-                                            const available = allLands.filter(l => l.stationNumber && (editLand || !pendingLands.find(p=>p.stationNumber===l.stationNumber)));
+                                            const available = allLands.filter(l => l.stationNumber);
                                             const grouped = available.reduce((acc,l)=>{ const code=l.stationNumber?.match(/^([A-Za-z]+)/)?.[1]?.toUpperCase()||'?'; if(!acc[code])acc[code]=[]; acc[code].push(l); return acc; },{});
                                             return Object.entries(grouped).sort(([a],[b])=>a.localeCompare(b)).map(([code,lands])=>(
                                               <optgroup key={code} label={`── ${code} ──`}>
@@ -518,15 +570,17 @@ export default function AdminFarmers({ adminRole='admin' }) {
                                       </div>
                                       <div style={{display:'flex',flexDirection:'column',gap:6}}>
                                         {pendingLands.map((p, i) => (
-                                          <div key={i} style={{display:'flex',alignItems:'center',gap:8,background:'#fff',border:'1.5px solid #bbf7d0',borderRadius:8,padding:'6px 10px'}}>
-                                            <code style={{fontWeight:900,color:'var(--primary)',fontSize:13,minWidth:40}}>{p.stationNumber}</code>
+                                          <div key={i} style={{display:'flex',alignItems:'center',gap:8,background:p._duplicate?'#fffbeb':'#fff',border:`1.5px solid ${p._duplicate?'#fcd34d':'#bbf7d0'}`,borderRadius:8,padding:'6px 10px'}}>
+                                            <div style={{display:'flex',flexDirection:'column',alignItems:'center',minWidth:40}}>
+                                              <code style={{fontWeight:900,color:'var(--primary)',fontSize:13}}>{p.stationNumber}</code>
+                                              {p._duplicate && <span style={{fontSize:9,color:'#d97706',fontWeight:700}}>{ar?'مكرر':'כפול'}</span>}
+                                            </div>
                                             {p.stationLat && <span style={{fontSize:10,color:'#16a34a'}}>📍</span>}
-                                            {/* ✅ حقل الوصف الخاص بهذا المزارع */}
                                             <input
                                               value={p.description}
                                               onChange={e=>updatePendingDesc(i, e.target.value)}
-                                              placeholder={ar?'وصف خاص (اختياري)...':'תיאור (אופציונלי)...'}
-                                              style={{flex:1,fontSize:12,padding:'3px 8px',borderRadius:5,border:'1px solid #d1d5db'}}
+                                              placeholder={p._duplicate ? (ar?'⚠️ أدخل وصفاً للتمييز (مطلوب)...':'⚠️ הכנס תיאור להבחנה (חובה)...') : (ar?'وصف خاص (اختياري)...':'תיאור (אופציונלי)...')}
+                                              style={{flex:1,fontSize:12,padding:'3px 8px',borderRadius:5,border:`1px solid ${p._duplicate && !p.description ? '#f59e0b' : '#d1d5db'}`,background:p._duplicate && !p.description?'#fffbeb':'#fff'}}
                                             />
                                             <button onClick={()=>setPendingLands(prev=>prev.filter((_,idx)=>idx!==i))}
                                               style={{background:'none',border:'none',cursor:'pointer',color:'#dc2626',fontSize:16,padding:0,lineHeight:1,flexShrink:0}}>✕</button>
@@ -598,5 +652,36 @@ export default function AdminFarmers({ adminRole='admin' }) {
         </div>
       )}
     </div>
+
+      {/* ── زر العودة للأعلى ── */}
+      <button
+        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        title={ar ? 'العودة للأعلى' : 'חזור למעלה'}
+        style={{
+          position: 'fixed',
+          bottom: 32,
+          left: 32,
+          width: 44,
+          height: 44,
+          borderRadius: '50%',
+          background: 'rgba(var(--primary-rgb, 22,101,52), 0.75)',
+          color: '#fff',
+          border: 'none',
+          fontSize: 22,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+          zIndex: 1000,
+          transition: 'opacity 0.2s, transform 0.2s',
+          opacity: 0.7,
+        }}
+        onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1.1)'; }}
+        onMouseLeave={e => { e.currentTarget.style.opacity = '0.7'; e.currentTarget.style.transform = 'scale(1)'; }}
+      >
+        ↑
+      </button>
+    </>
   );
 }

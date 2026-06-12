@@ -209,6 +209,21 @@ export default function LoginPage({ onFarmerLogin, onAdminLogin }) {
             </button>
           </form>
         )}
+
+        {/* Copyright + A.Shaalan Tech signature */}
+        <div style={{ textAlign:'center', marginTop:32, paddingTop:20, borderTop:'1px solid #f0f0f0' }}>
+          <p style={{ fontSize:11, color:'rgba(0,0,0,0.3)', margin:'0 0 8px' }}>
+            © {new Date().getFullYear()} {ar ? 'الشلالة — كل الحقوق محفوظة' : 'אלשללאלה — כל הזכויות שמורות'}
+          </p>
+          <div style={{ fontSize:11, color:'rgba(0,0,0,0.3)', marginBottom:8, letterSpacing:'0.06em' }}>
+            {ar ? 'طُوِّر وصُمِّم بواسطة' : 'פותח ועוצב על ידי'}
+          </div>
+          <img
+            src="/logo-shaalan.png"
+            alt="A.Shaalan Tech"
+            style={{ height:60, width:'auto', display:'inline-block', filter:'brightness(0.85)' }}
+          />
+        </div>
       </div>
     </div>
   );
