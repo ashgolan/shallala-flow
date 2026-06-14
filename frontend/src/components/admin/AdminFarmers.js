@@ -226,18 +226,36 @@ export default function AdminFarmers({ adminRole='admin' }) {
   const MapModal = () => {
     if (!mapModal) return null;
     const { lat, lng, name } = mapModal;
+    const esriUrl  = `https://maps.google.com/maps?q=${lat},${lng}&z=18&t=k&output=embed&markers=${lat},${lng}`;
     const earthUrl = `https://earth.google.com/web/@${lat},${lng},400a,800d,30y,0h,0t,0r/data=CgRCAggBMikKJwolCiExS0M0V193eFlWeTQ2UFR6RW81VkFtVVlvMDNHemUtUHQgAToDCgEwQgIIAEoICIXm6fQFEAE?hl=ar`;
-    const osmUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${lng-0.002},${lat-0.002},${lng+0.002},${lat+0.002}&marker=${lat},${lng}`;
     return (
-      <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={()=>setMapModal(null)}>
-        <div style={{background:'#fff',borderRadius:16,width:'100%',maxWidth:520,overflow:'hidden',boxShadow:'0 8px 40px rgba(0,0,0,0.3)'}} onClick={e=>e.stopPropagation()}>
-          <div style={{padding:'14px 18px',background:'var(--primary)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-            <strong style={{color:'#fff',fontFamily:'monospace',fontSize:16}}>📍 {name}</strong>
-            <button onClick={()=>setMapModal(null)} style={{background:'none',border:'none',color:'#fff',fontSize:20,cursor:'pointer'}}>✕</button>
+      <div onClick={() => setMapModal(null)} style={{ position:'fixed', inset:0, zIndex:9999, background:'rgba(0,0,0,0.65)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+        <div onClick={e => e.stopPropagation()} style={{ background:'#fff', borderRadius:16, overflow:'hidden', width:'100%', maxWidth:600, boxShadow:'0 20px 60px rgba(0,0,0,0.4)' }}>
+          <div style={{ padding:'14px 18px', background:'var(--primary-dark)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <span style={{ fontSize:20 }}>📍</span>
+              <div>
+                <div style={{ color:'#fff', fontWeight:800, fontSize:15 }}>{name}</div>
+                <div style={{ color:'rgba(255,255,255,0.6)', fontSize:12 }}>{lat}, {lng}</div>
+              </div>
+            </div>
+            <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+              <a href={earthUrl} target="_blank" rel="noopener noreferrer" style={{ color:'#a3e635', fontSize:12, fontWeight:700, textDecoration:'none', background:'rgba(255,255,255,0.1)', padding:'5px 10px', borderRadius:8 }}>
+                🗺️ {ar ? 'Google Earth' : 'Google Earth'}
+              </a>
+              <button onClick={() => setMapModal(null)} style={{ background:'rgba(255,255,255,0.15)', border:'none', color:'#fff', width:30, height:30, borderRadius:'50%', cursor:'pointer', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
+            </div>
           </div>
-          <iframe title="map" src={osmUrl} width="100%" height="280" style={{border:'none',display:'block'}} />
-          <div style={{padding:'10px 16px',display:'flex',gap:10,justifyContent:'flex-end',background:'#f8fafc'}}>
-            <a href={earthUrl} target="_blank" rel="noreferrer" style={{background:'var(--primary)',color:'#fff',padding:'6px 14px',borderRadius:8,fontSize:12,fontWeight:700,textDecoration:'none'}}>🌍 Google Earth</a>
+          <div style={{ position:'relative' }}>
+            <iframe src={esriUrl} width="100%" height="380" style={{ border:0, display:'block' }} allowFullScreen loading="lazy" referrerPolicy="no-referrer-when-downgrade" title="map" />
+            <div style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%, -100%)', pointerEvents:'none', display:'flex', flexDirection:'column', alignItems:'center' }}>
+              <svg width="28" height="36" viewBox="0 0 28 36">
+                <ellipse cx="14" cy="34" rx="6" ry="2" fill="rgba(0,0,0,0.3)"/>
+                <path d="M14 0 C6.3 0 0 6.3 0 14 C0 24.5 14 36 14 36 C14 36 28 24.5 28 14 C28 6.3 21.7 0 14 0Z" fill="#16a34a"/>
+                <circle cx="14" cy="14" r="7" fill="#fff"/>
+                <circle cx="14" cy="14" r="4" fill="#16a34a"/>
+              </svg>
+            </div>
           </div>
         </div>
       </div>
@@ -623,7 +641,7 @@ export default function AdminFarmers({ adminRole='admin' }) {
                                           {l.description?<span style={{background:'#eff6ff',border:'1px solid #bfdbfe',padding:'2px 8px',borderRadius:6}}>🏡 {l.description}</span>:<span style={{color:'var(--border)'}}>—</span>}
                                         </td>
                                         <td style={{padding:'7px 10px',textAlign:'center',fontSize:11}}>
-                                          {l.stationLat&&l.stationLng?<a href={`https://www.google.com/maps?q=${l.stationLat},${l.stationLng}`} target="_blank" rel="noreferrer" style={{color:'var(--primary)',fontWeight:600,textDecoration:'none'}}>📍 {parseFloat(l.stationLat).toFixed(4)}, {parseFloat(l.stationLng).toFixed(4)}</a>:<span style={{color:'var(--border)'}}>—</span>}
+                                          {l.stationLat&&l.stationLng?<button onClick={()=>setMapModal({lat:l.stationLat,lng:l.stationLng,name:l.stationNumber||'?'})} style={{background:'none',border:'none',color:'var(--primary)',fontWeight:600,textDecoration:'none',cursor:'pointer',padding:0}}>📍 {parseFloat(l.stationLat).toFixed(4)}, {parseFloat(l.stationLng).toFixed(4)}</button>:<span style={{color:'var(--border)'}}>—</span>}
                                         </td>
                                         {!isViewer && (
                                           <td style={{padding:'7px 10px'}}>
