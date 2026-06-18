@@ -4,6 +4,7 @@ const bcrypt  = require('bcryptjs');
 const { requireAdmin, requireAdminOnly } = require('../middleware/auth');
 const { uploadLimiter } = require('../middleware/rateLimiter');
 const ctrl = require('../controllers/adminController');
+const projectCtrl = require('../controllers/projectController');
 const { getStorage } = require('../../config/firebase');
 
 router.use(requireAdmin);
@@ -98,7 +99,6 @@ router.get('/privileged', async (req, res) => {
   try {
     const { Privileged } = require('../models/Settings');
     const doc = await Privileged.findOne({ key: 'privileged' });
-    // ✅ لا نُرجع كلمة المرور أبداً
     const users = (doc?.users || []).map(u => ({
       id:       u._id.toString(),
       idNumber: u.idNumber,
@@ -116,14 +116,10 @@ router.post('/privileged', async (req, res) => {
     if (!idNumber || !role || !password) return res.status(400).json({ error: 'رقم الهوية والدور وكلمة المرور مطلوبة' });
     if (!['admin','viewer'].includes(role)) return res.status(400).json({ error: 'الدور غير صالح' });
     if (password.length < 6) return res.status(400).json({ error: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' });
-
     let doc = await Privileged.findOne({ key: 'privileged' });
     if (!doc) doc = new Privileged({ key: 'privileged', users: [] });
-
     const exists = doc.users.find(u => u.idNumber.trim() === idNumber.trim());
     if (exists) return res.status(409).json({ error: 'رقم الهوية موجود مسبقاً' });
-
-    // ✅ تشفير كلمة المرور قبل الحفظ
     const hashedPassword = await bcrypt.hash(password, 12);
     doc.users.push({ idNumber: idNumber.trim(), role, label: label||'', password: hashedPassword });
     doc.markModified('users');
@@ -140,10 +136,8 @@ router.put('/privileged/:userId', async (req, res) => {
     if (!doc) return res.status(404).json({ error: 'غير موجود' });
     const user = doc.users.id(req.params.userId);
     if (!user) return res.status(404).json({ error: 'المستخدم غير موجود' });
-
     if (password) {
       if (password.length < 6) return res.status(400).json({ error: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' });
-      // ✅ تشفير كلمة المرور الجديدة
       user.password = await bcrypt.hash(password, 12);
     }
     if (label !== undefined) user.label = label;
@@ -209,20 +203,33 @@ router.post('/readings/:readingId/paid', async (req, res) => {
   } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 });
 
-// ✅ Route extra-status — كان مفقوداً، أُضيف الآن
 router.post('/readings/:readingId/extra-status', async (req, res) => {
   try {
     const Reading = require('../models/Reading');
     const r = await Reading.findById(req.params.readingId);
     if (!r) return res.status(404).json({ error: 'غير موجود' });
-    // toggle: إذا extraPaid == extra → يُعيد إلى 0، وإلا يضعه كاملاً
     const isFullyPaid = r.extraPaid >= r.extra && r.extra > 0;
     r.extraPaid = isFullyPaid ? 0 : (r.extra || 0);
     await r.save();
     return res.json({ success: true, extraPaid: r.extraPaid });
   } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 });
+
+// ── Import Readings ───────────────────────
 router.post('/preview-readings-import', ctrl.previewReadingsImport);
 router.post('/apply-readings-import',   ctrl.applyReadingsImport);
+
+// ── Projects ──────────────────────────────
+router.get   ('/projects',                                                    projectCtrl.getProjects);
+router.post  ('/projects',                                                    projectCtrl.createProject);
+router.put   ('/projects/:projectId',                                         projectCtrl.updateProject);
+router.delete('/projects/:projectId',                                         projectCtrl.deleteProject);
+// Members
+router.post  ('/projects/:projectId/members',                                 projectCtrl.addMember);
+router.put   ('/projects/:projectId/members/:memberId',                       projectCtrl.updateMember);
+router.delete('/projects/:projectId/members/:memberId',                       projectCtrl.deleteMember);
+// Payments
+router.post  ('/projects/:projectId/members/:memberId/payments',              projectCtrl.addPayment);
+router.delete('/projects/:projectId/members/:memberId/payments/:paymentId',   projectCtrl.deletePayment);
 
 module.exports = router;

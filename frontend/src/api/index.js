@@ -104,6 +104,16 @@ export const adminAPI = {
   // ✅ استيراد قراءات من Excel
   previewReadingsImport: d => req('/admin/preview-readings-import', { method: 'POST', body: JSON.stringify(d) }),
   applyReadingsImport:   d => req('/admin/apply-readings-import',   { method: 'POST', body: JSON.stringify(d) }),
+  // ✅ مشاريع
+  getProjects:          ()           => req('/admin/projects'),
+  createProject:        d            => req('/admin/projects', { method: 'POST', body: JSON.stringify(d) }),
+  updateProject:        (id, d)      => req(`/admin/projects/${id}`, { method: 'PUT', body: JSON.stringify(d) }),
+  deleteProject:        id           => req(`/admin/projects/${id}`, { method: 'DELETE' }),
+  addProjectMember:     (id, d)      => req(`/admin/projects/${id}/members`, { method: 'POST', body: JSON.stringify(d) }),
+  updateProjectMember:  (id, mid, d) => req(`/admin/projects/${id}/members/${mid}`, { method: 'PUT', body: JSON.stringify(d) }),
+  deleteProjectMember:  (id, mid)    => req(`/admin/projects/${id}/members/${mid}`, { method: 'DELETE' }),
+  addProjectPayment:    (id, mid, d) => req(`/admin/projects/${id}/members/${mid}/payments`, { method: 'POST', body: JSON.stringify(d) }),
+  deleteProjectPayment: (id, mid, pid) => req(`/admin/projects/${id}/members/${mid}/payments/${pid}`, { method: 'DELETE' }),
 };
 
 // ── Regions API ────────────────────────────────────────────────

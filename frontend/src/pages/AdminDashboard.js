@@ -4,6 +4,7 @@ import { t } from '../i18n/translations';
 import AdminFarmers  from '../components/admin/AdminFarmers';
 import AdminReadings from '../components/admin/AdminReadings';
 import AdminRegions  from '../components/admin/AdminRegions';
+import AdminProjects from '../components/admin/AdminProjects';
 import { AdminPrices, AdminGallery, AdminSettings, AdminReports } from '../components/admin/AdminComponents';
 import AdminPayments      from '../components/admin/AdminPayments';
 import AdminDashboardPage from '../components/admin/AdminDashboardPage';
@@ -18,15 +19,15 @@ export default function AdminDashboard({ onLogout, adminRole='admin' }) {
 
   const handleLogout = () => { onLogout && onLogout(); onLogout(); };
 
-  // Tabs defined inside component so they re-render with lang
   const allTabs = [
-    { key:'farmers',  icon:'👨‍🌾', label: t('farmers', lang) },
-    { key:'regions',  icon:'📍', label: t('regionsTab', lang) },
-    { key:'readings', icon:'📏', label: t('readingsTab', lang) },
-    { key:'prices',   icon:'💰', label: t('pricesTab', lang) },
-    { key:'reports',  icon:'📊', label: t('reportsTab', lang) },
-    { key:'gallery',  icon:'🖼️', label: t('galleryTab', lang) },
+    { key:'farmers',   icon:'👨‍🌾', label: t('farmers', lang) },
+    { key:'regions',   icon:'📍', label: t('regionsTab', lang) },
+    { key:'readings',  icon:'📏', label: t('readingsTab', lang) },
+    { key:'prices',    icon:'💰', label: t('pricesTab', lang) },
+    { key:'reports',   icon:'📊', label: t('reportsTab', lang) },
+    { key:'gallery',   icon:'🖼️', label: t('galleryTab', lang) },
     { key:'payments',  icon:'💸', label: ar?'المدفوعات':'תשלומים' },
+    { key:'projects',  icon:'🏗️', label: ar?'المشاريع':'פרויקטים' },
     { key:'dashboard', icon:'📊', label: ar?'لوحة التحكم':'לוח בקרה' },
     ...(adminRole === 'admin' ? [{ key:'settings', icon:'⚙️', label: t('settingsTab', lang) }] : []),
   ];
@@ -40,7 +41,6 @@ export default function AdminDashboard({ onLogout, adminRole='admin' }) {
   return (
     <div style={{ display:'flex', minHeight:'100vh', background:'var(--surface)' }}>
 
-      {/* Mobile overlay */}
       {sideOpen && (
         <div onClick={() => setSideOpen(false)}
           style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:199 }} />
@@ -53,7 +53,6 @@ export default function AdminDashboard({ onLogout, adminRole='admin' }) {
         display:'flex', flexDirection:'column', overflowY:'auto',
       }} className={`admin-sidebar${sideOpen ? ' open' : ''}`}>
 
-        {/* Brand */}
         <div style={{ padding:'22px 16px 16px', textAlign:'center', borderBottom:'1px solid rgba(255,255,255,0.08)' }}>
           <div style={{ fontSize:42, marginBottom:6 }}>🌿</div>
           <div style={{ color:'#fff', fontWeight:900, fontSize:18 }}>
@@ -64,7 +63,6 @@ export default function AdminDashboard({ onLogout, adminRole='admin' }) {
           </div>
         </div>
 
-        {/* Nav items */}
         <nav style={{ flex:1, padding:'10px 8px', display:'flex', flexDirection:'column', gap:3 }}>
           {TABS.map(tb => (
             <button key={tb.key}
@@ -83,7 +81,6 @@ export default function AdminDashboard({ onLogout, adminRole='admin' }) {
           ))}
         </nav>
 
-        {/* Logout */}
         <button onClick={handleLogout} style={{
           margin:'0 8px 14px', padding:'11px', borderRadius:10,
           border:'1px solid rgba(255,255,255,0.15)', background:'transparent',
@@ -102,7 +99,6 @@ export default function AdminDashboard({ onLogout, adminRole='admin' }) {
       {/* ── Main ── */}
       <main style={{ flex:1, marginRight:'var(--sidebar-width)', display:'flex', flexDirection:'column', minWidth:0 }}>
 
-        {/* Top header */}
         <div style={{
           background:'#fff', borderBottom:'1.5px solid var(--border)',
           padding:'0 16px', height:58, display:'flex', alignItems:'center',
@@ -110,7 +106,6 @@ export default function AdminDashboard({ onLogout, adminRole='admin' }) {
           boxShadow:'var(--shadow-sm)',
         }}>
           <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-            {/* Hamburger */}
             <button onClick={() => setSideOpen(v => !v)}
               className="mobile-menu-btn"
               style={{ display:'none', background:'transparent', border:'none', fontSize:22, cursor:'pointer', color:'var(--primary)', padding:4 }}>
@@ -120,31 +115,27 @@ export default function AdminDashboard({ onLogout, adminRole='admin' }) {
               {current?.icon} {current?.label}
             </h2>
           </div>
-
-          {/* Lang toggle in header */}
           <LangToggle style={{
             background:'var(--surface-2)', border:'1.5px solid var(--border)',
             color:'var(--primary)',
           }} />
         </div>
 
-        {/* Announcement Banner */}
         <AnnouncementBanner lang={lang} />
 
-        {/* Page content */}
         <div style={{ flex:1, padding:'clamp(16px,3vw,24px)', maxWidth:1200, width:'100%', margin:'0 auto' }} className="page-content">
-          {tab === 'farmers'  && <AdminFarmers  adminRole={adminRole} />}
-          {tab === 'regions'  && <AdminRegions  adminRole={adminRole} />}
-          {tab === 'readings' && <AdminReadings adminRole={adminRole} />}
-          {tab === 'prices'   && <AdminPrices   adminRole={adminRole} />}
-          {tab === 'reports'  && <AdminReports  adminRole={adminRole} />}
-          {tab === 'gallery'  && <AdminGallery  adminRole={adminRole} />}
-          {tab === 'payments'  && <AdminPayments adminRole={adminRole} />}
+          {tab === 'farmers'   && <AdminFarmers   adminRole={adminRole} />}
+          {tab === 'regions'   && <AdminRegions   adminRole={adminRole} />}
+          {tab === 'readings'  && <AdminReadings  adminRole={adminRole} />}
+          {tab === 'prices'    && <AdminPrices    adminRole={adminRole} />}
+          {tab === 'reports'   && <AdminReports   adminRole={adminRole} />}
+          {tab === 'gallery'   && <AdminGallery   adminRole={adminRole} />}
+          {tab === 'payments'  && <AdminPayments  adminRole={adminRole} />}
+          {tab === 'projects'  && <AdminProjects  adminRole={adminRole} />}
           {tab === 'dashboard' && <AdminDashboardPage adminRole={adminRole} />}
           {tab === 'settings'  && adminRole === 'admin' && <AdminSettings />}
         </div>
 
-        {/* Footer */}
         <div style={{ textAlign:'center', padding:'12px', fontSize:12, color:'var(--text-muted)', borderTop:'1px solid var(--border)' }}>
           {lang === 'ar' ? 'الشلالة' : 'אלשללאלה'} © {new Date().getFullYear()}
         </div>

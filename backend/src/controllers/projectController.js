@@ -1,0 +1,148 @@
+const Project = require('../models/Project');
+const Farmer  = require('../models/Farmer');
+const Land    = require('../models/Land');
+
+const plain = p => {
+  const o = p.toObject ? p.toObject() : { ...p };
+  o.id = o._id?.toString();
+  o.members = (o.members || []).map(m => ({
+    ...m,
+    id:       m._id?.toString(),
+    farmerId: m.farmerId?.toString(),
+    payments: (m.payments || []).map(pay => ({ ...pay, id: pay._id?.toString() })),
+  }));
+  return o;
+};
+
+// GET /admin/projects
+const getProjects = async (req, res) => {
+  try {
+    const projects = await Project.find().sort({ createdAt: -1 }).lean();
+    return res.json({ projects: projects.map(p => ({
+      ...p,
+      id: p._id.toString(),
+      members: (p.members||[]).map(m => ({
+        ...m,
+        id:       m._id?.toString(),
+        farmerId: m.farmerId?.toString(),
+        payments: (m.payments||[]).map(pay => ({ ...pay, id: pay._id?.toString() })),
+      })),
+    })) });
+  } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
+};
+
+// POST /admin/projects
+const createProject = async (req, res) => {
+  try {
+    const { name, description, date, lat, lng, locationNote, members, status } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'اسم المشروع مطلوب' });
+    const project = await Project.create({
+      name: name.trim(), description: description||'',
+      date: date ? new Date(date) : new Date(),
+      lat: lat||null, lng: lng||null, locationNote: locationNote||'',
+      members: (members||[]).map(m => ({
+        farmerId: m.farmerId, amount: parseFloat(m.amount)||0,
+        invoiced: !!m.invoiced, payments: [],
+      })),
+      status: status||'active',
+    });
+    return res.status(201).json({ success: true, id: project._id.toString() });
+  } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم: ' + err.message }); }
+};
+
+// PUT /admin/projects/:projectId
+const updateProject = async (req, res) => {
+  try {
+    const { name, description, date, lat, lng, locationNote, status } = req.body;
+    await Project.findByIdAndUpdate(req.params.projectId, {
+      name: name?.trim(), description: description||'',
+      date: date ? new Date(date) : undefined,
+      lat: lat||null, lng: lng||null, locationNote: locationNote||'',
+      status: status||'active',
+    });
+    return res.json({ success: true });
+  } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
+};
+
+// DELETE /admin/projects/:projectId
+const deleteProject = async (req, res) => {
+  try {
+    await Project.findByIdAndDelete(req.params.projectId);
+    return res.json({ success: true });
+  } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
+};
+
+// POST /admin/projects/:projectId/members — إضافة مشترك
+const addMember = async (req, res) => {
+  try {
+    const { farmerId, amount } = req.body;
+    if (!farmerId) return res.status(400).json({ error: 'farmerId مطلوب' });
+    const project = await Project.findById(req.params.projectId);
+    if (!project) return res.status(404).json({ error: 'المشروع غير موجود' });
+    const exists = project.members.find(m => m.farmerId.toString() === farmerId);
+    if (exists) return res.status(409).json({ error: 'المزارع موجود مسبقاً في المشروع' });
+    project.members.push({ farmerId, amount: parseFloat(amount)||0, invoiced: false, payments: [] });
+    await project.save();
+    return res.json({ success: true });
+  } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
+};
+
+// PUT /admin/projects/:projectId/members/:memberId
+const updateMember = async (req, res) => {
+  try {
+    const { amount, invoiced } = req.body;
+    const project = await Project.findById(req.params.projectId);
+    if (!project) return res.status(404).json({ error: 'غير موجود' });
+    const member = project.members.id(req.params.memberId);
+    if (!member) return res.status(404).json({ error: 'المشترك غير موجود' });
+    if (amount   !== undefined) member.amount   = parseFloat(amount)||0;
+    if (invoiced !== undefined) member.invoiced = !!invoiced;
+    await project.save();
+    return res.json({ success: true });
+  } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
+};
+
+// DELETE /admin/projects/:projectId/members/:memberId
+const deleteMember = async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.projectId);
+    if (!project) return res.status(404).json({ error: 'غير موجود' });
+    project.members = project.members.filter(m => m._id.toString() !== req.params.memberId);
+    await project.save();
+    return res.json({ success: true });
+  } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
+};
+
+// POST /admin/projects/:projectId/members/:memberId/payments
+const addPayment = async (req, res) => {
+  try {
+    const { amount, date, note } = req.body;
+    if (!amount || parseFloat(amount) <= 0) return res.status(400).json({ error: 'المبلغ مطلوب' });
+    const project = await Project.findById(req.params.projectId);
+    if (!project) return res.status(404).json({ error: 'غير موجود' });
+    const member = project.members.id(req.params.memberId);
+    if (!member) return res.status(404).json({ error: 'المشترك غير موجود' });
+    member.payments.push({ amount: parseFloat(amount), date: date ? new Date(date) : new Date(), note: note||'' });
+    await project.save();
+    return res.json({ success: true });
+  } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
+};
+
+// DELETE /admin/projects/:projectId/members/:memberId/payments/:paymentId
+const deletePayment = async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.projectId);
+    if (!project) return res.status(404).json({ error: 'غير موجود' });
+    const member = project.members.id(req.params.memberId);
+    if (!member) return res.status(404).json({ error: 'غير موجود' });
+    member.payments = member.payments.filter(p => p._id.toString() !== req.params.paymentId);
+    await project.save();
+    return res.json({ success: true });
+  } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
+};
+
+module.exports = {
+  getProjects, createProject, updateProject, deleteProject,
+  addMember, updateMember, deleteMember,
+  addPayment, deletePayment,
+};
