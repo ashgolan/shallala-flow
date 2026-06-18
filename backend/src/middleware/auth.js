@@ -29,23 +29,31 @@ const requireAdmin = (req, res, next) => {
 
     const token = authHeader.split(' ')[1];
 
-    // نحاول admin أولاً ثم viewer
+    // ✅ نحاول admin أولاً — مع التمييز بين منتهي الصلاحية وغير صالح
     try {
       const decoded = verifyAdminToken(token);
       if (decoded.role !== 'admin')
         return res.status(403).json({ error: 'غير مصرح - ليس مدير' });
       req.adminRole = 'admin';
       return next();
-    } catch {}
+    } catch (adminErr) {
+      // ✅ إذا انتهت صلاحية token الأدمن → أرسل expired فوراً
+      if (adminErr.name === 'TokenExpiredError')
+        return res.status(401).json({ error: 'انتهت صلاحية الجلسة', expired: true });
+    }
 
-    // viewer لديه صلاحية قراءة فقط
+    // ✅ نحاول viewer — مع التمييز بين منتهي الصلاحية وغير صالح
     try {
       const decoded = verifyViewerToken(token);
       if (decoded.role !== 'viewer')
         return res.status(403).json({ error: 'غير مصرح' });
       req.adminRole = 'viewer';
       return next();
-    } catch {}
+    } catch (viewerErr) {
+      // ✅ إذا انتهت صلاحية token الـ viewer → أرسل expired فوراً
+      if (viewerErr.name === 'TokenExpiredError')
+        return res.status(401).json({ error: 'انتهت صلاحية الجلسة', expired: true });
+    }
 
     return res.status(401).json({ error: 'رمز غير صالح' });
   } catch (err) {
@@ -81,15 +89,21 @@ const requireViewer = (req, res, next) => {
       return res.status(401).json({ error: 'غير مصرح' });
 
     const token = authHeader.split(' ')[1];
-    // نقبل admin أو viewer
+
     try {
       const d = verifyAdminToken(token);
       if (d.role === 'admin') { req.adminRole = 'admin'; return next(); }
-    } catch {}
+    } catch (e) {
+      if (e.name === 'TokenExpiredError')
+        return res.status(401).json({ error: 'انتهت صلاحية الجلسة', expired: true });
+    }
     try {
       const d = verifyViewerToken(token);
       if (d.role === 'viewer') { req.adminRole = 'viewer'; return next(); }
-    } catch {}
+    } catch (e) {
+      if (e.name === 'TokenExpiredError')
+        return res.status(401).json({ error: 'انتهت صلاحية الجلسة', expired: true });
+    }
 
     return res.status(401).json({ error: 'رمز غير صالح' });
   } catch (err) {

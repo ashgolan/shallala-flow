@@ -73,7 +73,6 @@ const updateFarmer = async (req, res) => {
     const { code, firstName, lastName, phone, notes } = req.body;
     if (code && !/^\d{4}$/.test(code.toString())) return res.status(400).json({ error: 'الكود يجب أن يكون 4 أرقام' });
     const updateData = { ...req.body };
-    // ✅ إذا أُرسل firstName أو lastName نحدّث name و nameHeb تلقائياً
     if (firstName || lastName) {
       const fn = (firstName || '').trim();
       const ln = (lastName  || '').trim();
@@ -158,33 +157,27 @@ const deleteLand = async (req, res) => {
 };
 
 // ════════════════════════════════════════
-//  CLEAN DUPLICATE LANDS ✅
+//  CLEAN DUPLICATE LANDS
 // ════════════════════════════════════════
 const cleanDuplicateLands = async (req, res) => {
   try {
     const lands = await Land.find({}).sort({ createdAt: 1 }).lean();
-
-    // تجميع حسب stationNumber
     const groups = {};
     for (const land of lands) {
       const key = land.stationNumber?.trim() || land._id.toString();
       if (!groups[key]) groups[key] = [];
       groups[key].push(land);
     }
-
     let deleted = 0;
     for (const [station, group] of Object.entries(groups)) {
       if (group.length <= 1) continue;
-      // الأول هو الأصلي — احذف الباقي
       const toDelete = group.slice(1);
       for (const land of toDelete) {
-        // انقل القراءات للأصل قبل الحذف
         await Reading.updateMany({ landId: land._id }, { $set: { landId: group[0]._id } });
         await Land.findByIdAndDelete(land._id);
         deleted++;
       }
     }
-
     return res.json({ success: true, deleted });
   } catch (err) {
     console.error('cleanDuplicateLands:', err);
@@ -215,19 +208,15 @@ const createReading = async (req, res) => {
   try {
     const { farmerId, landId, year, readings, note, extra, extraPaid, extraNote } = req.body;
     if (!farmerId || !landId || !year || !readings?.length) return res.status(400).json({ error: 'جميع الحقول مطلوبة' });
-    // ✅ فقط القراءة الأولى إلزامية
     if (readings[0] === '' || readings[0] === null || readings[0] === undefined)
       return res.status(400).json({ error: 'القراءة الأولى (البداية) مطلوبة' });
     const land = await Land.findById(landId).lean();
     const reading = await Reading.create({
       farmerId, landId, year: parseInt(year),
-      // ✅ القراءات الفارغة أو 0 في المواضع اللاحقة تُحفظ كـ null
       readings: readings.map((r, i) => {
         if (r === '' || r === null || r === undefined) return null;
         const f = parseFloat(r);
         if (isNaN(f)) return null;
-        // الموضع الأول (القراءة الأولى) يمكن أن يكون 0
-        // المواضع اللاحقة: 0 يعني "لم تؤخذ بعد"
         if (i > 0 && f === 0) return null;
         return f;
       }),
@@ -316,7 +305,6 @@ const updateAdminPassword = async (req, res) => {
   try {
     const { password } = req.body;
     if (!password || password.length < 6) return res.status(400).json({ error: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' });
-    // ✅ تشفير كلمة المرور قبل الحفظ
     const hashedPassword = await bcrypt.hash(password, 12);
     await Admin.findOneAndUpdate({ key: 'admin' }, { password: hashedPassword }, { upsert: true });
     return res.json({ success: true });
@@ -412,6 +400,144 @@ const deleteRegion = async (req, res) => {
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
 
+// ════════════════════════════════════════
+//  IMPORT READINGS — معاينة
+// ════════════════════════════════════════
+const previewReadingsImport = async (req, res) => {
+  try {
+    const { rows, year } = req.body;
+    if (!rows || !Array.isArray(rows) || rows.length === 0)
+      return res.status(400).json({ error: 'لا توجد بيانات' });
+
+    const preview = [];
+
+    for (const row of rows) {
+      const { landId, farmerId, readingId, allReadings, stationNumber, farmerName, farmerPhone } = row;
+
+      if (!allReadings || !allReadings.length) continue;
+      if (allReadings.every(v => v === null)) continue;
+
+      // ابحث عن reading موجود
+      let existing = null;
+      if (readingId) {
+        existing = await Reading.findById(readingId).lean();
+      }
+      if (!existing) {
+        existing = await Reading.findOne({ landId, year: parseInt(year) }).lean();
+      }
+
+      // حساب التغييرات: قارن allReadings الجديدة مع الموجودة
+      const oldReadings = existing ? (existing.readings || []) : [];
+      const changes = []; // القراءات التي تغيّرت أو أُضيفت
+      let hasAnyChange = false;
+
+      for (let i = 0; i < allReadings.length; i++) {
+        const newVal = allReadings[i];
+        const oldVal = oldReadings[i] ?? null;
+        if (newVal !== null && newVal !== oldVal) {
+          hasAnyChange = true;
+          changes.push({ idx: i, oldVal, newVal });
+        }
+      }
+
+      if (!hasAnyChange) continue;
+
+      // للمعاينة: نعرض أهم تغيير (آخر قراءة غير null)
+      const lastChange = changes[changes.length - 1];
+      const prevValue  = lastChange.idx > 0 ? (allReadings[lastChange.idx - 1] ?? oldReadings[lastChange.idx - 1] ?? null) : null;
+
+      preview.push({
+        stationNumber, farmerName, farmerPhone,
+        readingIndex:  lastChange.idx,
+        prevValue,
+        oldValue:      lastChange.oldVal,
+        newValue:      lastChange.newVal,
+        diff:          prevValue !== null ? lastChange.newVal - prevValue : null,
+        changesCount:  changes.length,
+        allReadings,              // ✅ كل القراءات الجديدة للتطبيق
+        oldReadings:   oldReadings, // ✅ كل القراءات القديمة للمعاينة
+        readingId:     existing ? existing._id.toString() : null,
+        landId, farmerId,
+        year:          parseInt(year),
+        status:        existing ? 'update' : 'create',
+      });
+    }
+
+    return res.json({ success: true, preview, count: preview.length });
+  } catch (err) {
+    console.error('previewReadingsImport:', err);
+    return res.status(500).json({ error: 'خطأ في الخادم: ' + err.message });
+  }
+};
+
+// ════════════════════════════════════════
+//  IMPORT READINGS — تطبيق
+// ════════════════════════════════════════
+const applyReadingsImport = async (req, res) => {
+  try {
+    const { items } = req.body;
+    if (!items || !Array.isArray(items) || items.length === 0)
+      return res.status(400).json({ error: 'لا توجد بيانات للتطبيق' });
+
+    let applied = 0, created = 0;
+    const errors = [];
+
+    for (const item of items) {
+      const { readingId, landId, farmerId, year, allReadings } = item;
+      if (!allReadings || !allReadings.length) continue;
+      if (allReadings.every(v => v === null || v === undefined)) continue;
+
+      try {
+        // ✅ كل القراءات دفعة واحدة
+        const incomingReadings = item.allReadings || [];
+
+        if (readingId) {
+          // تحديث reading موجود
+          const existing = await Reading.findById(readingId);
+          if (!existing) { errors.push(`reading ${readingId} غير موجود`); continue; }
+
+          // دمج القراءات: الجديدة تحل محل القديمة فقط إذا كانت غير null
+          const merged = [...(existing.readings || [])];
+          for (let i = 0; i < incomingReadings.length; i++) {
+            if (incomingReadings[i] !== null && incomingReadings[i] !== undefined) {
+              while (merged.length <= i) merged.push(null);
+              merged[i] = incomingReadings[i];
+            }
+          }
+          // الـ schema يشترط length >= 2
+          while (merged.length < 2) merged.push(null);
+          existing.readings = merged;
+          existing.markModified('readings');
+          await existing.save();
+          applied++;
+        } else {
+          // إنشاء reading جديد
+          const land = await Land.findById(landId).lean();
+          const newReadings = [...incomingReadings];
+          while (newReadings.length < 2) newReadings.push(null);
+          await Reading.create({
+            farmerId, landId,
+            year: parseInt(year),
+            readings: newReadings,
+            stationNumber: land?.stationNumber || '',
+            stationLat:    land?.stationLat    || null,
+            stationLng:    land?.stationLng    || null,
+            extra: 0, extraPaid: 0, extraNote: '', note: '',
+          });
+          created++;
+        }
+      } catch (e) {
+        errors.push(`${item.stationNumber || landId}: ${e.message}`);
+      }
+    }
+
+    return res.json({ success: true, applied, created, errors });
+  } catch (err) {
+    console.error('applyReadingsImport:', err);
+    return res.status(500).json({ error: 'خطأ في الخادم: ' + err.message });
+  }
+};
+
 module.exports = {
   getFarmers, createFarmer, getFarmerCode, updateFarmer, deleteFarmer,
   getLands, createLand, updateLand, deleteLand, cleanDuplicateLands,
@@ -421,4 +547,5 @@ module.exports = {
   getGallery, updateGallery,
   getReport,
   getRegions, createRegion, updateRegion, deleteRegion,
+  previewReadingsImport, applyReadingsImport,
 };

@@ -222,5 +222,7 @@ router.post('/readings/:readingId/extra-status', async (req, res) => {
     return res.json({ success: true, extraPaid: r.extraPaid });
   } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 });
+router.post('/preview-readings-import', ctrl.previewReadingsImport);
+router.post('/apply-readings-import',   ctrl.applyReadingsImport);
 
 module.exports = router;

@@ -63,6 +63,15 @@ export default function AdminFarmers({ adminRole='admin' }) {
   const [savingBatch,    setSavingBatch]    = useState(false);
   const [askLandFor,     setAskLandFor]     = useState(null); // { id, name } للمزارع الجديد
 
+  // ── Excel Export/Import ──
+  const [excelModal,     setExcelModal]     = useState(false);
+  const [excelYear,      setExcelYear]      = useState(new Date().getFullYear());
+  const [excelPhase,     setExcelPhase]     = useState(1);
+  const [excelLoading,   setExcelLoading]   = useState(false);
+  const [importPreview,  setImportPreview]  = useState(null);
+  const [applyingImport, setApplyingImport] = useState(false);
+  const importFileRef = React.useRef(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -213,6 +222,431 @@ export default function AdminFarmers({ adminRole='admin' }) {
     } catch(e) { alert(ar?'خطأ في التصدير':'שגיאה בייצוא'); }
   };
 
+  // ════════════════════════════════════════
+  //  تصدير Excel للناطور — مرتب حسب المحطة
+  // ════════════════════════════════════════
+  const exportReadingsExcel = async () => {
+    setExcelLoading(true);
+    try {
+      const ExcelJS    = (await import('exceljs')).default;
+      const { saveAs } = await import('file-saver');
+
+      const year  = parseInt(excelYear);
+      const phase = parseInt(excelPhase); // المرحلة الجديدة الفارغة
+
+      const [rdRes, ldRes, rgRes] = await Promise.all([
+        adminAPI.getReadings(), adminAPI.getLands(), adminAPI.getRegions()
+      ]);
+      const allReadings  = rdRes.readings  || [];
+      const allLandsData = ldRes.lands     || [];
+      const allRegions   = rgRes.regions   || [];
+
+      // ── ترتيب طبيعي: A1, A2, A10, B1 ──
+      const parseStation = s => {
+        const m = (s||'').match(/^([A-Za-z]+)(\d+)$/);
+        return m ? [m[1].toUpperCase(), parseInt(m[2])] : [s||'', 0];
+      };
+      const sortedLands = [...allLandsData]
+        .filter(l => l.stationNumber && l.farmerId)
+        .sort((a,b) => {
+          const [aL,aN] = parseStation(a.stationNumber);
+          const [bL,bN] = parseStation(b.stationNumber);
+          return aL<bL?-1:aL>bL?1:aN-bN;
+        });
+
+      if (!sortedLands.length) {
+        alert(ar?'لا توجد أراضٍ مسجلة!':'אין קרקעות רשומות!');
+        setExcelLoading(false); return;
+      }
+
+      // تجميع حسب المحطة
+      const stationGroups = {};
+      for (const land of sortedLands) {
+        if (!stationGroups[land.stationNumber]) stationGroups[land.stationNumber] = [];
+        stationGroups[land.stationNumber].push(land);
+      }
+      const stationKeys = Object.keys(stationGroups);
+
+      // ══ عدد الأعمدة السابقة = phase - 1 ══
+      // مثال: phase=3 → أعمدة سابقة: ق1، ق2 + عمود جديد ق3
+      const prevCount = phase - 1; // عدد القراءات السابقة
+
+      const pageTitle = ar
+        ? `أرقام العدادات  |  ${year}  |  مرحلة ${phase}`
+        : `קריאות מונים  |  ${year}  |  תקופה ${phase}`;
+      const yearLabel = ar
+        ? `السنة: ${year}  |  مرحلة: ${phase}`
+        : `שנה: ${year}  |  תקופה: ${phase}`;
+
+      const wb = new ExcelJS.Workbook();
+      wb.creator = 'الشلالة';
+
+      const ws = wb.addWorksheet(
+        ar?`عدادات ${year} م${phase}`:`מונים ${year} ת${phase}`,
+        { views:[{rightToLeft:true, state:'frozen', xSplit:0, ySplit:3}],
+          pageSetup:{paperSize:9, orientation:'portrait', fitToPage:true, fitToWidth:1} }
+      );
+
+      // ── الألوان ──
+      const GREEN       = '2d6a2d';
+      const GREEN_LIGHT = 'e8f5e9';
+      const GREEN_MID   = 'a5d6a7';
+      const WHITE       = 'FFFFFF';
+      const TEXT        = '1a1a1a';
+      const TEXT_LIGHT  = '555555';
+      const BORDER_C    = 'c8e6c9';
+      const PREV_BG     = 'f1f8e9'; // خلفية القراءات السابقة
+      const NEW_BG      = 'FFFFFF'; // خلفية القراءة الجديدة
+
+      // ── عرض الأعمدة ──
+      // عمود _data (JSON مخفي) + station + name + phone + أعمدة سابقة + عمود جديد
+      const visibleCols = [
+        {key:'_data',   width:0.1}, // JSON مخفي — يحتوي المعرفات
+        {key:'station', width:9  },
+        {key:'name',    width:26 },
+        {key:'phone',   width:15 },
+      ];
+      // أعمدة القراءات السابقة
+      for (let i=1; i<=prevCount; i++) {
+        visibleCols.push({key:`prev${i}`, width:16});
+      }
+      // عمود القراءة الجديدة
+      visibleCols.push({key:'newVal', width:20});
+
+      ws.columns = visibleCols;
+
+      const TOTAL_COLS = visibleCols.length;
+      const DATA_START_COL = 2; // أول عمود مرئي حقيقي
+      const NEW_COL = TOTAL_COLS; // آخر عمود = القراءة الجديدة
+
+      const thinBorder = (color) => ({
+        top:    {style:'thin', color:{argb:'FF'+color}},
+        bottom: {style:'thin', color:{argb:'FF'+color}},
+        left:   {style:'thin', color:{argb:'FF'+color}},
+        right:  {style:'thin', color:{argb:'FF'+color}},
+      });
+
+      // ══ صف العنوان الرئيسي (دمج كامل) ══
+      ws.addRow([pageTitle, ...Array(TOTAL_COLS-1).fill('')]);
+      const r0 = ws.lastRow;
+      r0.height = 38;
+      ws.mergeCells(r0.number, 1, r0.number, TOTAL_COLS);
+      const titleCell = ws.getCell(r0.number, 1);
+      titleCell.value     = pageTitle;
+      titleCell.font      = {name:'Arial', bold:true, size:18, color:{argb:'FF'+WHITE}};
+      titleCell.fill      = {type:'pattern', pattern:'solid', fgColor:{argb:'FF'+GREEN}};
+      titleCell.alignment = {horizontal:'center', vertical:'middle', readingOrder:2};
+
+      // ══ صف السنة والمرحلة (دمج كامل) ══
+      ws.addRow([yearLabel, ...Array(TOTAL_COLS-1).fill('')]);
+      const r1 = ws.lastRow;
+      r1.height = 24;
+      ws.mergeCells(r1.number, 1, r1.number, TOTAL_COLS);
+      const yearCell = ws.getCell(r1.number, 1);
+      yearCell.value     = yearLabel;
+      yearCell.font      = {name:'Arial', bold:true, size:13, color:{argb:'FF'+WHITE}};
+      yearCell.fill      = {type:'pattern', pattern:'solid', fgColor:{argb:'FF'+GREEN}};
+      yearCell.alignment = {horizontal:'center', vertical:'middle', readingOrder:2};
+
+      // ══ صف رؤوس الأعمدة ══
+      const headerVals = ['_data',
+        ar?'المحطة':'עמדה',
+        ar?'اسم المزارع':'שם החקלאי',
+        ar?'الهاتف':'טלפון',
+      ];
+      for (let i=1; i<=prevCount; i++) {
+        headerVals.push(ar ? `قراءة م${i}` : `קריאה ת${i}`);
+      }
+      headerVals.push(ar ? `◀ قراءة جديدة م${phase}` : `◀ קריאה חדשה ת${phase}`);
+
+      ws.addRow(headerVals);
+      const r2 = ws.lastRow;
+      r2.height = 26;
+      // إخفاء عمود _data
+      const dataCell = r2.getCell(1);
+      dataCell.fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FF'+GREEN}};
+      dataCell.font = {size:1, color:{argb:'FF'+GREEN}};
+      // تنسيق رؤوس المحطة + الاسم + الهاتف
+      for (let c=2;c<=4;c++) {
+        const cell = r2.getCell(c);
+        cell.font      = {name:'Arial', bold:true, size:11, color:{argb:'FF'+WHITE}};
+        cell.fill      = {type:'pattern', pattern:'solid', fgColor:{argb:'FF'+GREEN}};
+        cell.alignment = {horizontal:c===3?'right':'center', vertical:'middle', readingOrder:2};
+        cell.border    = thinBorder(GREEN_MID);
+      }
+      // رؤوس القراءات السابقة
+      for (let i=0; i<prevCount; i++) {
+        const c = 5 + i;
+        const cell = r2.getCell(c);
+        cell.font      = {name:'Arial', bold:true, size:11, color:{argb:'FF'+WHITE}};
+        cell.fill      = {type:'pattern', pattern:'solid', fgColor:{argb:'FF'+GREEN}};
+        cell.alignment = {horizontal:'center', vertical:'middle', readingOrder:2};
+        cell.border    = thinBorder(GREEN_MID);
+      }
+      // رأس القراءة الجديدة
+      const newHdrCell = r2.getCell(NEW_COL);
+      newHdrCell.font      = {name:'Arial', bold:true, size:12, color:{argb:'FF'+GREEN}};
+      newHdrCell.fill      = {type:'pattern', pattern:'solid', fgColor:{argb:'FF'+GREEN_MID}};
+      newHdrCell.alignment = {horizontal:'center', vertical:'middle', readingOrder:2};
+      newHdrCell.border    = thinBorder(GREEN);
+
+      // ══ صفوف المحطات ══
+      for (let si=0; si<stationKeys.length; si++) {
+        const st    = stationKeys[si];
+        const lands = stationGroups[st];
+
+        // عنوان المحطة
+        const stRegion  = allRegions.find(r => r.id === lands[0]?.regionId);
+        const stRegName = stRegion?.nameHeb || stRegion?.name || '';
+        const stLabel   = stRegName ? `${st}  —  ${stRegName}` : st;
+
+        ws.addRow(['', stLabel, ...Array(TOTAL_COLS-2).fill('')]);
+        const stRow = ws.lastRow;
+        stRow.height = 24;
+        ws.mergeCells(stRow.number, 2, stRow.number, TOTAL_COLS);
+        // عمود _data فارغ في صف المحطة
+        stRow.getCell(1).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FF'+GREEN_LIGHT}};
+        stRow.getCell(1).font = {size:1, color:{argb:'FF'+GREEN_LIGHT}};
+        const stCell = ws.getCell(stRow.number, 2);
+        stCell.value     = stLabel;
+        stCell.font      = {name:'Arial', bold:true, size:13, color:{argb:'FF'+GREEN}};
+        stCell.fill      = {type:'pattern', pattern:'solid', fgColor:{argb:'FF'+GREEN_LIGHT}};
+        stCell.alignment = {horizontal:'center', vertical:'middle', readingOrder:2};
+        stCell.border    = {
+          top:    {style:'medium', color:{argb:'FF'+GREEN_MID}},
+          bottom: {style:'thin',   color:{argb:'FF'+BORDER_C}},
+        };
+
+        // أسطر المزارعين
+        for (let li=0; li<lands.length; li++) {
+          const land    = lands[li];
+          const farmer  = farmers.find(f=>f.id===land.farmerId);
+          if (!farmer) continue;
+          const reading = allReadings.find(r=>r.landId===land.id && r.year===year);
+          const isAlt   = li%2===1;
+          const rowBg   = isAlt ? GREEN_LIGHT : WHITE;
+
+          // ✅ نخزن المعرفات كـ JSON في العمود الأول (مرئي لكن صغير)
+          const rowMeta = JSON.stringify({
+            lid: land.id,
+            fid: farmer.id,
+            rid: reading?.id || '',
+            idx: phase,
+          });
+          const rowVals = [
+            rowMeta, // عمود _data
+            land.stationNumber,
+            `${farmer.lastName||''} ${farmer.firstName||''}`.trim(),
+            farmer.phone||'',
+          ];
+          // القراءات السابقة (1 إلى prevCount)
+          for (let i=0; i<prevCount; i++) {
+            const val = reading ? (reading.readings[i] ?? '') : '';
+            rowVals.push(val !== '' ? val : '');
+          }
+          // القراءة الجديدة فارغة
+          rowVals.push('');
+
+          ws.addRow(rowVals);
+          const dRow = ws.lastRow;
+          dRow.height = 22;
+
+          // عمود _data — صغير مخفي بصرياً
+          dRow.getCell(1).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FF'+WHITE}};
+          dRow.getCell(1).font = {size:1, color:{argb:'FF'+WHITE}};
+          // B - المحطة
+          const eCell = dRow.getCell(2);
+          eCell.fill      = {type:'pattern',pattern:'solid',fgColor:{argb:'FF'+rowBg}};
+          eCell.font      = {name:'Arial', size:11, color:{argb:'FF'+TEXT}};
+          eCell.alignment = {horizontal:'center', vertical:'middle', readingOrder:2};
+          eCell.border    = thinBorder(BORDER_C);
+          // C - الاسم
+          const fCell = dRow.getCell(3);
+          fCell.fill      = {type:'pattern',pattern:'solid',fgColor:{argb:'FF'+rowBg}};
+          fCell.font      = {name:'Arial', size:11, bold:true, color:{argb:'FF'+TEXT}};
+          fCell.alignment = {horizontal:'right', vertical:'middle', readingOrder:2};
+          fCell.border    = thinBorder(BORDER_C);
+          // D - الهاتف
+          const gCell = dRow.getCell(4);
+          gCell.fill      = {type:'pattern',pattern:'solid',fgColor:{argb:'FF'+rowBg}};
+          gCell.font      = {name:'Arial', size:10, color:{argb:'FF'+TEXT_LIGHT}};
+          gCell.alignment = {horizontal:'center', vertical:'middle', readingOrder:2};
+          gCell.border    = thinBorder(BORDER_C);
+          // القراءات السابقة
+          for (let i=0; i<prevCount; i++) {
+            const c    = 5 + i;
+            const cell = dRow.getCell(c);
+            const val  = reading ? (reading.readings[i] ?? '') : '';
+            cell.fill      = {type:'pattern',pattern:'solid',fgColor:{argb:'FF'+(isAlt?'e8f5e9':'f1f8f1')}};
+            cell.font      = {name:'Arial', size:11, color:{argb:'FF'+TEXT}};
+            cell.alignment = {horizontal:'center', vertical:'middle', readingOrder:2};
+            cell.border    = {
+              top:    {style:'thin', color:{argb:'FF'+BORDER_C}},
+              bottom: {style:'thin', color:{argb:'FF'+BORDER_C}},
+              left:   {style:'thin', color:{argb:'FF'+BORDER_C}},
+              right:  i===prevCount-1
+                ? {style:'medium', color:{argb:'FF'+GREEN_MID}}
+                : {style:'thin',   color:{argb:'FF'+BORDER_C}},
+            };
+            if (val !== '') {
+              cell.numFmt = '#,##0';
+              cell.value  = typeof val==='number'?val:parseFloat(val)||val;
+            }
+          }
+          // عمود القراءة الجديدة
+          const newCell = dRow.getCell(NEW_COL);
+          newCell.fill      = {type:'pattern',pattern:'solid',fgColor:{argb:'FF'+WHITE}};
+          newCell.font      = {name:'Arial', size:12, color:{argb:'FF'+TEXT}};
+          newCell.alignment = {horizontal:'center', vertical:'middle', readingOrder:2};
+          newCell.border    = {
+            top:    {style:'thin',   color:{argb:'FF'+BORDER_C}},
+            bottom: {style:'thin',   color:{argb:'FF'+BORDER_C}},
+            left:   {style:'medium', color:{argb:'FF'+GREEN_MID}},
+            right:  {style:'medium', color:{argb:'FF'+GREEN_MID}},
+          };
+        }
+
+        // فاصل بين المحطات
+        if (si < stationKeys.length-1) {
+          ws.addRow(Array(TOTAL_COLS).fill(''));
+          ws.lastRow.height = 6;
+          for (let c=1;c<=TOTAL_COLS;c++) {
+            ws.lastRow.getCell(c).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FF'+WHITE}};
+          }
+        }
+      }
+
+      // إخفاء عمود _data (العمود الأول فقط)
+      ws.getColumn(1).hidden = true;
+
+      const buf = await wb.xlsx.writeBuffer();
+      saveAs(
+        new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),
+        `readings-${year}-phase${phase}-${new Date().toISOString().slice(0,10)}.xlsx`
+      );
+      setExcelModal(false);
+    } catch(e) {
+      console.error(e);
+      alert(ar?'خطأ في التصدير: '+e.message:'שגיאה בייצוא: '+e.message);
+    }
+    setExcelLoading(false);
+  };
+  const handleImportFile = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = '';
+
+    try {
+      const buf = await file.arrayBuffer();
+      const wb  = XLSX.read(buf, { type: 'array' });
+      const ws  = wb.Sheets[wb.SheetNames[0]];
+
+      // ✅ الصف 0=عنوان، 1=سنة، 2=رؤوس، 3+=بيانات
+      // نبدأ من الصف 2 (index) ليأخذ الصف 2 كرؤوس والصف 3+ كبيانات
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '', range: 2 });
+
+      if (!rows.length) { alert(ar ? 'الملف فارغ' : 'הקובץ ריק'); return; }
+
+      // استخراج السنة والمرحلة من خصائص الملف
+      const subject = wb.Props?.Subject || '';
+      const yearMatch  = subject.match(/year=(\d+)/);
+      const phaseMatch = subject.match(/phase=(\d+)/);
+      const year  = yearMatch  ? parseInt(yearMatch[1])  : new Date().getFullYear();
+      const phase = phaseMatch ? parseInt(phaseMatch[1]) : 1;
+      const readingIdx = phase; // index الخانة في readings[]
+
+      // بناء قائمة الصفوف — نقرأ كل الأعمدة وندمجها في readings[]
+      const importRows = [];
+      for (const row of rows) {
+        // ✅ نقرأ المعرفات من عمود _data (JSON)
+        const rawMeta = row['_data'] || '';
+        if (!rawMeta || typeof rawMeta !== 'string' || !rawMeta.startsWith('{')) continue;
+
+        let meta;
+        try { meta = JSON.parse(rawMeta); } catch { continue; }
+
+        const landId    = meta.lid || '';
+        const farmerId  = meta.fid || '';
+        const readingId = meta.rid || '';
+        if (!landId) continue;
+
+        const keys = Object.keys(row);
+        const stKey   = keys.find(k => k.includes('محطة') || k.includes('עמדה'));
+        const nameKey = keys.find(k => k.includes('مزارع') || k.includes('חקלאי'));
+        const telKey  = keys.find(k => k.includes('هاتف') || k.includes('טלפון'));
+
+        // ✅ نجمع كل القراءات: ت1، ت2، ت3... + عمود جديد
+        // نرتبها حسب رقمها: أعمدة تحتوي "قراءة م" أو "קריאה ת"
+        const readingCols = keys
+          .filter(k => k.includes('قراءة') || k.includes('קריאה'))
+          .sort((a, b) => {
+            // استخراج رقم المرحلة
+            const na = parseInt((a.match(/\d+/) || ['0'])[0]);
+            const nb = parseInt((b.match(/\d+/) || ['0'])[0]);
+            return na - nb;
+          });
+
+        // بناء readings[] الكامل من الأعمدة المرتبة
+        const allReadings = readingCols.map(k => {
+          const v = row[k];
+          if (v === '' || v === null || v === undefined) return null;
+          const f = parseFloat(String(v).replace(/,/g, ''));
+          return isNaN(f) ? null : f;
+        });
+
+        // تجاهل الصفوف التي لا تحتوي أي قراءة
+        if (allReadings.every(v => v === null)) continue;
+
+        importRows.push({
+          landId,
+          farmerId,
+          readingId:    readingId || null,
+          allReadings,  // ✅ كل القراءات دفعة واحدة
+          stationNumber: stKey   ? row[stKey]   : '',
+          farmerName:    nameKey ? row[nameKey]  : '',
+          farmerPhone:   telKey  ? row[telKey]   : '',
+          year,
+        });
+      }
+
+      if (!importRows.length) {
+        alert(ar ? 'لا توجد قراءات جديدة في الملف' : 'אין קריאות חדשות בקובץ');
+        return;
+      }
+
+      // إرسال للـ backend للمعاينة
+      const res = await adminAPI.previewReadingsImport({ rows: importRows, year });
+      if (!res.preview?.length) {
+        alert(ar ? 'لا توجد بيانات صالحة للاستيراد' : 'אין נתונים תקינים לייבוא');
+        return;
+      }
+
+      setImportPreview({ items: res.preview, year, phase });
+    } catch(err) {
+      console.error(err);
+      alert(ar ? 'خطأ في قراءة الملف: ' + err.message : 'שגיאה בקריאת הקובץ: ' + err.message);
+    }
+  };
+
+  const applyImport = async () => {
+    if (!importPreview) return;
+    setApplyingImport(true);
+    try {
+      const res = await adminAPI.applyReadingsImport({ items: importPreview.items });
+      alert(ar
+        ? `✅ تم تطبيق ${res.applied} قراءة${res.created ? ` وإنشاء ${res.created} جديد` : ''}${res.errors?.length ? `
+⚠️ أخطاء: ${res.errors.join(', ')}` : ''}`
+        : `✅ עודכנו ${res.applied} קריאות${res.created ? ` ונוצרו ${res.created} חדשות` : ''}${res.errors?.length ? `
+⚠️ שגיאות: ${res.errors.join(', ')}` : ''}`
+      );
+      setImportPreview(null);
+      load(); // إعادة تحميل البيانات
+    } catch(err) {
+      alert(ar ? 'خطأ في التطبيق: ' + err.message : 'שגיאה בהחלה: ' + err.message);
+    }
+    setApplyingImport(false);
+  };
+
   // ✅ ترتيب: افتراضي أبجدي حسب العائلة، أو حسب الرصيد عند الضغط
   const [sortBalance, setSortBalance] = React.useState(null); // null | 'asc' | 'desc'
 
@@ -267,6 +701,153 @@ export default function AdminFarmers({ adminRole='admin' }) {
     <div>
       <MapModal />
 
+      {/* ══ Modal: تصدير ورقة العمل ══ */}
+      {excelModal && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+          <div style={{background:'#fff',borderRadius:20,padding:32,maxWidth:400,width:'100%',boxShadow:'0 16px 60px rgba(0,0,0,0.3)'}}>
+            <h3 style={{margin:'0 0 20px',fontSize:20,color:'var(--primary)',display:'flex',alignItems:'center',gap:8}}>
+              📥 {ar?'تحميل ورقة عمل الناطور':'הורד גיליון עבודה לשומר'}
+            </h3>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:20}}>
+              <div className="form-group">
+                <label style={{fontWeight:700}}>{ar?'السنة':'שנה'}</label>
+                <input type="number" value={excelYear} onChange={e=>setExcelYear(e.target.value)}
+                  min={2020} max={2099} style={{fontSize:18,fontWeight:900,textAlign:'center'}}/>
+              </div>
+              <div className="form-group">
+                <label style={{fontWeight:700}}>{ar?'رقم المرحلة الجديدة':'תקופה חדשה'}</label>
+                <input type="number" value={excelPhase} onChange={e=>setExcelPhase(e.target.value)}
+                  min={1} max={10} style={{fontSize:18,fontWeight:900,textAlign:'center'}}/>
+              </div>
+            </div>
+            <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:10,padding:'10px 14px',fontSize:13,color:'#15803d',marginBottom:20,lineHeight:1.7}}>
+              💡 {ar
+                ? <>سيُولَّد ملف Excel مرتب حسب المحطات يحتوي على:<br/>• آخر قراءة مسجلة في النظام<br/>• خانة فارغة للقراءة الجديدة (م{excelPhase})<br/>• معرّفات مخفية للاستيراد لاحقاً</>
+                : <>יופק קובץ Excel ממוין לפי תחנות עם:<br/>• קריאה אחרונה מהמערכת<br/>• שדה ריק לקריאה חדשה (ת{excelPhase})<br/>• מזהים נסתרים לייבוא לאחר מכן</>
+              }
+            </div>
+            <div style={{display:'flex',gap:12}}>
+              <button className="btn btn-primary" onClick={exportReadingsExcel} disabled={excelLoading} style={{flex:1}}>
+                {excelLoading ? '⏳...' : `📥 ${ar?'تحميل':'הורד'}`}
+              </button>
+              <button className="btn btn-outline" onClick={()=>setExcelModal(false)} style={{flex:1}}>
+                {ar?'إلغاء':'ביטול'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ Modal: معاينة الاستيراد ══ */}
+      {importPreview && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.65)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div style={{background:'#fff',borderRadius:20,width:'100%',maxWidth:780,maxHeight:'90vh',display:'flex',flexDirection:'column',boxShadow:'0 20px 60px rgba(0,0,0,0.35)',overflow:'hidden'}}>
+            {/* Header */}
+            <div style={{padding:'16px 24px',background:'var(--primary)',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
+              <div>
+                <div style={{color:'#fff',fontWeight:900,fontSize:17}}>
+                  🔍 {ar?'معاينة الاستيراد':'תצוגה מקדימה של ייבוא'} — {ar?`السنة ${importPreview.year} / مرحلة ${importPreview.phase}`:`שנה ${importPreview.year} / תקופה ${importPreview.phase}`}
+                </div>
+                <div style={{color:'rgba(255,255,255,0.75)',fontSize:13,marginTop:2}}>
+                  {importPreview.items.length} {ar?'قراءة ستُطبَّق':'קריאות יוחלו'}
+                </div>
+              </div>
+              <button onClick={()=>setImportPreview(null)} style={{background:'rgba(255,255,255,0.15)',border:'none',color:'#fff',width:32,height:32,borderRadius:'50%',cursor:'pointer',fontSize:17,display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button>
+            </div>
+
+            {/* Table — سطر واحد لكل مزارع */}
+            <div style={{overflowY:'auto',flex:1}}>
+              {(() => {
+                // حساب أقصى عدد فترات في البيانات
+                const maxPhase = Math.max(...importPreview.items.map(item => (item.allReadings||[]).length), 1);
+                return (
+                  <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                    <thead style={{position:'sticky',top:0,zIndex:1}}>
+                      <tr style={{background:'#166534'}}>
+                        <th style={{padding:'8px 10px',textAlign:'center',fontWeight:800,color:'#fff',whiteSpace:'nowrap'}}>{ar?'المحطة':'עמדה'}</th>
+                        <th style={{padding:'8px 10px',textAlign:'right',fontWeight:800,color:'#fff',whiteSpace:'nowrap'}}>{ar?'المزارع':'חקלאי'}</th>
+                        {Array.from({length:maxPhase},(_,i)=>(
+                          <th key={i} style={{padding:'8px 6px',textAlign:'center',fontWeight:800,color:'#a3e635',whiteSpace:'nowrap',minWidth:70}}>
+                            {ar?`م${i+1}`:`ת${i+1}`}
+                          </th>
+                        ))}
+                        <th style={{padding:'8px 10px',textAlign:'center',fontWeight:800,color:'#fff'}}>{ar?'الحالة':'סטטוס'}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importPreview.items.map((item, i) => {
+                        const allR    = item.allReadings  || [];
+                        const oldR    = item.oldReadings  || [];
+                        const rowBg   = i%2===0 ? '#fff' : '#f9fafb';
+                        return (
+                          <tr key={i} style={{borderBottom:'1px solid #e2e8f0', background:rowBg}}>
+                            <td style={{padding:'8px 10px',textAlign:'center',borderLeft:'3px solid #16a34a'}}>
+                              <code style={{background:'#f0fdf4',border:'1px solid #bbf7d0',padding:'2px 8px',borderRadius:6,fontWeight:900,fontSize:13}}>{item.stationNumber}</code>
+                            </td>
+                            <td style={{padding:'8px 10px',fontFamily:'Heebo,sans-serif',fontWeight:700,whiteSpace:'nowrap'}}>{item.farmerName}</td>
+                            {Array.from({length:maxPhase},(_,idx)=>{
+                              const newVal = allR[idx] ?? null;
+                              const oldVal = oldR[idx] ?? null;
+                              const changed = newVal !== null && newVal !== oldVal;
+                              if (newVal === null) {
+                                // لا توجد قراءة في هذه الفترة
+                                return <td key={idx} style={{padding:'6px 6px',textAlign:'center',color:'#d1d5db',background:rowBg}}>—</td>;
+                              }
+                              const diff = oldVal !== null ? newVal - oldVal : null;
+                              return (
+                                <td key={idx} style={{padding:'6px 6px',textAlign:'center',background:changed?'#f0fdf4':rowBg,borderLeft:'1px solid #e2e8f0'}}>
+                                  <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:1}}>
+                                    {oldVal !== null && oldVal !== newVal && (
+                                      <span style={{fontSize:10,color:'#94a3b8',textDecoration:'line-through'}}>{oldVal.toLocaleString()}</span>
+                                    )}
+                                    <strong style={{fontSize:13,color:changed?'#0369a1':'#1a1a1a'}}>{newVal.toLocaleString()}</strong>
+                                    {diff !== null && diff !== 0 && (
+                                      <span style={{fontSize:10,fontWeight:700,color:diff>0?'#16a34a':'#dc2626'}}>{diff>0?'+':''}{diff.toLocaleString()}</span>
+                                    )}
+                                  </div>
+                                </td>
+                              );
+                            })}
+                            <td style={{padding:'6px 10px',textAlign:'center'}}>
+                              {item.status==='create'
+                                ? <span style={{background:'#dbeafe',color:'#1d4ed8',padding:'2px 8px',borderRadius:6,fontSize:11,fontWeight:700}}>{ar?'إنشاء':'יצירה'}</span>
+                                : <span style={{background:'#fef9c3',color:'#854d0e',padding:'2px 8px',borderRadius:6,fontSize:11,fontWeight:700}}>
+                                    {ar?`${item.changesCount||1} فترات`:`${item.changesCount||1} תקופות`}
+                                  </span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                );
+              })()}
+            </div>
+
+            {/* Footer */}
+            <div style={{padding:'14px 24px',borderTop:'2px solid #e5e7eb',background:'#f8fafc',display:'flex',gap:12,alignItems:'center',flexShrink:0}}>
+              <div style={{flex:1,fontSize:12,color:'var(--text-muted)'}}>
+                {ar
+                  ? <><strong style={{color:'#dc2626'}}>⚠️ تنبيه:</strong> بعد الضغط على تطبيق ستُحفظ القراءات في قاعدة البيانات ولا يمكن التراجع</>
+                  : <><strong style={{color:'#dc2626'}}>⚠️ אזהרה:</strong> לאחר לחיצה על החל, הקריאות יישמרו ולא ניתן לבטל</>}
+              </div>
+              <button
+                className="btn btn-primary"
+                onClick={applyImport}
+                disabled={applyingImport}
+                style={{minWidth:130,fontWeight:800,fontSize:15}}
+              >
+                {applyingImport ? '⏳...' : `✅ ${ar?'تطبيق الكل':'החל הכל'}`}
+              </button>
+              <button className="btn btn-outline" onClick={()=>setImportPreview(null)} style={{minWidth:100}}>
+                ❌ {ar?'إلغاء':'ביטול'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
       {/* ── مودال: هل تريد إضافة أراضي للمزارع الجديد؟ ── */}
       {askLandFor && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
@@ -312,6 +893,21 @@ export default function AdminFarmers({ adminRole='admin' }) {
         <div className="flex-gap gap-8">
           <button className="btn btn-outline" onClick={async()=>{ if(window.confirm(ar?'مزامنة GPS؟':'לסנכרן GPS?')){ const r=await adminAPI.syncGPS(); alert((ar?'تم تحديث ':'עודכנו ')+r.updated+(ar?' قراءة':' קריאות')); } }}>🔄 GPS</button>
           <button className="btn btn-outline" onClick={exportExcel}>📊 Excel</button>
+          {!isViewer && (
+            <>
+              <button
+                className="btn btn-outline"
+                style={{background:'#f0fdf4',border:'1.5px solid #16a34a',color:'#15803d',fontWeight:700}}
+                onClick={()=>setExcelModal(true)}
+              >📥 {ar?'ورقة العمل':'גיליון עבודה'}</button>
+              <button
+                className="btn btn-outline"
+                style={{background:'#eff6ff',border:'1.5px solid #3b82f6',color:'#1d4ed8',fontWeight:700}}
+                onClick={()=>importFileRef.current?.click()}
+              >📤 {ar?'رفع نتائج':'העלה תוצאות'}</button>
+              <input ref={importFileRef} type="file" accept=".xlsx,.xls" style={{display:'none'}} onChange={handleImportFile}/>
+            </>
+          )}
           {!isViewer && <button className="btn btn-primary" onClick={openAdd}>+ {ar?'إضافة مزارع':'הוסף חקלאי'}</button>}
         </div>
       </div>
