@@ -869,11 +869,19 @@ export default function AdminFarmers({ adminRole='admin' }) {
                   setExpandedFarmer(farmerId);
                   await loadFarmerLands(farmerId);
                   openAddLand(farmerId);
-                  // نسكرول لنموذج الأرض بعد أن يكتمل الـ render
-                  setTimeout(() => {
+                  // ✅ نسكرول لنموذج الأرض — نعيد المحاولة عدة مرات حتى يظهر العنصر فعلياً في الـ DOM
+                  let attempts = 0;
+                  const tryScroll = () => {
                     const el = document.getElementById(`land-form-${farmerId}`);
-                    if (el) { const top = el.getBoundingClientRect().top + window.scrollY - 80; window.scrollTo({ top, behavior: 'smooth' }); }
-                  }, 350);
+                    if (el) {
+                      const top = el.getBoundingClientRect().top + window.scrollY - 80;
+                      window.scrollTo({ top, behavior: 'smooth' });
+                    } else if (attempts < 20) {
+                      attempts++;
+                      requestAnimationFrame(tryScroll);
+                    }
+                  };
+                  requestAnimationFrame(tryScroll);
                 }}
               >
                 ✅ {ar?'نعم، أضف الآن':'כן, הוסף עכשיו'}
