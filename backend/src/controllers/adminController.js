@@ -156,9 +156,6 @@ const deleteLand = async (req, res) => {
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
 
-// ════════════════════════════════════════
-//  CLEAN DUPLICATE LANDS
-// ════════════════════════════════════════
 const cleanDuplicateLands = async (req, res) => {
   try {
     const lands = await Land.find({}).sort({ createdAt: 1 }).lean();
@@ -180,7 +177,6 @@ const cleanDuplicateLands = async (req, res) => {
     }
     return res.json({ success: true, deleted });
   } catch (err) {
-    console.error('cleanDuplicateLands:', err);
     return res.status(500).json({ error: err.message });
   }
 };
@@ -188,19 +184,50 @@ const cleanDuplicateLands = async (req, res) => {
 // ════════════════════════════════════════
 //  READINGS
 // ════════════════════════════════════════
+// ✅ دالة مساعدة لتحويل extras من الطلب
+const parseExtras = (extrasRaw) => {
+  if (!Array.isArray(extrasRaw)) return [];
+  return extrasRaw
+    .filter(e => e.note || parseFloat(e.amount) > 0)
+    .map(e => ({
+      note:   e.note || '',
+      amount: parseFloat(e.amount) || 0,
+      paid:   parseFloat(e.paid)   || 0,
+    }));
+};
+
+// ✅ دالة مساعدة لتوحيد بيانات القراءة في الاستجابة
+const serializeReading = (r) => ({
+  ...r,
+  id:       r._id.toString(),
+  farmerId: r.farmerId.toString(),
+  landId:   r.landId.toString(),
+  stationNumber: r.stationNumber || '',
+  stationLat:    r.stationLat    || null,
+  stationLng:    r.stationLng    || null,
+  // ✅ extras الجديدة
+  extras:    (r.extras || []).map(e => ({
+    id:     e._id?.toString(),
+    note:   e.note   || '',
+    amount: e.amount || 0,
+    paid:   e.paid   || 0,
+  })),
+  // الحقول القديمة للتوافق
+  extra:     r.extra     || 0,
+  extraPaid: r.extraPaid || 0,
+  extraNote: r.extraNote || '',
+  note:      r.note      || '',
+  paid:      r.paid      || false,
+  paidAt:    r.paidAt    || null,
+});
+
 const getReadings = async (req, res) => {
   try {
     const filter = {};
     if (req.query.farmerId) filter.farmerId = req.query.farmerId;
     if (req.query.year)     filter.year = parseInt(req.query.year);
     const readings = await Reading.find(filter).sort({ year: -1 }).lean();
-    return res.json({ readings: readings.map(r => ({
-      ...r, id: r._id.toString(),
-      farmerId: r.farmerId.toString(), landId: r.landId.toString(),
-      stationNumber: r.stationNumber || '', stationLat: r.stationLat || null, stationLng: r.stationLng || null,
-      extra: r.extra || 0, extraPaid: r.extraPaid || 0, extraNote: r.extraNote || '',
-      note: r.note || '', paid: r.paid || false, paidAt: r.paidAt || null,
-    })) });
+    return res.json({ readings: readings.map(serializeReading) });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
 
@@ -223,8 +250,11 @@ const createReading = async (req, res) => {
       stationNumber: land?.stationNumber || '',
       stationLat:    land?.stationLat    || null,
       stationLng:    land?.stationLng    || null,
-      extra: parseFloat(extra) || 0, extraPaid: parseFloat(extraPaid) || 0,
-      extraNote: extraNote || '', note: note || '',
+      extras:    parseExtras(req.body.extras),
+      extra:     parseFloat(extra)     || 0,
+      extraPaid: parseFloat(extraPaid) || 0,
+      extraNote: extraNote || '',
+      note:      note      || '',
     });
     return res.status(201).json({ success: true, id: reading._id.toString() });
   } catch (err) {
@@ -246,9 +276,14 @@ const updateReading = async (req, res) => {
         if (i > 0 && f === 0) return null;
         return f;
       }),
-      stationNumber: land?.stationNumber || '', stationLat: land?.stationLat || null, stationLng: land?.stationLng || null,
-      extra: parseFloat(extra) || 0, extraPaid: parseFloat(extraPaid) || 0,
-      extraNote: extraNote || '', note: note || '',
+      stationNumber: land?.stationNumber || '',
+      stationLat:    land?.stationLat    || null,
+      stationLng:    land?.stationLng    || null,
+      extras:    parseExtras(req.body.extras),
+      extra:     parseFloat(extra)     || 0,
+      extraPaid: parseFloat(extraPaid) || 0,
+      extraNote: extraNote || '',
+      note:      note      || '',
     };
     await Reading.findByIdAndUpdate(req.params.readingId, { $set: updateData }, { new: true });
     return res.json({ success: true });
@@ -356,7 +391,9 @@ const getReport = async (req, res) => {
       readings: readings.map(r => ({
         ...r, id: r._id.toString(),
         farmerId: r.farmerId?.toString() || '', landId: r.landId?.toString() || '',
-        stationNumber: r.stationNumber || '', extra: r.extra || 0, extraPaid: r.extraPaid || 0,
+        stationNumber: r.stationNumber || '',
+        extras: (r.extras || []).map(e => ({ id: e._id?.toString(), note: e.note||'', amount: e.amount||0, paid: e.paid||0 })),
+        extra: r.extra || 0, extraPaid: r.extraPaid || 0,
         extraNote: r.extraNote || '', paid: r.paid || false, paidAt: r.paidAt || null,
       })),
       prices,
@@ -417,18 +454,12 @@ const previewReadingsImport = async (req, res) => {
       if (!allReadings || !allReadings.length) continue;
       if (allReadings.every(v => v === null)) continue;
 
-      // ابحث عن reading موجود
       let existing = null;
-      if (readingId) {
-        existing = await Reading.findById(readingId).lean();
-      }
-      if (!existing) {
-        existing = await Reading.findOne({ landId, year: parseInt(year) }).lean();
-      }
+      if (readingId) existing = await Reading.findById(readingId).lean();
+      if (!existing) existing = await Reading.findOne({ landId, year: parseInt(year) }).lean();
 
-      // حساب التغييرات: قارن allReadings الجديدة مع الموجودة
       const oldReadings = existing ? (existing.readings || []) : [];
-      const changes = []; // القراءات التي تغيّرت أو أُضيفت
+      const changes = [];
       let hasAnyChange = false;
 
       for (let i = 0; i < allReadings.length; i++) {
@@ -442,7 +473,6 @@ const previewReadingsImport = async (req, res) => {
 
       if (!hasAnyChange) continue;
 
-      // للمعاينة: نعرض أهم تغيير (آخر قراءة غير null)
       const lastChange = changes[changes.length - 1];
       const prevValue  = lastChange.idx > 0 ? (allReadings[lastChange.idx - 1] ?? oldReadings[lastChange.idx - 1] ?? null) : null;
 
@@ -454,8 +484,8 @@ const previewReadingsImport = async (req, res) => {
         newValue:      lastChange.newVal,
         diff:          prevValue !== null ? lastChange.newVal - prevValue : null,
         changesCount:  changes.length,
-        allReadings,              // ✅ كل القراءات الجديدة للتطبيق
-        oldReadings:   oldReadings, // ✅ كل القراءات القديمة للمعاينة
+        allReadings,
+        oldReadings,
         readingId:     existing ? existing._id.toString() : null,
         landId, farmerId,
         year:          parseInt(year),
@@ -465,7 +495,6 @@ const previewReadingsImport = async (req, res) => {
 
     return res.json({ success: true, preview, count: preview.length });
   } catch (err) {
-    console.error('previewReadingsImport:', err);
     return res.status(500).json({ error: 'خطأ في الخادم: ' + err.message });
   }
 };
@@ -488,15 +517,12 @@ const applyReadingsImport = async (req, res) => {
       if (allReadings.every(v => v === null || v === undefined)) continue;
 
       try {
-        // ✅ كل القراءات دفعة واحدة
         const incomingReadings = item.allReadings || [];
 
         if (readingId) {
-          // تحديث reading موجود
           const existing = await Reading.findById(readingId);
           if (!existing) { errors.push(`reading ${readingId} غير موجود`); continue; }
 
-          // دمج القراءات: الجديدة تحل محل القديمة فقط إذا كانت غير null
           const merged = [...(existing.readings || [])];
           for (let i = 0; i < incomingReadings.length; i++) {
             if (incomingReadings[i] !== null && incomingReadings[i] !== undefined) {
@@ -504,14 +530,12 @@ const applyReadingsImport = async (req, res) => {
               merged[i] = incomingReadings[i];
             }
           }
-          // الـ schema يشترط length >= 2
           while (merged.length < 2) merged.push(null);
           existing.readings = merged;
           existing.markModified('readings');
           await existing.save();
           applied++;
         } else {
-          // إنشاء reading جديد
           const land = await Land.findById(landId).lean();
           const newReadings = [...incomingReadings];
           while (newReadings.length < 2) newReadings.push(null);
@@ -522,7 +546,7 @@ const applyReadingsImport = async (req, res) => {
             stationNumber: land?.stationNumber || '',
             stationLat:    land?.stationLat    || null,
             stationLng:    land?.stationLng    || null,
-            extra: 0, extraPaid: 0, extraNote: '', note: '',
+            extras: [], extra: 0, extraPaid: 0, extraNote: '', note: '',
           });
           created++;
         }
@@ -533,7 +557,6 @@ const applyReadingsImport = async (req, res) => {
 
     return res.json({ success: true, applied, created, errors });
   } catch (err) {
-    console.error('applyReadingsImport:', err);
     return res.status(500).json({ error: 'خطأ في الخادم: ' + err.message });
   }
 };

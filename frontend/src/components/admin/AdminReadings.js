@@ -26,7 +26,6 @@ const parseGoogleCoords = (raw) => {
   return null;
 };
 
-// ✅ دالة حساب السعر — نفس منطق ReadingsTable
 const getPrice = (prices, year, landId, idx) => {
   if (!prices) return 0;
   const lp = prices.landPrices?.[String(landId)];
@@ -37,6 +36,87 @@ const getPrice = (prices, year, landId, idx) => {
   if (yp?.default)             return parseFloat(yp.default)           || 0;
   return parseFloat(prices?.globalPrice) || 0;
 };
+
+const EMPTY_FORM = {
+  farmerId:'', landId:'', year: new Date().getFullYear(),
+  readings:['',''],
+  extras: [], // ✅ مصفوفة الإضافات
+  extra:'', extraPaid:'', extraNote:'',
+};
+
+// ✅ مكوّن إضافة واحدة مع autocomplete
+function ExtraRow({ idx, extra, onChange, onRemove, suggestions, ar }) {
+  const [showAc, setShowAc] = useState(false);
+  const filtered = suggestions.filter(s => s.toLowerCase().includes((extra.note||'').toLowerCase()) && s !== extra.note);
+
+  return (
+    <div style={{background:'#fff7ed',border:'1.5px solid #fed7aa',borderRadius:10,padding:'10px 14px',display:'flex',flexDirection:'column',gap:8,position:'relative'}}>
+      <div style={{display:'flex',alignItems:'center',gap:8}}>
+        <span style={{fontWeight:700,fontSize:13,color:'#92400e',minWidth:20}}>#{idx+1}</span>
+        {/* سبب الإضافة مع autocomplete */}
+        <div style={{flex:1,position:'relative'}}>
+          <input
+            value={extra.note||''}
+            onChange={e=>onChange({...extra,note:e.target.value})}
+            onFocus={()=>setShowAc(true)}
+            onBlur={()=>setTimeout(()=>setShowAc(false),150)}
+            placeholder={ar?'سبب الإضافة...':'סיבת התוספת...'}
+            style={{width:'100%',fontSize:13}}
+          />
+          {/* قائمة الاقتراحات */}
+          {showAc && filtered.length > 0 && (
+            <div style={{position:'absolute',top:'100%',right:0,zIndex:200,background:'#fff',border:'1.5px solid #fed7aa',borderRadius:8,boxShadow:'0 4px 12px rgba(0,0,0,0.12)',minWidth:'100%',maxHeight:160,overflowY:'auto'}}>
+              {filtered.map(s=>(
+                <div key={s}
+                  onMouseDown={()=>onChange({...extra,note:s})}
+                  style={{padding:'8px 12px',cursor:'pointer',fontSize:13,fontWeight:600,color:'#92400e'}}
+                  onMouseEnter={e=>e.currentTarget.style.background='#fff7ed'}
+                  onMouseLeave={e=>e.currentTarget.style.background=''}>
+                  {s}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <button type="button" onClick={onRemove}
+          style={{width:26,height:26,borderRadius:6,border:'1.5px solid #fca5a5',background:'#fff1f2',color:'#dc2626',cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:12,flexShrink:0}}>✕</button>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+        <div>
+          <label style={{fontSize:11,color:'#92400e',fontWeight:700,display:'block',marginBottom:3}}>₪ {ar?'المبلغ':'סכום'} *</label>
+          <input type="number" min="0" step="any"
+            value={extra.amount||''}
+            onChange={e=>onChange({...extra,amount:e.target.value})}
+            placeholder="0"
+            style={{width:'100%',fontSize:15,fontWeight:700,textAlign:'center'}}
+          />
+        </div>
+        <div>
+          <label style={{fontSize:11,color:'#16a34a',fontWeight:700,display:'block',marginBottom:3}}>✅ {ar?'المدفوع':'שולם'}</label>
+          <input type="number" min="0" step="any"
+            value={extra.paid||''}
+            onChange={e=>onChange({...extra,paid:e.target.value})}
+            placeholder="0"
+            style={{width:'100%',fontSize:15,fontWeight:700,textAlign:'center'}}
+          />
+        </div>
+      </div>
+      {/* شريط التقدم */}
+      {parseFloat(extra.amount)>0 && (
+        <div>
+          <div style={{height:4,borderRadius:2,background:'#fed7aa',overflow:'hidden'}}>
+            <div style={{height:'100%',borderRadius:2,background:'#16a34a',width:`${Math.min(100,parseFloat(extra.paid||0)/parseFloat(extra.amount)*100)}%`,transition:'width 0.3s'}}/>
+          </div>
+          <div style={{fontSize:11,color:parseFloat(extra.paid||0)>=parseFloat(extra.amount)?'#16a34a':'#dc2626',fontWeight:700,marginTop:2,textAlign:'center'}}>
+            {parseFloat(extra.paid||0)>=parseFloat(extra.amount)
+              ? (ar?'✅ مدفوعة كاملاً':'✅ שולם במלואו')
+              : `${ar?'متبقي':'נותר'}: ₪${(parseFloat(extra.amount)-parseFloat(extra.paid||0)).toLocaleString()}`}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function AdminReadings({ adminRole='admin' }) {
   const isViewer = adminRole === 'viewer';
@@ -52,10 +132,8 @@ export default function AdminReadings({ adminRole='admin' }) {
 
   const [showRForm, setShowRForm] = useState(false);
   const [editR,     setEditR]     = useState(null);
-  const [rForm,     setRForm]     = useState({
-    farmerId:'', landId:'', year: new Date().getFullYear(),
-    readings:['',''], extra:'', extraPaid:'', extraNote:'',
-  });
+  const [rForm,     setRForm]     = useState(EMPTY_FORM);
+  const [extrasSuggestions, setExtrasSuggestions] = useState([]); // ✅ اقتراحات
 
   const [filterF,        setFilterF]        = useState('');
   const [filterY,        setFilterY]        = useState('');
@@ -63,6 +141,9 @@ export default function AdminReadings({ adminRole='admin' }) {
   const [filterPaid,     setFilterPaid]     = useState('');
   const [farmerSearch,   setFarmerSearch]   = useState('');
   const [showFarmerList, setShowFarmerList] = useState(false);
+  // ✅ بحث المزارع في النموذج
+  const [formFarmerSearch,   setFormFarmerSearch]   = useState('');
+  const [showFormFarmerList, setShowFormFarmerList] = useState(false);
   const [error,          setError]          = useState('');
   const [saving,         setSaving]         = useState(false);
 
@@ -86,6 +167,14 @@ export default function AdminReadings({ adminRole='admin' }) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // ✅ جمع أسماء الإضافات الموجودة للاقتراح
+  const gatherSuggestions = (rdgs) => {
+    const notes = [...new Set(
+      rdgs.filter(r=>r.extras?.length).flatMap(r=>r.extras.map(e=>e.note)).filter(Boolean)
+    )];
+    setExtrasSuggestions(notes);
+  };
 
   const farmerName = id => farmers.find(f => String(f.id) === String(id))?.nameHeb
                         || farmers.find(f => String(f.id) === String(id))?.name || '—';
@@ -113,38 +202,50 @@ export default function AdminReadings({ adminRole='admin' }) {
     return l?.regionId ? regionName(l.regionId) : '';
   };
   const years = [...new Set(readings.map(r => r.year))].sort((a,b) => b-a);
-
-  const farmerLands = rForm.farmerId
-    ? lands.filter(l => String(l.farmerId) === String(rForm.farmerId))
-    : lands;
+  const farmerLands = rForm.farmerId ? lands.filter(l => String(l.farmerId) === String(rForm.farmerId)) : lands;
 
   const openAddR = () => {
     setEditR(null);
-    setRForm({ farmerId:'', landId:'', year:new Date().getFullYear(), readings:['',''], extra:'', extraPaid:'', extraNote:'' });
+    setRForm(EMPTY_FORM);
+    setFormFarmerSearch('');
+    gatherSuggestions(readings);
     setError(''); setShowRForm(true);
   };
+
   const openEditR = r => {
     setEditR(r);
+    // ✅ نضع اسم المزارع في حقل البحث
+    const f = farmers.find(x=>String(x.id)===String(r.farmerId));
+    setFormFarmerSearch(f ? (f.nameHeb||f.name||'') : '');
     setRForm({
       farmerId: r.farmerId, landId: r.landId, year: r.year,
       readings: [...r.readings.map(String)],
+      extras: (r.extras||[]).map(e=>({note:e.note||'',amount:String(e.amount||''),paid:String(e.paid||'')})),
       extra: r.extra||'', extraPaid: r.extraPaid||'', extraNote: r.extraNote||'',
     });
+    gatherSuggestions(readings);
     setError(''); setShowRForm(true);
   };
+
   const submitR = async e => {
     e.preventDefault();
     if (!rForm.farmerId || !rForm.landId) { setError(ar ? 'اختر المزارع والأرض' : 'בחר חקלאי וקרקע'); return; }
-    // ✅ فقط القراءة الأولى إلزامية
     if (!rForm.readings[0] && rForm.readings[0] !== 0) { setError(ar ? "القراءة الأولى مطلوبة" : "קריאה ראשונה חובה"); return; }
     setSaving(true); setError('');
     try {
-      if (editR) await adminAPI.updateReading(editR.id, rForm);
-      else       await adminAPI.createReading(rForm);
+      const payload = {
+        ...rForm,
+        extras: (rForm.extras||[]).filter(e=>e.note||parseFloat(e.amount)>0).map(e=>({
+          note: e.note||'', amount: parseFloat(e.amount)||0, paid: parseFloat(e.paid)||0,
+        })),
+      };
+      if (editR) await adminAPI.updateReading(editR.id, payload);
+      else       await adminAPI.createReading(payload);
       setShowRForm(false); load();
     } catch(e) { setError(e.message); }
     finally { setSaving(false); }
   };
+
   const delR = async id => {
     if (!window.confirm(ar ? 'حذف هذه القراءة؟' : 'למחוק קריאה זו?')) return;
     await adminAPI.deleteReading(id); load();
@@ -159,6 +260,11 @@ export default function AdminReadings({ adminRole='admin' }) {
     const r = [...rForm.readings]; r[i] = v; setRForm({ ...rForm, readings:r });
   };
 
+  // ✅ إضافة/تعديل/حذف إضافة
+  const addExtra    = () => setRForm({...rForm, extras:[...(rForm.extras||[]),{note:'',amount:'',paid:''}]});
+  const updateExtra = (i, val) => { const ex=[...(rForm.extras||[])]; ex[i]=val; setRForm({...rForm,extras:ex}); };
+  const removeExtra = i => setRForm({...rForm, extras:(rForm.extras||[]).filter((_,idx)=>idx!==i)});
+
   const filtered = readings.filter(r => {
     if (filterF && String(r.farmerId) !== String(filterF)) return false;
     if (filterY && r.year !== parseInt(filterY)) return false;
@@ -171,7 +277,6 @@ export default function AdminReadings({ adminRole='admin' }) {
     return true;
   });
 
-  // ✅ حساب المجموع الكلي للقراءة الحالية في النموذج
   const formTotalAmount = rForm.readings.slice(1).reduce((total, _, i) => {
     const prev = parseFloat(rForm.readings[i]);
     const curr = parseFloat(rForm.readings[i+1]);
@@ -179,6 +284,9 @@ export default function AdminReadings({ adminRole='admin' }) {
     const price = getPrice(prices, rForm.year, rForm.landId, i+1);
     return total + (cups > 0 ? cups * price : 0);
   }, 0);
+
+  // إجمالي الإضافات في النموذج
+  const extrasTotal = (rForm.extras||[]).reduce((s,e)=>(s+(parseFloat(e.amount)||0)-(parseFloat(e.paid)||0)),0);
 
   return (
     <div>
@@ -250,12 +358,53 @@ export default function AdminReadings({ adminRole='admin' }) {
           </h3>
           <form onSubmit={submitR}>
             <div className="grid-3">
-              <div className="form-group">
+              <div className="form-group" style={{position:'relative'}}>
                 <label>{ar ? 'المزارع *' : 'חקלאי *'}</label>
-                <select value={rForm.farmerId} onChange={e => setRForm({ ...rForm, farmerId: e.target.value, landId:'' })}>
-                  <option value="">— {ar ? 'اختر' : 'בחר'} —</option>
-                  {farmers.map(f => <option key={f.id} value={f.id}>{f.nameHeb || f.name}</option>)}
-                </select>
+                <input
+                  value={formFarmerSearch}
+                  onChange={e => { setFormFarmerSearch(e.target.value); setShowFormFarmerList(true); }}
+                  onFocus={() => setShowFormFarmerList(true)}
+                  onBlur={() => setTimeout(() => setShowFormFarmerList(false), 150)}
+                  placeholder={ar ? '🔍 ابحث باسم المزارع...' : '🔍 חפש חקלאי...'}
+                  style={{width:'100%', borderColor: !rForm.farmerId && formFarmerSearch ? '#ef4444' : ''}}
+                  autoComplete="off"
+                />
+                {/* اسم المزارع المختار */}
+                {rForm.farmerId && (
+                  <div style={{fontSize:11,color:'#16a34a',fontWeight:700,marginTop:3}}>
+                    ✓ {farmers.find(f=>f.id===rForm.farmerId)?.nameHeb||farmers.find(f=>f.id===rForm.farmerId)?.name||''}
+                  </div>
+                )}
+                {/* قائمة البحث */}
+                {showFormFarmerList && (
+                  <div style={{position:'absolute',top:'100%',right:0,zIndex:200,background:'#fff',border:'1.5px solid var(--border)',borderRadius:8,boxShadow:'0 4px 16px rgba(0,0,0,0.12)',maxHeight:240,overflowY:'auto',minWidth:'100%',width:'max-content'}}>
+                    {farmers
+                      .filter(f => {
+                        const q = formFarmerSearch.toLowerCase();
+                        return !q || (f.nameHeb||f.name||'').toLowerCase().includes(q) || (f.lastName||'').toLowerCase().includes(q) || (f.firstName||'').toLowerCase().includes(q);
+                      })
+                      .sort((a,b) => (a.lastName||'').localeCompare(b.lastName||'','ar'))
+                      .map(f => (
+                        <div key={f.id}
+                          onMouseDown={() => {
+                            setRForm(prev => ({ ...prev, farmerId: f.id, landId: '' }));
+                            setFormFarmerSearch(f.nameHeb || f.name || '');
+                            setShowFormFarmerList(false);
+                          }}
+                          style={{padding:'9px 14px',cursor:'pointer',fontFamily:'Heebo,sans-serif',fontWeight:600,fontSize:13,background:rForm.farmerId===f.id?'#f0fdf4':'',borderBottom:'1px solid #f3f4f6'}}
+                          onMouseEnter={e=>e.currentTarget.style.background='#f0fdf4'}
+                          onMouseLeave={e=>e.currentTarget.style.background=rForm.farmerId===f.id?'#f0fdf4':''}>
+                          {f.nameHeb || f.name}
+                          {f.phone && <span style={{fontSize:11,color:'var(--text-muted)',marginRight:8}}>{f.phone}</span>}
+                        </div>
+                      ))}
+                    {farmers.filter(f=>{const q=formFarmerSearch.toLowerCase();return !q||(f.nameHeb||f.name||'').toLowerCase().includes(q)||(f.lastName||'').toLowerCase().includes(q);}).length === 0 && (
+                      <div style={{padding:'12px 14px',color:'var(--text-muted)',fontSize:13,textAlign:'center'}}>
+                        {ar?'لا توجد نتائج':'אין תוצאות'}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="form-group">
                 <label>{ar ? 'المحطة *' : 'תחנה *'}</label>
@@ -271,11 +420,6 @@ export default function AdminReadings({ adminRole='admin' }) {
                     </option>
                   ))}
                 </select>
-                {rForm.farmerId && farmerLands.length === 0 && (
-                  <p style={{ fontSize:12, color:'var(--red-500)', marginTop:4 }}>
-                    ⚠️ {ar ? 'لا توجد محطات — أضفها في صفحة الحقلاء' : 'אין תחנות — הוסף בדף החקלאים'}
-                  </p>
-                )}
               </div>
               <div className="form-group">
                 <label>{t('year', lang)} *</label>
@@ -283,29 +427,15 @@ export default function AdminReadings({ adminRole='admin' }) {
               </div>
             </div>
 
-            {/* معلومات المحطة */}
-            {rForm.landId && (() => {
-              const land = lands.find(l => l.id === rForm.landId);
-              return land ? (
-                <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', padding:'8px 14px', borderRadius:8, marginBottom:16, fontSize:13 }}>
-                  {land.regionId && <span style={{ color:'var(--primary)', fontWeight:700, marginLeft:12 }}>📍 {regionName(land.regionId)}</span>}
-                  {land.stationNumber && <span style={{ marginRight:12, fontWeight:700 }}> | עמדה: <code style={{ background:'white', border:'1px solid #bbf7d0', padding:'1px 8px', borderRadius:5 }}>{land.stationNumber}</code></span>}
-                  {land.stationLat && land.stationLng
-                    ? <span style={{ fontSize:11, color:'#16a34a' }}>✓ GPS: {parseFloat(land.stationLat).toFixed(4)}, {parseFloat(land.stationLng).toFixed(4)}</span>
-                    : <span style={{ fontSize:11, color:'#f59e0b' }}>⚠ {ar ? 'لا يوجد GPS' : 'אין GPS'}</span>}
-                </div>
-              ) : null;
-            })()}
-
             {/* القراءات */}
             <div className="form-group">
-              <label>{ar ? 'القراءات (الأولى = بداية، التالية = قراءات الفترات)' : 'קריאות (ראשונה = התחלה, הבאות = קריאות תקופה)'}</label>
+              <label>{ar ? 'القراءات' : 'קריאות'}</label>
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                 {rForm.readings.map((v,i) => {
                   const prev  = parseFloat(rForm.readings[i-1]);
                   const curr  = parseFloat(v);
                   const cups  = i > 0 && !isNaN(prev) && !isNaN(curr) && v !== '' ? curr - prev : null;
-                  const price  = i > 0 ? getPrice(prices, rForm.year, rForm.landId, i) : 0;
+                  const price = i > 0 ? getPrice(prices, rForm.year, rForm.landId, i) : 0;
                   const amount = cups !== null && cups > 0 ? cups * price : null;
                   const isEmpty = v === '' || v === null;
                   return (
@@ -317,31 +447,20 @@ export default function AdminReadings({ adminRole='admin' }) {
                       <input type="number" step="any" value={v}
                         onChange={e => updateReadingField(i, e.target.value)}
                         placeholder={i===0 ? (ar?'مطلوب':'חובה') : (ar?'لم تؤخذ بعد':'טרם נלקחה')}
-                        style={{ width:130, fontWeight:700, borderColor: i===0 && isEmpty ? '#ef4444' : '', background: isEmpty && i>0 ? '#f9fafb' : '' }} />
-                      {/* لم تؤخذ بعد */}
-                      {isEmpty && i > 0 && (
-                        <span style={{ fontSize:11, color:'#9ca3af', fontStyle:'italic' }}>
-                          ⏳ {ar?'لم تؤخذ بعد':'טרם נלקחה'}
-                        </span>
-                      )}
-                      {/* الأكواب */}
+                        style={{ width:130, fontWeight:700, borderColor: i===0 && isEmpty ? '#ef4444' : '' }} />
                       {cups !== null && (
                         <span style={{ fontSize:12, fontWeight:700, minWidth:90, color:cups>=0?'#16a34a':'#dc2626', background:cups>=0?'#f0fdf4':'#fff1f2', border:`1px solid ${cups>=0?'#bbf7d0':'#fca5a5'}`, padding:'2px 10px', borderRadius:6 }}>
                           {cups >= 0 ? `🪣 ${cups}` : `⚠️ ${cups}`} {ar ? 'م³' : 'קוב'}
                         </span>
                       )}
-                      {/* التكلفة */}
                       {amount !== null && (
                         <span style={{ fontSize:12, fontWeight:700, color:'#854d0e', background:'#fef9c3', border:'1px solid #fde047', padding:'2px 10px', borderRadius:6 }}>
                           💰 ₪{Math.round(amount).toLocaleString()}
-                          <span style={{ fontSize:10, color:'#92400e', marginRight:4 }}>({cups} × ₪{price})</span>
                         </span>
                       )}
                       {i >= 2 && (
                         <button type="button" onClick={() => removeReadingField(i)}
-                          style={{ width:26, height:26, borderRadius:6, border:'1.5px solid #fca5a5', background:'#fff1f2', color:'#dc2626', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:13 }}>
-                          ✕
-                        </button>
+                          style={{ width:26, height:26, borderRadius:6, border:'1.5px solid #fca5a5', background:'#fff1f2', color:'#dc2626', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:13 }}>✕</button>
                       )}
                     </div>
                   );
@@ -350,55 +469,54 @@ export default function AdminReadings({ adminRole='admin' }) {
                   + {ar ? 'إضافة فترة' : 'הוסף תקופה'}
                 </button>
               </div>
-
-              {/* ✅ المجموع الكلي */}
               {formTotalAmount > 0 && (
-                <div style={{
-                  marginTop:14, background:'linear-gradient(135deg,#14532d,#166534)',
-                  borderRadius:10, padding:'10px 18px',
-                  display:'flex', alignItems:'center', justifyContent:'space-between',
-                }}>
-                  <span style={{ color:'#a3e635', fontWeight:700, fontSize:13 }}>
-                    💰 {ar ? 'المجموع الكلي للقراءة:' : 'סה"כ לקריאה:'}
-                  </span>
-                  <span style={{ color:'#fde68a', fontWeight:900, fontSize:20 }}>
-                    ₪{Math.round(formTotalAmount).toLocaleString()}
-                  </span>
+                <div style={{ marginTop:14, background:'linear-gradient(135deg,#14532d,#166534)', borderRadius:10, padding:'10px 18px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                  <span style={{ color:'#a3e635', fontWeight:700, fontSize:13 }}>💰 {ar ? 'مجموع الأكواب:' : 'סה"כ קובים:'}</span>
+                  <span style={{ color:'#fde68a', fontWeight:900, fontSize:20 }}>₪{Math.round(formTotalAmount).toLocaleString()}</span>
                 </div>
               )}
             </div>
 
-            {/* الإضافات */}
-            <div style={{ background:'var(--surface-2)', borderRadius:10, padding:'12px 16px', marginBottom:16 }}>
-              <h4 className="mb-8" style={{ fontSize:13, color:'var(--primary)' }}>
-                ➕ {ar ? 'مبلغ إضافي (اختياري)' : 'סכום נוסף (אופציונלי)'}
-              </h4>
-              <div className="grid-2">
-                <div className="form-group" style={{ marginBottom:0 }}>
-                  <label style={{ fontSize:13 }}>₪ {ar ? 'المبلغ الإضافي' : 'סכום נוסף'}</label>
-                  <input type="number" step="any" min="0" value={rForm.extra} onChange={e => setRForm({ ...rForm, extra:e.target.value })} placeholder="0" />
-                </div>
-                <div className="form-group" style={{ marginBottom:0 }}>
-                  <label style={{ fontSize:13 }}>{ar ? 'سبب الإضافة' : 'סיבת התוספת'}</label>
-                  <input value={rForm.extraNote} onChange={e => setRForm({ ...rForm, extraNote:e.target.value })} placeholder={ar ? 'مثال: غرامة، صيانة...' : 'לדוג: קנס, תחזוקה...'} />
-                </div>
+            {/* ✅ قسم الإضافات المتعددة */}
+            <div style={{ background:'#fffbeb', border:'1.5px solid #fde68a', borderRadius:12, padding:'14px 16px', marginBottom:16 }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+                <h4 style={{ margin:0, fontSize:14, color:'#92400e' }}>
+                  ➕ {ar ? 'الإضافات' : 'תוספות'}
+                  {(rForm.extras||[]).length > 0 && (
+                    <span style={{ marginRight:8, background:'#fed7aa', color:'#92400e', borderRadius:8, padding:'1px 8px', fontSize:12 }}>
+                      {(rForm.extras||[]).length}
+                    </span>
+                  )}
+                </h4>
+                <button type="button" onClick={addExtra}
+                  style={{ padding:'5px 14px', borderRadius:8, border:'1.5px solid #f59e0b', background:'#fff', color:'#92400e', cursor:'pointer', fontWeight:700, fontSize:12 }}>
+                  + {ar ? 'إضافة جديدة' : 'תוספת חדשה'}
+                </button>
               </div>
-              {rForm.extra > 0 && (
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, background:'#f0fdf4', borderRadius:8, padding:'10px 16px', marginTop:8 }}>
-                  <div className="form-group" style={{ marginBottom:0 }}>
-                    <label style={{ fontSize:13 }}>✅ {ar ? 'المبلغ المدفوع منها (₪)' : 'שולם (₪)'}</label>
-                    <input type="number" step="any" min="0" max={rForm.extra} value={rForm.extraPaid}
-                      onChange={e => setRForm({ ...rForm, extraPaid:e.target.value })} placeholder="0" style={{ fontWeight:700 }} />
-                  </div>
-                  <div style={{ display:'flex', alignItems:'center', paddingTop:20 }}>
-                    {rForm.extraPaid > 0 && rForm.extra > 0 && (
-                      <span style={{ fontSize:13, fontWeight:700, color: parseFloat(rForm.extraPaid) >= parseFloat(rForm.extra) ? '#16a34a' : '#ca8a04' }}>
-                        {parseFloat(rForm.extraPaid) >= parseFloat(rForm.extra)
-                          ? `✅ ${ar ? 'مدفوع كاملاً' : 'שולם במלואו'}`
-                          : `⚠️ ${ar ? 'متبقي' : 'נותר'}: ₪${(parseFloat(rForm.extra)-parseFloat(rForm.extraPaid)).toFixed(2)}`}
+
+              {(rForm.extras||[]).length === 0 ? (
+                <div style={{ textAlign:'center', color:'#d97706', fontSize:12, padding:'8px 0' }}>
+                  {ar ? 'لا توجد إضافات — اضغط + لإضافة' : 'אין תוספות — לחץ + להוסיף'}
+                </div>
+              ) : (
+                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                  {(rForm.extras||[]).map((ex,i)=>(
+                    <ExtraRow key={i} idx={i} extra={ex}
+                      onChange={val=>updateExtra(i,val)}
+                      onRemove={()=>removeExtra(i)}
+                      suggestions={extrasSuggestions}
+                      ar={ar}
+                    />
+                  ))}
+                  {/* إجمالي الإضافات */}
+                  {(rForm.extras||[]).length > 1 && (
+                    <div style={{ background:'#92400e', borderRadius:8, padding:'8px 14px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                      <span style={{ color:'#fde68a', fontWeight:700, fontSize:13 }}>
+                        {ar ? 'إجمالي الإضافات المتبقية:' : 'סה"כ תוספות שנותרו:'}
                       </span>
-                    )}
-                  </div>
+                      <span style={{ color:'#fff', fontWeight:900, fontSize:18 }}>₪{extrasTotal.toLocaleString()}</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -12,10 +12,6 @@ const getPrice = (prices, year, landId, idx) => {
   return parseFloat(prices?.globalPrice) || 0;
 };
 
-// القراءة اللاحقة:
-// null/'' = لم تؤخذ بعد → null
-// 0 مع سابقة > 0 = لم تؤخذ → نرجع special object {pending:true}
-// رقم حقيقي → الفرق
 const cupsDiff = (readings, idx) => {
   const a = readings[idx-1];
   const b = readings[idx];
@@ -24,7 +20,7 @@ const cupsDiff = (readings, idx) => {
   const fa = parseFloat(a);
   const fb = parseFloat(b);
   if (isNaN(fa) || isNaN(fb)) return null;
-  if (fb === 0 && fa > 0) return null; // لم تؤخذ بعد
+  if (fb === 0 && fa > 0) return null;
   return fb - fa;
 };
 
@@ -46,6 +42,15 @@ const IconBtn = ({ onClick, title, bg, hoverBg, color, hoverColor, border, child
     onMouseLeave={e => { e.currentTarget.style.background=bg; e.currentTarget.style.color=color; }}
   >{children}</button>
 );
+
+// ✅ دالة مساعدة لجمع الإضافات (جديدة + قديمة)
+const getExtras = (r) => {
+  const extras = r.extras || [];
+  if (extras.length > 0) return extras;
+  const legacyExtra = parseFloat(r.extra) || 0;
+  if (legacyExtra > 0) return [{ note: r.extraNote||'', amount: legacyExtra, paid: parseFloat(r.extraPaid)||0 }];
+  return [];
+};
 
 export default function ReadingsTable({
   readings, setReadings, farmerName, landName, landRegion,
@@ -116,6 +121,12 @@ export default function ReadingsTable({
   const grandCups   = sorted.reduce((s,r)=>s+(r.readings||[]).slice(1).reduce((ss,_,i)=>ss+(cupsDiff(r.readings,i+1)||0),0),0);
   const grandAmount = sorted.reduce((s,r)=>s+(r.readings||[]).slice(1).reduce((ss,_,i)=>ss+(cupsDiff(r.readings,i+1)||0)*getPrice(prices,r.year,r.landId,i+1),0),0);
   const paidCount   = readings.filter(r=>r.paid).length;
+
+  // ✅ إجمالي الإضافات
+  const grandExtrasRem = sorted.reduce((s,r) => {
+    const exs = getExtras(r);
+    return s + exs.reduce((ss,e)=>(ss+(parseFloat(e.amount)||0)-(parseFloat(e.paid)||0)),0);
+  }, 0);
 
   const MapModal = () => {
     if (!mapModal) return null;
@@ -201,7 +212,7 @@ export default function ReadingsTable({
                 <STh key={i} col={`cups_${i}`} style={thCups}>🪣 {ar?`ف${i+1}`:`ת${i+1}`}</STh>
               ))}
               <STh col="total"  style={thTotal}>🪣 {ar?'الكل':'כלל'}</STh>
-              <th style={{ ...thBase, minWidth:80, background:'#fff3e0', color:'#e65100', textAlign:'center' }}>➕ {ar?'إضافات':'תוספות'}</th>
+              <th style={{ ...thBase, minWidth:90, background:'#fff3e0', color:'#e65100', textAlign:'center' }}>➕ {ar?'إضافات':'תוספות'}</th>
               <STh col="amount" style={{...thAmount, minWidth:100}}>💰 {ar?'الإجمالي':'סה"כ'}</STh>
               <th style={{...thBase, minWidth:90, textAlign:'center'}}>💬</th>
               <th style={{...thBase, minWidth:70, textAlign:'center'}}></th>
@@ -219,6 +230,10 @@ export default function ReadingsTable({
               const cupsBg  = isPaid ? '#d1fae5' : '#fee2e2';
               const totalBg = isPaid ? '#a7f3d0' : '#fecaca';
               const amtBg   = isPaid ? '#fef9c3' : '#fef3c7';
+
+              // ✅ إجمالي الإضافات للصف
+              const rowExtras = getExtras(r);
+              const rowExtrasTotal = rowExtras.reduce((s,e)=>(s+(parseFloat(e.amount)||0)-(parseFloat(e.paid)||0)),0);
 
               return (
                 <React.Fragment key={r.id}>
@@ -254,10 +269,8 @@ export default function ReadingsTable({
                       })()}
                     </td>
 
-                    {/* أكواب كل فترة — يظهر الفرق أو القيمة الخام إذا null */}
                     {cupsPerPeriod.map((cups,i) => {
                       const rawB = vals[i+1];
-                      const isPending = cups === null && (rawB === 0 || rawB === null || rawB === '');
                       return (
                         <td key={i} style={{textAlign:'center', background:cupsBg}}>
                           {cups !== null
@@ -269,7 +282,6 @@ export default function ReadingsTable({
                       );
                     })}
 
-                    {/* المجموع — ⏳ إذا هناك قراءات ناقصة */}
                     <td style={{textAlign:'center', background:totalBg}}>
                       {cupsPerPeriod.some(c => c === null && vals.slice(1).some(v => v === null || v === 0 || v === ''))
                         ? <span style={{fontSize:13,color:'#9ca3af',fontWeight:600}}>
@@ -280,28 +292,43 @@ export default function ReadingsTable({
                       }
                     </td>
 
-                    <td style={{textAlign:'center', background:'#fff3e0', padding:'6px 8px'}}>
-                      {(parseFloat(r.extra)||0) > 0 ? (() => {
-                        const extra = parseFloat(r.extra)||0;
-                        const extraPaid = parseFloat(r.extraPaid)||0;
-                        const fullPaid = extraPaid >= extra;
-                        return (
-                          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
-                            {r.extraNote && <span style={{fontSize:10,color:'#92400e',fontWeight:700,background:'#fef3c7',padding:'1px 6px',borderRadius:4}}>{r.extraNote}</span>}
-                            {fullPaid
-                              ? <span style={{fontSize:12,color:'#9ca3af',fontWeight:600,textDecoration:'line-through'}}>₪{extra.toLocaleString()}</span>
-                              : <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:1}}>
-                                  <span style={{fontSize:12,color:'#e65100',fontWeight:700}}>₪{extra.toLocaleString()}</span>
-                                  {extraPaid > 0 && <span style={{fontSize:11,color:'#16a34a',fontWeight:600}}>✓ ₪{extraPaid.toLocaleString()}</span>}
-                                </div>}
-                          </div>
-                        );
-                      })() : <span style={{color:'var(--border)'}}>—</span>}
+                    {/* ✅ عمود الإضافات المتعددة */}
+                    <td style={{textAlign:'center', background:'#fff3e0', padding:'6px 4px', minWidth:90}}>
+                      {rowExtras.length === 0 ? (
+                        <span style={{color:'var(--border)'}}>—</span>
+                      ) : (
+                        <div style={{display:'flex',flexDirection:'column',gap:3}}>
+                          {rowExtras.map((ex,ei) => {
+                            const amt  = parseFloat(ex.amount)||0;
+                            const paid = parseFloat(ex.paid)||0;
+                            const rem  = amt - paid;
+                            const done = rem <= 0;
+                            return (
+                              <div key={ei} style={{borderRadius:6,overflow:'hidden',border:`1px solid ${done?'#d1d5db':'#fed7aa'}`}}>
+                                {ex.note && (
+                                  <div style={{background:done?'#f3f4f6':'#fef3c7',padding:'1px 5px',fontSize:10,fontWeight:700,color:done?'#9ca3af':'#92400e',textAlign:'center'}}>
+                                    {ex.note}
+                                  </div>
+                                )}
+                                <div style={{padding:'2px 5px',background:done?'#f9fafb':'#fff7ed',display:'flex',gap:3,alignItems:'center',justifyContent:'center'}}>
+                                  {done
+                                    ? <span style={{color:'#9ca3af',textDecoration:'line-through',fontSize:10}}>₪{amt.toLocaleString()}</span>
+                                    : <>
+                                        <span style={{fontWeight:800,color:'#e65100',fontSize:12}}>₪{rem.toLocaleString()}</span>
+                                        {paid > 0 && <span style={{color:'#16a34a',fontSize:10,fontWeight:600}}>✓{paid.toLocaleString()}</span>}
+                                      </>
+                                  }
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </td>
 
                     <td style={{textAlign:'center', background:amtBg}}>
                       <strong style={{fontSize:14,color:'#854d0e'}}>
-                        ₪{Math.round(rowAmount + (parseFloat(r.extra)||0) - (parseFloat(r.extraPaid)||0)).toLocaleString()}
+                        ₪{Math.round(rowAmount + rowExtrasTotal).toLocaleString()}
                       </strong>
                     </td>
 
@@ -319,7 +346,6 @@ export default function ReadingsTable({
                           <IconBtn onClick={e=>{e.stopPropagation();setEditNoteId(null)}} title="إلغاء" bg="#fff1f2" hoverBg="#dc2626" color="#dc2626" hoverColor="#fff" border="1.5px solid #fca5a5">✕</IconBtn>
                         </div>
                       ) : r.note ? (
-                        /* ✅ يظهر نص الملاحظة مع زر تعديل وزر حذف */
                         <div style={{display:'flex',alignItems:'center',gap:4,justifyContent:'center'}}>
                           <span style={{background:'#fef9c3',border:'1px solid #fde047',borderRadius:6,padding:'2px 8px',fontSize:12,color:'#78350f',fontWeight:600,maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:'pointer'}}
                             onClick={e=>openNote(e,r)} title={r.note}>
@@ -349,7 +375,6 @@ export default function ReadingsTable({
                       <td colSpan={99} style={{padding:'10px 18px'}}>
                         <div style={{display:'flex',flexWrap:'wrap',gap:16,alignItems:'flex-start'}}>
 
-                          {/* ✅ أرقام القراءات مع حالة "لم تؤخذ" */}
                           <div>
                             <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:4,fontWeight:700}}>📊 {ar?'قراءات العداد:':'קריאות מד המים:'}</div>
                             <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
@@ -382,13 +407,33 @@ export default function ReadingsTable({
                             </div>
                           )}
 
-                          {(parseFloat(r.extra)||0) > 0 && (
+                          {/* ✅ الإضافات في الصف الموسَّع */}
+                          {rowExtras.length > 0 && (
                             <div>
-                              <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:4,fontWeight:700}}>➕ {ar?'إضافات:':'תוספות:'}</div>
-                              <span style={{background:'#fff3e0',border:'1px solid #fed7aa',borderRadius:6,padding:'3px 10px',fontSize:12,fontWeight:700,color:'#e65100'}}>
-                                +₪{Number(r.extra).toLocaleString()}
-                                {(parseFloat(r.extraPaid)||0)>0 && <span style={{color:'#16a34a'}}> (-₪{Number(r.extraPaid).toLocaleString()})</span>}
-                              </span>
+                              <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:6,fontWeight:700}}>➕ {ar?'الإضافات:':'תוספות:'}</div>
+                              <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+                                {rowExtras.map((ex,ei) => {
+                                  const amt  = parseFloat(ex.amount)||0;
+                                  const paid = parseFloat(ex.paid)||0;
+                                  const rem  = amt - paid;
+                                  const done = rem <= 0;
+                                  return (
+                                    <div key={ei} style={{background:done?'#f3f4f6':'#fff3e0',border:`1.5px solid ${done?'#d1d5db':'#fed7aa'}`,borderRadius:8,padding:'6px 12px',fontSize:12,opacity:done?0.75:1}}>
+                                      {ex.note && (
+                                        <div style={{fontWeight:700,color:done?'#9ca3af':'#92400e',marginBottom:3,textDecoration:done?'line-through':'none'}}>
+                                          {ex.note}
+                                        </div>
+                                      )}
+                                      <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                                        <span style={{fontWeight:700,color:done?'#9ca3af':'#e65100',textDecoration:done?'line-through':'none'}}>₪{amt.toLocaleString()}</span>
+                                        {paid > 0 && <span style={{color:'#16a34a',fontWeight:600,fontSize:11}}>✓ ₪{paid.toLocaleString()}</span>}
+                                        {!done && <span style={{color:'#dc2626',fontWeight:800,fontSize:12}}>⟵ ₪{rem.toLocaleString()}</span>}
+                                        {done && <span style={{color:'#16a34a',fontSize:11}}>✅ {ar?'مدفوعة':'שולם'}</span>}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
                           )}
                         </div>
@@ -413,8 +458,14 @@ export default function ReadingsTable({
                   return <td key={i} style={{textAlign:'center',padding:'11px 8px'}}><span style={{fontWeight:900,color:'#a3e635',fontSize:15}}>{col.toLocaleString()}</span></td>;
                 })}
                 <td style={{textAlign:'center',padding:'11px 8px'}}><span style={{fontWeight:900,color:'#a3e635',fontSize:17}}>{grandCups.toLocaleString()}</span></td>
-                <td style={{textAlign:'center',padding:'11px 8px',color:'#fde68a',fontWeight:900,fontSize:15}}>₪{sorted.reduce((s,r)=>s+(parseFloat(r.extra)||0),0).toLocaleString()}</td>
-                <td style={{textAlign:'center',padding:'11px 8px',borderLeft:'2px solid #a3e635'}}><span style={{fontWeight:900,color:'#fde68a',fontSize:19}}>₪{(grandAmount+sorted.reduce((s,r)=>s+(parseFloat(r.extra)||0),0)-sorted.reduce((s,r)=>s+(parseFloat(r.extraPaid)||0),0)).toLocaleString()}</span></td>
+                <td style={{textAlign:'center',padding:'11px 8px',color:'#fde68a',fontWeight:900,fontSize:15}}>
+                  ₪{sorted.reduce((s,r)=>s+getExtras(r).reduce((ss,e)=>(ss+(parseFloat(e.amount)||0)),0),0).toLocaleString()}
+                </td>
+                <td style={{textAlign:'center',padding:'11px 8px',borderLeft:'2px solid #a3e635'}}>
+                  <span style={{fontWeight:900,color:'#fde68a',fontSize:19}}>
+                    ₪{Math.round(grandAmount + grandExtrasRem).toLocaleString()}
+                  </span>
+                </td>
                 <td colSpan={2}/>
               </tr>
             )}
