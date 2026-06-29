@@ -225,6 +225,12 @@ export default function AdminFarmers({ adminRole='admin' }) {
   // ════════════════════════════════════════
   //  تصدير Excel للناطور — مرتب حسب المحطة
   // ════════════════════════════════════════
+  // ============================================================
+// PATCH FILE: AdminFarmers.js - exportReadingsExcel function
+// ============================================================
+// ابحث عن دالة exportReadingsExcel في AdminFarmers.js
+// واستبدلها بالدالة الموجودة في هذا الملف
+// ============================================================
   const exportReadingsExcel = async () => {
     setExcelLoading(true);
     try {
@@ -232,7 +238,7 @@ export default function AdminFarmers({ adminRole='admin' }) {
       const { saveAs } = await import('file-saver');
 
       const year  = parseInt(excelYear);
-      const phase = parseInt(excelPhase); // المرحلة الجديدة الفارغة
+      const phase = parseInt(excelPhase);
 
       const [rdRes, ldRes, rgRes] = await Promise.all([
         adminAPI.getReadings(), adminAPI.getLands(), adminAPI.getRegions()
@@ -241,7 +247,6 @@ export default function AdminFarmers({ adminRole='admin' }) {
       const allLandsData = ldRes.lands     || [];
       const allRegions   = rgRes.regions   || [];
 
-      // ── ترتيب طبيعي: A1, A2, A10, B1 ──
       const parseStation = s => {
         const m = (s||'').match(/^([A-Za-z]+)(\d+)$/);
         return m ? [m[1].toUpperCase(), parseInt(m[2])] : [s||'', 0];
@@ -259,35 +264,28 @@ export default function AdminFarmers({ adminRole='admin' }) {
         setExcelLoading(false); return;
       }
 
-      // تجميع حسب المحطة
       const stationGroups = {};
       for (const land of sortedLands) {
         if (!stationGroups[land.stationNumber]) stationGroups[land.stationNumber] = [];
         stationGroups[land.stationNumber].push(land);
       }
       const stationKeys = Object.keys(stationGroups);
+      const prevCount = phase - 1;
 
-      // ══ عدد الأعمدة السابقة = phase - 1 ══
-      // مثال: phase=3 → أعمدة سابقة: ق1، ق2 + عمود جديد ق3
-      const prevCount = phase - 1; // عدد القراءات السابقة
-
-      const pageTitle = ar
-        ? `أرقام العدادات  |  ${year}  |  مرحلة ${phase}`
-        : `קריאות מונים  |  ${year}  |  תקופה ${phase}`;
-      const yearLabel = ar
-        ? `السنة: ${year}  |  مرحلة: ${phase}`
-        : `שנה: ${year}  |  תקופה: ${phase}`;
+      // ✅ العناوين بالعبري فقط
+      const pageTitle = `קריאות מונים  |  ${year}  |  תקופה ${phase}`;
+      const yearLabel = `שנה: ${year}  |  תקופה: ${phase}`;
 
       const wb = new ExcelJS.Workbook();
       wb.creator = 'الشلالة';
 
+      // ✅ اسم الورقة بالعبري
       const ws = wb.addWorksheet(
-        ar?`عدادات ${year} م${phase}`:`מונים ${year} ת${phase}`,
+        `מונים ${year} ת${phase}`,
         { views:[{rightToLeft:true, state:'frozen', xSplit:0, ySplit:3}],
           pageSetup:{paperSize:9, orientation:'portrait', fitToPage:true, fitToWidth:1} }
       );
 
-      // ── الألوان ──
       const GREEN       = '2d6a2d';
       const GREEN_LIGHT = 'e8f5e9';
       const GREEN_MID   = 'a5d6a7';
@@ -295,29 +293,22 @@ export default function AdminFarmers({ adminRole='admin' }) {
       const TEXT        = '1a1a1a';
       const TEXT_LIGHT  = '555555';
       const BORDER_C    = 'c8e6c9';
-      const PREV_BG     = 'f1f8e9'; // خلفية القراءات السابقة
-      const NEW_BG      = 'FFFFFF'; // خلفية القراءة الجديدة
 
-      // ── عرض الأعمدة ──
-      // عمود _data (JSON مخفي) + station + name + phone + أعمدة سابقة + عمود جديد
       const visibleCols = [
-        {key:'_data',   width:0.1}, // JSON مخفي — يحتوي المعرفات
+        {key:'_data',   width:0.1},
         {key:'station', width:9  },
         {key:'name',    width:26 },
         {key:'phone',   width:15 },
       ];
-      // أعمدة القراءات السابقة
       for (let i=1; i<=prevCount; i++) {
         visibleCols.push({key:`prev${i}`, width:16});
       }
-      // عمود القراءة الجديدة
       visibleCols.push({key:'newVal', width:20});
 
       ws.columns = visibleCols;
 
       const TOTAL_COLS = visibleCols.length;
-      const DATA_START_COL = 2; // أول عمود مرئي حقيقي
-      const NEW_COL = TOTAL_COLS; // آخر عمود = القراءة الجديدة
+      const NEW_COL = TOTAL_COLS;
 
       const thinBorder = (color) => ({
         top:    {style:'thin', color:{argb:'FF'+color}},
@@ -326,7 +317,7 @@ export default function AdminFarmers({ adminRole='admin' }) {
         right:  {style:'thin', color:{argb:'FF'+color}},
       });
 
-      // ══ صف العنوان الرئيسي (دمج كامل) ══
+      // ══ صف العنوان ══
       ws.addRow([pageTitle, ...Array(TOTAL_COLS-1).fill('')]);
       const r0 = ws.lastRow;
       r0.height = 38;
@@ -337,7 +328,7 @@ export default function AdminFarmers({ adminRole='admin' }) {
       titleCell.fill      = {type:'pattern', pattern:'solid', fgColor:{argb:'FF'+GREEN}};
       titleCell.alignment = {horizontal:'center', vertical:'middle', readingOrder:2};
 
-      // ══ صف السنة والمرحلة (دمج كامل) ══
+      // ══ صف السنة ══
       ws.addRow([yearLabel, ...Array(TOTAL_COLS-1).fill('')]);
       const r1 = ws.lastRow;
       r1.height = 24;
@@ -348,25 +339,19 @@ export default function AdminFarmers({ adminRole='admin' }) {
       yearCell.fill      = {type:'pattern', pattern:'solid', fgColor:{argb:'FF'+GREEN}};
       yearCell.alignment = {horizontal:'center', vertical:'middle', readingOrder:2};
 
-      // ══ صف رؤوس الأعمدة ══
-      const headerVals = ['_data',
-        ar?'المحطة':'עמדה',
-        ar?'اسم المزارع':'שם החקלאי',
-        ar?'الهاتف':'טלפון',
-      ];
+      // ══ رؤوس الأعمدة بالعبري ══
+      const headerVals = ['_data', 'עמדה', 'שם החקלאי', 'טלפון'];
       for (let i=1; i<=prevCount; i++) {
-        headerVals.push(ar ? `قراءة م${i}` : `קריאה ת${i}`);
+        headerVals.push(`קריאה ת${i}`);
       }
-      headerVals.push(ar ? `◀ قراءة جديدة م${phase}` : `◀ קריאה חדשה ת${phase}`);
+      headerVals.push(`◀ קריאה חדשה ת${phase}`);
 
       ws.addRow(headerVals);
       const r2 = ws.lastRow;
       r2.height = 26;
-      // إخفاء عمود _data
       const dataCell = r2.getCell(1);
       dataCell.fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FF'+GREEN}};
       dataCell.font = {size:1, color:{argb:'FF'+GREEN}};
-      // تنسيق رؤوس المحطة + الاسم + الهاتف
       for (let c=2;c<=4;c++) {
         const cell = r2.getCell(c);
         cell.font      = {name:'Arial', bold:true, size:11, color:{argb:'FF'+WHITE}};
@@ -374,7 +359,6 @@ export default function AdminFarmers({ adminRole='admin' }) {
         cell.alignment = {horizontal:c===3?'right':'center', vertical:'middle', readingOrder:2};
         cell.border    = thinBorder(GREEN_MID);
       }
-      // رؤوس القراءات السابقة
       for (let i=0; i<prevCount; i++) {
         const c = 5 + i;
         const cell = r2.getCell(c);
@@ -383,7 +367,6 @@ export default function AdminFarmers({ adminRole='admin' }) {
         cell.alignment = {horizontal:'center', vertical:'middle', readingOrder:2};
         cell.border    = thinBorder(GREEN_MID);
       }
-      // رأس القراءة الجديدة
       const newHdrCell = r2.getCell(NEW_COL);
       newHdrCell.font      = {name:'Arial', bold:true, size:12, color:{argb:'FF'+GREEN}};
       newHdrCell.fill      = {type:'pattern', pattern:'solid', fgColor:{argb:'FF'+GREEN_MID}};
@@ -395,7 +378,6 @@ export default function AdminFarmers({ adminRole='admin' }) {
         const st    = stationKeys[si];
         const lands = stationGroups[st];
 
-        // عنوان المحطة
         const stRegion  = allRegions.find(r => r.id === lands[0]?.regionId);
         const stRegName = stRegion?.nameHeb || stRegion?.name || '';
         const stLabel   = stRegName ? `${st}  —  ${stRegName}` : st;
@@ -404,7 +386,6 @@ export default function AdminFarmers({ adminRole='admin' }) {
         const stRow = ws.lastRow;
         stRow.height = 24;
         ws.mergeCells(stRow.number, 2, stRow.number, TOTAL_COLS);
-        // عمود _data فارغ في صف المحطة
         stRow.getCell(1).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FF'+GREEN_LIGHT}};
         stRow.getCell(1).font = {size:1, color:{argb:'FF'+GREEN_LIGHT}};
         const stCell = ws.getCell(stRow.number, 2);
@@ -417,67 +398,59 @@ export default function AdminFarmers({ adminRole='admin' }) {
           bottom: {style:'thin',   color:{argb:'FF'+BORDER_C}},
         };
 
-        // أسطر المزارعين
         for (let li=0; li<lands.length; li++) {
           const land    = lands[li];
           const farmer  = farmers.find(f=>f.id===land.farmerId);
           if (!farmer) continue;
           const reading = allReadings.find(r=>r.landId===land.id && r.year===year);
-          const isAlt   = li%2===1;
-          const rowBg   = isAlt ? GREEN_LIGHT : WHITE;
 
-          // ✅ نخزن المعرفات كـ JSON في العمود الأول (مرئي لكن صغير)
           const rowMeta = JSON.stringify({
-            lid: land.id,
-            fid: farmer.id,
-            rid: reading?.id || '',
-            idx: phase,
+            lid: land.id, fid: farmer.id,
+            rid: reading?.id || '', idx: phase,
           });
           const rowVals = [
-            rowMeta, // عمود _data
-            land.stationNumber,
+            rowMeta, land.stationNumber,
             `${farmer.lastName||''} ${farmer.firstName||''}`.trim(),
             farmer.phone||'',
           ];
-          // القراءات السابقة (1 إلى prevCount)
           for (let i=0; i<prevCount; i++) {
             const val = reading ? (reading.readings[i] ?? '') : '';
             rowVals.push(val !== '' ? val : '');
           }
-          // القراءة الجديدة فارغة
           rowVals.push('');
 
           ws.addRow(rowVals);
           const dRow = ws.lastRow;
           dRow.height = 22;
 
-          // عمود _data — صغير مخفي بصرياً
+          // ✅ خلفية بيضاء للجميع
           dRow.getCell(1).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FF'+WHITE}};
           dRow.getCell(1).font = {size:1, color:{argb:'FF'+WHITE}};
-          // B - المحطة
+
           const eCell = dRow.getCell(2);
-          eCell.fill      = {type:'pattern',pattern:'solid',fgColor:{argb:'FF'+rowBg}};
+          eCell.fill      = {type:'pattern',pattern:'solid',fgColor:{argb:'FF'+WHITE}};
           eCell.font      = {name:'Arial', size:11, color:{argb:'FF'+TEXT}};
           eCell.alignment = {horizontal:'center', vertical:'middle', readingOrder:2};
           eCell.border    = thinBorder(BORDER_C);
-          // C - الاسم
+
           const fCell = dRow.getCell(3);
-          fCell.fill      = {type:'pattern',pattern:'solid',fgColor:{argb:'FF'+rowBg}};
+          fCell.fill      = {type:'pattern',pattern:'solid',fgColor:{argb:'FF'+WHITE}};
           fCell.font      = {name:'Arial', size:11, bold:true, color:{argb:'FF'+TEXT}};
           fCell.alignment = {horizontal:'right', vertical:'middle', readingOrder:2};
           fCell.border    = thinBorder(BORDER_C);
-          // D - الهاتف
+
           const gCell = dRow.getCell(4);
-          gCell.fill      = {type:'pattern',pattern:'solid',fgColor:{argb:'FF'+rowBg}};
+          gCell.fill      = {type:'pattern',pattern:'solid',fgColor:{argb:'FF'+WHITE}};
           gCell.font      = {name:'Arial', size:10, color:{argb:'FF'+TEXT_LIGHT}};
           gCell.alignment = {horizontal:'center', vertical:'middle', readingOrder:2};
           gCell.border    = thinBorder(BORDER_C);
-          // القراءات السابقة
+
+          // ✅ القراءات السابقة — خلفية بيضاء
           for (let i=0; i<prevCount; i++) {
             const c    = 5 + i;
             const cell = dRow.getCell(c);
             const val  = reading ? (reading.readings[i] ?? '') : '';
-            cell.fill      = {type:'pattern',pattern:'solid',fgColor:{argb:'FF'+(isAlt?'e8f5e9':'f1f8f1')}};
+            cell.fill      = {type:'pattern',pattern:'solid',fgColor:{argb:'FF'+WHITE}};
             cell.font      = {name:'Arial', size:11, color:{argb:'FF'+TEXT}};
             cell.alignment = {horizontal:'center', vertical:'middle', readingOrder:2};
             cell.border    = {
@@ -493,7 +466,8 @@ export default function AdminFarmers({ adminRole='admin' }) {
               cell.value  = typeof val==='number'?val:parseFloat(val)||val;
             }
           }
-          // عمود القراءة الجديدة
+
+          // ✅ عمود القراءة الجديدة — أبيض
           const newCell = dRow.getCell(NEW_COL);
           newCell.fill      = {type:'pattern',pattern:'solid',fgColor:{argb:'FF'+WHITE}};
           newCell.font      = {name:'Arial', size:12, color:{argb:'FF'+TEXT}};
@@ -506,7 +480,6 @@ export default function AdminFarmers({ adminRole='admin' }) {
           };
         }
 
-        // فاصل بين المحطات
         if (si < stationKeys.length-1) {
           ws.addRow(Array(TOTAL_COLS).fill(''));
           ws.lastRow.height = 6;
@@ -516,7 +489,6 @@ export default function AdminFarmers({ adminRole='admin' }) {
         }
       }
 
-      // إخفاء عمود _data (العمود الأول فقط)
       ws.getColumn(1).hidden = true;
 
       const buf = await wb.xlsx.writeBuffer();
