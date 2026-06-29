@@ -23,9 +23,10 @@ const gallerySchema = new mongoose.Schema({
 }, { collection: 'settings_gallery', timestamps: true });
 
 const videoSchema = new mongoose.Schema({
-  key:   { type: String, default: 'video', unique: true },
-  url:   { type: String, default: '' },
-  title: { type: String, default: '' },
+  key:     { type: String, default: 'video', unique: true },
+  url:     { type: String, default: '' },
+  title:   { type: String, default: '' },    // عنوان عربي
+  titleHe: { type: String, default: '' },    // عنوان عبري ✅ جديد
 }, { collection: 'settings_video', timestamps: true });
 
 const adminSchema = new mongoose.Schema({
@@ -39,14 +40,13 @@ const regionSchema = new mongoose.Schema({
   notes:   { type: String, default: '' },
 }, { collection: 'regions', timestamps: true });
 
-// مستخدمون مخولون للوصول للإدارة
 const privilegedSchema = new mongoose.Schema({
   key:      { type: String, default: 'privileged', unique: true },
   users: [{
-    idNumber: { type: String, required: true }, // رقم الهوية
-    role:     { type: String, enum: ['admin', 'viewer'], required: true }, // الدور
-    label:    { type: String, default: '' }, // اسم للتعرف (اختياري)
-    password: { type: String, required: true }, // كلمة مرور خاصة لهذا الدور
+    idNumber: { type: String, required: true },
+    role:     { type: String, enum: ['admin', 'viewer'], required: true },
+    label:    { type: String, default: '' },
+    password: { type: String, required: true },
   }],
 }, { collection: 'settings_privileged', timestamps: true });
 

@@ -323,7 +323,7 @@ export function AdminGallery() {
     e.preventDefault();
     setSaving(true);
     try {
-      await adminAPI.updateVideo(video.url, video.title);
+      await adminAPI.updateVideo(video.url, video.title, video.titleHe);
       setSuccess('✅ ' + (ar ? 'تم حفظ الفيديو' : 'הוידאו נשמר'));
       setTimeout(() => setSuccess(''), 3000);
     } catch(e) { alert(e.message); }
