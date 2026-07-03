@@ -1,18 +1,22 @@
 const archiver   = require('archiver');
 const nodemailer = require('nodemailer');
 
-const Farmer   = require('../models/Farmer');
-const Land     = require('../models/Land');
-const Reading  = require('../models/Reading');
-const Payment  = require('../models/Payment');
-const { Prices, Region } = require('../models/Settings');
+const Farmer     = require('../models/Farmer');
+const FarmerNote = require('../models/FarmerNote');
+const Land       = require('../models/Land');
+const Reading    = require('../models/Reading');
+const Payment    = require('../models/Payment');
+const Project    = require('../models/Project');
+const { Prices, Announcement, Gallery, Video, Region, Privileged } = require('../models/Settings');
 
 const COLLECTIONS = [
-  { name: 'farmers',  Model: Farmer  },
-  { name: 'lands',    Model: Land    },
-  { name: 'readings', Model: Reading },
-  { name: 'payments', Model: Payment },
-  { name: 'regions',  Model: Region  },
+  { name: 'farmers',     Model: Farmer     },
+  { name: 'farmerNotes', Model: FarmerNote },
+  { name: 'lands',       Model: Land       },
+  { name: 'readings',    Model: Reading    },
+  { name: 'payments',    Model: Payment    },
+  { name: 'projects',    Model: Project    },
+  { name: 'regions',     Model: Region     },
 ];
 
 async function createBackupZip() {
@@ -23,19 +27,39 @@ async function createBackupZip() {
     archive.on('end',   () => resolve(Buffer.concat(chunks)));
     archive.on('error', reject);
 
+    // ملف meta
     archive.append(JSON.stringify({
       createdAt: new Date().toISOString(),
-      version: '1.0',
-      app: 'الشلالة — נظام ניהול מים',
+      version: '2.0',
+      app: 'الشلالة — מערכת ניהול מים',
     }, null, 2), { name: 'meta.json' });
 
+    // الموديلز الرئيسية
     for (const { name, Model } of COLLECTIONS) {
-      const data = await Model.find().lean();
-      archive.append(JSON.stringify(data, null, 2), { name: `${name}.json` });
+      try {
+        const data = await Model.find().lean();
+        archive.append(JSON.stringify(data, null, 2), { name: `${name}.json` });
+      } catch (e) {
+        archive.append(JSON.stringify([]), { name: `${name}.json` });
+      }
     }
 
-    const prices = await Prices.findOne({ key: 'prices' }).lean();
-    archive.append(JSON.stringify(prices || {}, null, 2), { name: 'prices.json' });
+    // الإعدادات — كل مجموعة Settings منفصلة
+    try {
+      const prices       = await Prices.findOne({ key: 'prices' }).lean();
+      const announcement = await Announcement.findOne({ key: 'announcement' }).lean();
+      const gallery      = await Gallery.findOne({ key: 'gallery' }).lean();
+      const video        = await Video.findOne({ key: 'video' }).lean();
+      const privileged   = await Privileged.findOne({ key: 'privileged' }).lean();
+
+      archive.append(JSON.stringify(prices       || {}, null, 2), { name: 'settings_prices.json'       });
+      archive.append(JSON.stringify(announcement || {}, null, 2), { name: 'settings_announcement.json' });
+      archive.append(JSON.stringify(gallery      || {}, null, 2), { name: 'settings_gallery.json'      });
+      archive.append(JSON.stringify(video        || {}, null, 2), { name: 'settings_video.json'        });
+      archive.append(JSON.stringify(privileged   || {}, null, 2), { name: 'settings_privileged.json'   });
+    } catch (e) {
+      console.error('Settings backup error:', e.message);
+    }
 
     archive.finalize();
   });
@@ -57,9 +81,11 @@ async function sendBackupEmail() {
       timeZone: 'Asia/Jerusalem',
     });
 
+    // إحصائيات لكل موديل
     const counts = {};
     for (const { name, Model } of COLLECTIONS) {
-      counts[name] = await Model.countDocuments();
+      try { counts[name] = await Model.countDocuments(); }
+      catch { counts[name] = '—'; }
     }
 
     const transporter = nodemailer.createTransport({
@@ -71,8 +97,8 @@ async function sendBackupEmail() {
     });
 
     await transporter.sendMail({
-      from: `"🌿 אלשללאלה — גיבוי" <${process.env.BACKUP_EMAIL_USER}>`,
-      to:   process.env.BACKUP_EMAIL_TO || process.env.BACKUP_EMAIL_USER,
+      from:    `"🌿 אלשללאלה — גיבוי" <${process.env.BACKUP_EMAIL_USER}>`,
+      to:      process.env.BACKUP_EMAIL_TO || process.env.BACKUP_EMAIL_USER,
       subject: `💾 גיבוי אוטומטי — אלשללאלה | ${date}`,
       html: `
         <div dir="rtl" style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;">
@@ -90,12 +116,17 @@ async function sendBackupEmail() {
               ${Object.entries(counts).map(([name, count]) => `
                 <tr style="border-bottom:1px solid #f3f4f6;">
                   <td style="padding:8px 4px;color:#6b7280;font-size:13px;">${name}</td>
-                  <td style="padding:8px 4px;text-align:right;font-weight:700;color:#14532d;">${count}</td>
+                  <td style="padding:8px 4px;text-align:left;font-weight:700;color:#14532d;">${count}</td>
                 </tr>
               `).join('')}
             </table>
             <p style="color:#9ca3af;font-size:12px;margin:12px 0 0;text-align:center;">
               גודל הגיבוי: ${(zipBuffer.length / 1024).toFixed(1)} KB
+            </p>
+          </div>
+          <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:14px;margin-bottom:16px;">
+            <p style="color:#c2410c;font-size:12px;margin:0;">
+              📁 הגיבוי כולל: מגדלים, הערות, קרקעות, קריאות, תשלומים, פרויקטים, אזורים, והגדרות מערכת
             </p>
           </div>
           <p style="color:#9ca3af;font-size:11px;text-align:center;">
