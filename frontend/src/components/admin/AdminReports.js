@@ -806,7 +806,8 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
               </div>
 
               {/* ── جدول الإضافات ── */}
-              <div className="card" style={{padding:0,overflow:'hidden'}}>
+              <div className="card" style={{padding:0}}>
+                <div className="tbl-wrap">
                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                   <thead>
                     <tr style={{background:'#92400e'}}>
@@ -866,6 +867,7 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
                     </tr>
                   </tfoot>
                 </table>
+                </div>
               </div>
             </>
           )}
@@ -1008,7 +1010,8 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
               )}
 
               {/* جدول المفقودين */}
-              <div className="card" style={{padding:0,overflow:'hidden'}}>
+              <div className="card" style={{padding:0}}>
+                <div className="tbl-wrap">
                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                   <thead>
                     <tr style={{background:'#1d4ed8'}}>
@@ -1049,6 +1052,7 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
                       })}
                   </tbody>
                 </table>
+                </div>
               </div>
             </div>
           )}
@@ -1080,10 +1084,11 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
             <>
               {/* ── فروق سالبة (خطأ إدخال محتمل) ── */}
               {dataAnomalies.negatives.length > 0 && (
-                <div className="card mb-16" style={{ padding:0, overflow:'hidden' }}>
+                <div className="card mb-16" style={{ padding:0 }}>
                   <div style={{ background:'#dc2626', color:'#fff', padding:'10px 16px', fontWeight:800, fontSize:14 }}>
                     ⚠️ {ar?`فروق سالبة — خطأ إدخال محتمل (${dataAnomalies.negatives.length})`:`הפרשים שליליים — ייתכן טעות הזנה (${dataAnomalies.negatives.length})`}
                   </div>
+                  <div className="tbl-wrap">
                   <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
                     <thead>
                       <tr style={{ background:'#fff1f2' }}>
@@ -1117,12 +1122,13 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
                       })}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               )}
 
               {/* ── إعادة تصفير عداد (معلومة فقط) ── */}
               {dataAnomalies.resets.length > 0 && (
-                <div className="card" style={{ padding:0, overflow:'hidden' }}>
+                <div className="card" style={{ padding:0 }}>
                   <div style={{ background:'#d97706', color:'#fff', padding:'10px 16px', fontWeight:800, fontSize:14 }}>
                     ℹ️ {ar?`إعادة تصفير عداد — معلومة فقط (${dataAnomalies.resets.length})`:`איפוס מונה — מידע בלבד (${dataAnomalies.resets.length})`}
                   </div>
@@ -1131,6 +1137,7 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
                       ? 'القراءة الحالية = 0 والسابقة أكبر من صفر — هذا طبيعي عند تركيب عداد جديد، لكن يُستثنى تلقائياً من الإجماليات.'
                       : 'הקריאה הנוכחית = 0 והקודמת גדולה מאפס — נורמלי בהתקנת מונה חדש, אך מוחרג אוטומטית מהסיכומים.'}
                   </p>
+                  <div className="tbl-wrap">
                   <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
                     <thead>
                       <tr style={{ background:'#fffbeb' }}>
@@ -1162,6 +1169,7 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
                       })}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               )}
             </>
