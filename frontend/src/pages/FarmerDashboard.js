@@ -9,28 +9,21 @@ import {
 import FarmerNotes from '../components/farmer/FarmerNotes';
 import { LangToggleLight } from '../components/shared/LangToggle';
 import AnnouncementBanner from '../components/shared/AnnouncementBanner';
+import { getPrice } from '../utils/pricing'; // ✅ سعر موحّد شامل الضريبة (מע"מ)
+import { cupsDiff, cupsPositive } from '../utils/cups'; // ✅ فرق أكواب موحّد
 
 // ── ألوان الرسوم البيانية ──
 const CHART_COLORS = ['#ea580c','#7c3aed','#0891b2','#15803d','#db2777','#d97706'];
 
-const getPrice = (prices, year, landId, idx) => {
-  if (!prices) return 0;
-  const lp = prices.landPrices?.[String(landId)];
-  if (lp?.[`reading_${idx}`]) return parseFloat(lp[`reading_${idx}`]) || 0;
-  if (lp?.default) return parseFloat(lp.default) || 0;
-  const yp = prices.yearPrices?.[String(year)];
-  if (yp?.[`reading_${idx}`]) return parseFloat(yp[`reading_${idx}`]) || 0;
-  if (yp?.default) return parseFloat(yp.default) || 0;
-  return parseFloat(prices.globalPrice) || 0;
-};
 
 const calcConsumption = (reading, prices) => {
   if (!reading?.readings || reading.readings.length < 2) return [];
   return reading.readings.slice(1).map((curr, i) => {
     const prev = reading.readings[i];
-    const cups  = curr - prev;
+    const cups         = cupsDiff(reading.readings, i) || 0; // خام (للعرض فقط، قد تكون سالبة كتنبيه)
+    const cupsForTotal  = cupsPositive(reading.readings, i);  // للمجاميع/الإجماليات فقط
     const price = getPrice(prices, reading.year, reading.landId, i + 1);
-    return { idx: i + 1, cups, price, amount: cups * price, from: prev, to: curr };
+    return { idx: i + 1, cups, cupsForTotal, price, amount: cupsForTotal * price, from: prev, to: curr };
   });
 };
 
@@ -117,7 +110,7 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
   readings.forEach(r => {
     if (!byYear[r.year]) byYear[r.year] = { year: r.year, cups: 0, amount: 0 };
     calcConsumption(r, prices).forEach(c => {
-      byYear[r.year].cups   += c.cups;
+      byYear[r.year].cups   += c.cupsForTotal;
       byYear[r.year].amount += c.amount;
     });
   });
@@ -135,7 +128,7 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
   // بيانات توزيع الأراضي للـ Pie chart
   const landPie = lands.map((l, i) => {
     const lR   = readings.filter(r => r.landId === l.id);
-    const cups = lR.reduce((s, r) => s + calcConsumption(r, prices).reduce((ss, c) => ss + c.cups, 0), 0);
+    const cups = lR.reduce((s, r) => s + calcConsumption(r, prices).reduce((ss, c) => ss + c.cupsForTotal, 0), 0);
     return { name: l.name, value: Math.round(cups), color: CHART_COLORS[i % CHART_COLORS.length] };
   }).filter(d => d.value > 0);
 
@@ -347,7 +340,7 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
                   <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                     {lands.map((l,i) => {
                       const lR   = readings.filter(r => r.landId === l.id);
-                      const cups = lR.reduce((s,r)=>s+calcConsumption(r,prices).reduce((ss,c)=>ss+c.cups,0),0);
+                      const cups = lR.reduce((s,r)=>s+calcConsumption(r,prices).reduce((ss,c)=>ss+c.cupsForTotal,0),0);
                       const amt  = lR.reduce((s,r)=>s+calcConsumption(r,prices).reduce((ss,c)=>ss+c.amount,0),0);
                       const pct  = totalCups>0 ? Math.round((cups/totalCups)*100) : 0;
                       const color= CHART_COLORS[i%CHART_COLORS.length];
@@ -380,7 +373,7 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
             {years.length === 0 && <div className="card empty-state"><span className="icon">📅</span><p>{t('noYearData', lang)}</p></div>}
             {years.map((year, yi) => {
               const yR    = readings.filter(r => r.year === year);
-              const cups  = yR.reduce((s,r)=>s+calcConsumption(r,prices).reduce((ss,c)=>ss+c.cups,0),0);
+              const cups  = yR.reduce((s,r)=>s+calcConsumption(r,prices).reduce((ss,c)=>ss+c.cupsForTotal,0),0);
               const amount= yR.reduce((s,r)=>s+calcConsumption(r,prices).reduce((ss,c)=>ss+c.amount,0),0);
               const open  = selYear === year;
               const pct   = Math.round((cups/maxCups)*100);
@@ -468,7 +461,7 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
               {filteredLands.map((land, li) => {
                 const lR       = readings.filter(r => r.landId === land.id);
                 const chartData= Object.entries(
-                  lR.reduce((acc,r)=>{ acc[r.year]=(acc[r.year]||0)+calcConsumption(r,prices).reduce((s,c)=>s+c.cups,0); return acc; },{})
+                  lR.reduce((acc,r)=>{ acc[r.year]=(acc[r.year]||0)+calcConsumption(r,prices).reduce((s,c)=>s+c.cupsForTotal,0); return acc; },{})
                 ).map(([year,cups])=>({ year:String(year), cups:Math.round(cups) })).sort((a,b)=>a.year-b.year);
                 const totalC   = chartData.reduce((s,d)=>s+d.cups,0);
                 const totalA   = lR.reduce((s,r)=>s+calcConsumption(r,prices).reduce((ss,c)=>ss+c.amount,0),0);

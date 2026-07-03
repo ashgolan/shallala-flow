@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { adminAPI, regionsAPI } from '../../api';
 import { useLang } from '../../contexts/LangContext';
 import { t } from '../../i18n/translations';
 import ReadingsTable from './ReadingsTable';
+import { getPrice, getBasePrice, getVatRate } from '../../utils/pricing'; // ✅ سعر موحّد شامل الضريبة (מע"מ)
+import { cupsPositive } from '../../utils/cups'; // ✅ فرق أكواب موحّد (مجاميع فقط، بدون قيم سالبة)
 
 const dmsToDecimal = (deg, min, sec, dir) => {
   let dd = parseFloat(deg) + parseFloat(min)/60 + parseFloat(sec)/3600;
@@ -24,17 +26,6 @@ const parseGoogleCoords = (raw) => {
     lng: dmsToDecimal(lngM[1], lngM[2], lngM[3], lngM[4]),
   };
   return null;
-};
-
-const getPrice = (prices, year, landId, idx) => {
-  if (!prices) return 0;
-  const lp = prices.landPrices?.[String(landId)];
-  if (lp?.[`reading_${idx}`]) return parseFloat(lp[`reading_${idx}`]) || 0;
-  if (lp?.default)             return parseFloat(lp.default)           || 0;
-  const yp = prices.yearPrices?.[String(year)];
-  if (yp?.[`reading_${idx}`]) return parseFloat(yp[`reading_${idx}`]) || 0;
-  if (yp?.default)             return parseFloat(yp.default)           || 0;
-  return parseFloat(prices?.globalPrice) || 0;
 };
 
 const EMPTY_FORM = {
@@ -132,6 +123,7 @@ export default function AdminReadings({ adminRole='admin' }) {
 
   const [showRForm, setShowRForm] = useState(false);
   const [editR,     setEditR]     = useState(null);
+  const rFormRef = useRef(null); // ✅ للتمرير التلقائي عند فتح نموذج التعديل/الإضافة
   const [rForm,     setRForm]     = useState(EMPTY_FORM);
   const [extrasSuggestions, setExtrasSuggestions] = useState([]); // ✅ اقتراحات
 
@@ -204,12 +196,20 @@ export default function AdminReadings({ adminRole='admin' }) {
   const years = [...new Set(readings.map(r => r.year))].sort((a,b) => b-a);
   const farmerLands = rForm.farmerId ? lands.filter(l => String(l.farmerId) === String(rForm.farmerId)) : lands;
 
+  // ✅ يمرر الصفحة تلقائياً لأعلى نموذج القراءة (مهم عند التعديل من أسفل جدول طويل)
+  const scrollToRForm = () => {
+    setTimeout(() => {
+      rFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  };
+
   const openAddR = () => {
     setEditR(null);
     setRForm(EMPTY_FORM);
     setFormFarmerSearch('');
     gatherSuggestions(readings);
     setError(''); setShowRForm(true);
+    scrollToRForm();
   };
 
   const openEditR = r => {
@@ -225,6 +225,7 @@ export default function AdminReadings({ adminRole='admin' }) {
     });
     gatherSuggestions(readings);
     setError(''); setShowRForm(true);
+    scrollToRForm();
   };
 
   const submitR = async e => {
@@ -277,6 +278,36 @@ export default function AdminReadings({ adminRole='admin' }) {
     return true;
   });
 
+  // ✅ إجمالي المبالغ (قبل / بعد الضريبة) للقراءات المعروضة حالياً حسب الفلاتر
+  const grandBeforeVat = filtered.reduce((sum, r) => {
+    const vals = r.readings || [];
+    return sum + vals.slice(1).reduce((s, _, i) => {
+      return s + cupsPositive(vals, i) * getBasePrice(prices, r.year, r.landId, i+1);
+    }, 0);
+  }, 0);
+  const grandAfterVat = filtered.reduce((sum, r) => {
+    const vals = r.readings || [];
+    return sum + vals.slice(1).reduce((s, _, i) => {
+      return s + cupsPositive(vals, i) * getPrice(prices, r.year, r.landId, i+1);
+    }, 0);
+  }, 0);
+  const vatPercentLabel = (getVatRate(prices) * 100).toFixed(1).replace(/\.0$/, '');
+
+  // ✅ إجمالي الأكواب + تفصيل كل دورة (قراءة) للقراءات المعروضة حالياً
+  const cupsBreakdown = (() => {
+    const byPeriod = {};
+    let total = 0, maxPeriods = 0;
+    filtered.forEach(r => {
+      const vals = r.readings || [];
+      vals.slice(1).forEach((_, i) => {
+        const cups = cupsPositive(vals, i);
+        if (cups) { byPeriod[i+1] = (byPeriod[i+1] || 0) + cups; total += cups; }
+        maxPeriods = Math.max(maxPeriods, i+1);
+      });
+    });
+    return { total, byPeriod, maxPeriods };
+  })();
+
   const formTotalAmount = rForm.readings.slice(1).reduce((total, _, i) => {
     const prev = parseFloat(rForm.readings[i]);
     const curr = parseFloat(rForm.readings[i+1]);
@@ -290,6 +321,65 @@ export default function AdminReadings({ adminRole='admin' }) {
 
   return (
     <div>
+      {/* ── ملخّص الحساب: قبل وبعد الضريبة (מע"מ) ── */}
+      <div className="flex-gap gap-12 mb-16" style={{ flexWrap:'wrap' }}>
+        <div style={{ flex:'1 1 200px', background:'var(--surface-2)', border:'1.5px solid var(--border)', borderRadius:10, padding:'10px 16px' }}>
+          <div style={{ fontSize:12, color:'var(--text-muted)', fontWeight:700, marginBottom:2 }}>
+            {ar ? 'الإجمالي قبل الضريبة' : 'סה"כ לפני מע"מ'}
+          </div>
+          <div style={{ fontSize:20, fontWeight:900, color:'var(--text-secondary)' }}>
+            ₪{Math.round(grandBeforeVat).toLocaleString()}
+          </div>
+        </div>
+        <div style={{ flex:'1 1 200px', background:'#fff7ed', border:'1.5px solid #fed7aa', borderRadius:10, padding:'10px 16px' }}>
+          <div style={{ fontSize:12, color:'#92400e', fontWeight:700, marginBottom:2 }}>
+            🧾 {ar ? `الإجمالي بعد الضريبة (${vatPercentLabel}%)` : `סה"כ אחרי מע"מ (${vatPercentLabel}%)`}
+          </div>
+          <div style={{ fontSize:20, fontWeight:900, color:'#854d0e' }}>
+            ₪{Math.round(grandAfterVat).toLocaleString()}
+          </div>
+        </div>
+      </div>
+
+      {/* ── إجمالي الأكواب + تفصيل الدورات ── */}
+      <div className="card mb-16">
+        <div className="flex-between mb-12" style={{ flexWrap:'wrap', gap:8 }}>
+          <h3 style={{ margin:0 }}>
+            🥤 {ar ? 'إجمالي الأكواب' : 'סה"כ כוסות'}
+            {filterY && <span style={{ color:'var(--text-muted)', fontWeight:600, fontSize:14 }}> — {filterY}</span>}
+          </h3>
+          <div style={{ fontSize:24, fontWeight:900, color:'var(--primary)' }}>
+            {Math.round(cupsBreakdown.total).toLocaleString()}
+          </div>
+        </div>
+        {cupsBreakdown.maxPeriods === 0 ? (
+          <p style={{ color:'var(--text-muted)', fontSize:13, textAlign:'center', padding:'8px 0' }}>
+            {ar ? 'لا توجد بيانات كافية لعرض التفصيل' : 'אין מספיק נתונים להצגת פירוט'}
+          </p>
+        ) : (
+          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+            {Array.from({ length: cupsBreakdown.maxPeriods }, (_, idx) => idx + 1).map(p => {
+              const val = cupsBreakdown.byPeriod[p] || 0;
+              const pct = cupsBreakdown.total > 0 ? Math.round((val / cupsBreakdown.total) * 100) : 0;
+              return (
+                <div key={p} style={{ flex:'1 1 130px', background:'var(--surface-2)', border:'1px solid var(--border)', borderRadius:10, padding:'10px 14px' }}>
+                  <div style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700, marginBottom:4 }}>
+                    {ar ? `الدورة ${p}` : `תקופה ${p}`}
+                  </div>
+                  <div style={{ fontSize:18, fontWeight:900, color:'var(--primary-dark)', marginBottom:6 }}>
+                    {Math.round(val).toLocaleString()}
+                  </div>
+                  <div style={{ height:6, borderRadius:3, background:'#e5e7eb', overflow:'hidden' }}>
+                    <div style={{ height:'100%', width:`${pct}%`, background:'var(--primary)', borderRadius:3, transition:'width 0.3s' }}/>
+                  </div>
+                  <div style={{ fontSize:10, color:'var(--text-muted)', marginTop:3, textAlign:'left' }}>{pct}%</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* ── شريط الفلاتر ── */}
       <div className="flex-between mb-16" style={{ flexWrap:'wrap', gap:12 }}>
         <div className="flex-gap gap-8" style={{ flexWrap:'wrap' }}>
@@ -352,7 +442,7 @@ export default function AdminReadings({ adminRole='admin' }) {
 
       {/* ══ نموذج القراءة ══ */}
       {showRForm && (
-        <div className="card mb-16 fade-in-fast" style={{ border:'2px solid var(--primary)' }}>
+        <div ref={rFormRef} className="card mb-16 fade-in-fast" style={{ border:'2px solid var(--primary)', scrollMarginTop: 16 }}>
           <h3 className="mb-16">
             {editR ? `✏️ ${ar ? 'تعديل قراءة' : 'עריכת קריאה'}` : `+ ${ar ? 'إضافة قراءة' : 'הוסף קריאה'}`}
           </h3>

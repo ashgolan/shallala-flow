@@ -1,28 +1,8 @@
 import React, { useState } from 'react';
 import { togglePaid, updateNote } from '../../api';
-
-const getPrice = (prices, year, landId, idx) => {
-  if (!prices) return 0;
-  const lp = prices.landPrices?.[String(landId)];
-  if (lp?.[`reading_${idx}`]) return parseFloat(lp[`reading_${idx}`]) || 0;
-  if (lp?.default) return parseFloat(lp.default) || 0;
-  const yp = prices.yearPrices?.[String(year)];
-  if (yp?.[`reading_${idx}`]) return parseFloat(yp[`reading_${idx}`]) || 0;
-  if (yp?.default) return parseFloat(yp.default) || 0;
-  return parseFloat(prices?.globalPrice) || 0;
-};
-
-const cupsDiff = (readings, idx) => {
-  const a = readings[idx-1];
-  const b = readings[idx];
-  if (idx === 0) return null;
-  if (a == null || a === '' || b == null || b === '') return null;
-  const fa = parseFloat(a);
-  const fb = parseFloat(b);
-  if (isNaN(fa) || isNaN(fb)) return null;
-  if (fb === 0 && fa > 0) return null;
-  return fb - fa;
-};
+import { getPrice } from '../../utils/pricing'; // ✅ سعر موحّد شامل الضريبة (מע"מ)
+import { cupsDiff, cupsPositive } from '../../utils/cups'; // ✅ فرق أكواب موحّد
+import { getExtrasList as getExtras, getExtrasNet } from '../../utils/extras'; // ✅ إضافات موحّدة
 
 const PaidBtn = ({ paid, loading, onClick }) => (
   <button onClick={onClick} disabled={loading}
@@ -42,15 +22,6 @@ const IconBtn = ({ onClick, title, bg, hoverBg, color, hoverColor, border, child
     onMouseLeave={e => { e.currentTarget.style.background=bg; e.currentTarget.style.color=color; }}
   >{children}</button>
 );
-
-// ✅ دالة مساعدة لجمع الإضافات (جديدة + قديمة)
-const getExtras = (r) => {
-  const extras = r.extras || [];
-  if (extras.length > 0) return extras;
-  const legacyExtra = parseFloat(r.extra) || 0;
-  if (legacyExtra > 0) return [{ note: r.extraNote||'', amount: legacyExtra, paid: parseFloat(r.extraPaid)||0 }];
-  return [];
-};
 
 export default function ReadingsTable({
   readings, setReadings, farmerName, landName, landRegion,
@@ -79,8 +50,8 @@ export default function ReadingsTable({
     else if (sortKey==='land')    { va=landName(a.landId);     vb=landName(b.landId); }
     else if (sortKey==='year')    { va=a.year;                 vb=b.year; }
     else if (sortKey==='station') { va=a.stationNumber||'';    vb=b.stationNumber||''; }
-    else if (sortKey==='total')   { va=(a.readings||[]).slice(1).reduce((s,_,i)=>s+(cupsDiff(a.readings,i+1)||0),0); vb=(b.readings||[]).slice(1).reduce((s,_,i)=>s+(cupsDiff(b.readings,i+1)||0),0); }
-    else if (sortKey==='amount')  { va=(a.readings||[]).slice(1).reduce((s,_,i)=>s+(cupsDiff(a.readings,i+1)||0)*getPrice(prices,a.year,a.landId,i+1),0); vb=(b.readings||[]).slice(1).reduce((s,_,i)=>s+(cupsDiff(b.readings,i+1)||0)*getPrice(prices,b.year,b.landId,i+1),0); }
+    else if (sortKey==='total')   { va=(a.readings||[]).slice(1).reduce((s,_,i)=>s+cupsPositive(a.readings,i),0); vb=(b.readings||[]).slice(1).reduce((s,_,i)=>s+cupsPositive(b.readings,i),0); }
+    else if (sortKey==='amount')  { va=(a.readings||[]).slice(1).reduce((s,_,i)=>s+cupsPositive(a.readings,i)*getPrice(prices,a.year,a.landId,i+1),0); vb=(b.readings||[]).slice(1).reduce((s,_,i)=>s+cupsPositive(b.readings,i)*getPrice(prices,b.year,b.landId,i+1),0); }
     else if (sortKey==='paid')    { va=a.paid?1:0; vb=b.paid?1:0; }
     if (typeof va==='string') return sortDir==='asc' ? va.localeCompare(vb,'he') : vb.localeCompare(va,'he');
     return sortDir==='asc' ? va-vb : vb-va;
@@ -118,15 +89,12 @@ export default function ReadingsTable({
 
   const maxReadings = Math.max(2, ...readings.map(r=>r.readings?.length||0));
   const cupsCols    = maxReadings - 1;
-  const grandCups   = sorted.reduce((s,r)=>s+(r.readings||[]).slice(1).reduce((ss,_,i)=>ss+(cupsDiff(r.readings,i+1)||0),0),0);
-  const grandAmount = sorted.reduce((s,r)=>s+(r.readings||[]).slice(1).reduce((ss,_,i)=>ss+(cupsDiff(r.readings,i+1)||0)*getPrice(prices,r.year,r.landId,i+1),0),0);
+  const grandCups   = sorted.reduce((s,r)=>s+(r.readings||[]).slice(1).reduce((ss,_,i)=>ss+cupsPositive(r.readings,i),0),0);
+  const grandAmount = sorted.reduce((s,r)=>s+(r.readings||[]).slice(1).reduce((ss,_,i)=>ss+cupsPositive(r.readings,i)*getPrice(prices,r.year,r.landId,i+1),0),0);
   const paidCount   = readings.filter(r=>r.paid).length;
 
   // ✅ إجمالي الإضافات
-  const grandExtrasRem = sorted.reduce((s,r) => {
-    const exs = getExtras(r);
-    return s + exs.reduce((ss,e)=>(ss+(parseFloat(e.amount)||0)-(parseFloat(e.paid)||0)),0);
-  }, 0);
+  const grandExtrasRem = sorted.reduce((s,r) => s + getExtrasNet(r), 0);
 
   const MapModal = () => {
     if (!mapModal) return null;
@@ -222,9 +190,9 @@ export default function ReadingsTable({
             {sorted.map(r => {
               const expanded      = expandedId===r.id;
               const vals          = r.readings||[];
-              const cupsPerPeriod = Array.from({length:cupsCols}).map((_,i)=>cupsDiff(vals,i+1));
-              const totalCups     = cupsPerPeriod.reduce((s,c)=>s+(c||0),0);
-              const rowAmount     = cupsPerPeriod.reduce((s,c,i)=>s+(c||0)*getPrice(prices,r.year,r.landId,i+1),0);
+              const cupsPerPeriod = Array.from({length:cupsCols}).map((_,i)=>cupsDiff(vals,i));
+              const totalCups     = cupsPerPeriod.reduce((s,c)=>s+(c && c>0 ? c : 0),0);
+              const rowAmount     = cupsPerPeriod.reduce((s,c,i)=>s+(c && c>0 ? c : 0)*getPrice(prices,r.year,r.landId,i+1),0);
               const isPaid        = !!r.paid;
               const rowBg   = isPaid ? 'rgba(220,252,231,0.5)' : 'rgba(254,226,226,0.35)';
               const cupsBg  = isPaid ? '#d1fae5' : '#fee2e2';
@@ -454,7 +422,7 @@ export default function ReadingsTable({
               <tr style={{background:'linear-gradient(90deg,#14532d,#166534)', borderTop:'2px solid #14532d'}}>
                 <td colSpan={5} style={{fontWeight:900,color:'#fff',fontSize:14,padding:'11px 14px'}}>⚡ {ar?'الإجمالي الكلي':'סה"כ כללי'}</td>
                 {Array.from({length:cupsCols}).map((_,i) => {
-                  const col = sorted.reduce((s,r)=>s+(cupsDiff(r.readings||[],i+1)||0),0);
+                  const col = sorted.reduce((s,r)=>s+cupsPositive(r.readings||[],i),0);
                   return <td key={i} style={{textAlign:'center',padding:'11px 8px'}}><span style={{fontWeight:900,color:'#a3e635',fontSize:15}}>{col.toLocaleString()}</span></td>;
                 })}
                 <td style={{textAlign:'center',padding:'11px 8px'}}><span style={{fontWeight:900,color:'#a3e635',fontSize:17}}>{grandCups.toLocaleString()}</span></td>

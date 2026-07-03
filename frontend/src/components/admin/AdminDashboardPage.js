@@ -2,26 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import JSZip from 'jszip';
 import { adminAPI, paymentsAPI } from '../../api';
 import { useLang } from '../../contexts/LangContext';
+import { getPrice } from '../../utils/pricing'; // ✅ سعر موحّد شامل الضريبة (מע"מ)
+import { cupsPositive } from '../../utils/cups';     // ✅ فرق أكواب موحّد (مجاميع فقط، بدون قيم سالبة)
+import { getExtrasNet } from '../../utils/extras';   // ✅ إضافات موحّدة (تدعم extras[] + الحقول القديمة)
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell,
 } from 'recharts';
 
-const getPrice = (prices, year, landId, idx) => {
-  if (!prices) return 0;
-  const lp = prices.landPrices?.[String(landId)];
-  if (lp?.[`reading_${idx}`]) return parseFloat(lp[`reading_${idx}`]) || 0;
-  if (lp?.default) return parseFloat(lp.default) || 0;
-  const yp = prices.yearPrices?.[String(year)];
-  if (yp?.[`reading_${idx}`]) return parseFloat(yp[`reading_${idx}`]) || 0;
-  if (yp?.default) return parseFloat(yp.default) || 0;
-  return parseFloat(prices?.globalPrice) || 0;
-};
-
-const cupsDiff = (readings, idx) => {
-  if (!readings[idx] || !readings[idx-1]) return 0;
-  return parseFloat(readings[idx]) - parseFloat(readings[idx-1]);
-};
 
 const COLORS = ['#16a34a','#84cc16','#0ea5e9','#f59e0b','#ef4444','#8b5cf6'];
 
@@ -66,16 +54,31 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
       if (!byYear[y]) byYear[y] = { year:y, income:0, cups:0 };
       const vals = r.readings||[];
       // أضف extra مرة واحدة فقط لكل قراءة (ليس لكل فترة)
-      const extraNet = (parseFloat(r.extra)||0) - (parseFloat(r.extraPaid)||0);
+      const extraNet = getExtrasNet(r);
       byYear[y].income += extraNet;
       vals.slice(1).forEach((v,i) => {
-        const cups  = cupsDiff(vals, i+1);
+        const cups  = cupsPositive(vals, i);
         const price = getPrice(prices, y, r.landId, i+1);
         byYear[y].cups   += cups;
         byYear[y].income += cups * price;
       });
     });
     return Object.values(byYear).sort((a,b)=>a.year-b.year);
+  };
+
+  // ✅ إجمالي الأكواب + تفصيل كل دورة لسنة معينة
+  const calcCupsBreakdown = (year) => {
+    const byPeriod = {};
+    let total = 0, maxPeriods = 0;
+    (data?.report?.readings || []).filter(r => r.year === year).forEach(r => {
+      const vals = r.readings || [];
+      vals.slice(1).forEach((_, i) => {
+        const cups = cupsPositive(vals, i);
+        if (cups) { byPeriod[i+1] = (byPeriod[i+1] || 0) + cups; total += cups; }
+        maxPeriods = Math.max(maxPeriods, i+1);
+      });
+    });
+    return { total, byPeriod, maxPeriods };
   };
 
   const calcYearlyPayments = () => {
@@ -186,6 +189,16 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
   const netProfit    = totalIncome - totalPayments;
   const { report }   = data;
 
+  // ✅ سنة "الأكواب" المعروضة: السنة الحالية إن وُجدت بيانات لها، وإلا أحدث سنة متوفرة
+  const availableYears = [...new Set((report.readings||[]).map(r=>r.year))];
+  const nowYear = new Date().getFullYear();
+  const cupsYear = availableYears.includes(nowYear) ? nowYear : (availableYears.length ? Math.max(...availableYears) : nowYear);
+  const cupsBreakdown = calcCupsBreakdown(cupsYear);
+  const cupsChartData = Array.from({ length: cupsBreakdown.maxPeriods }, (_, idx) => ({
+    period: ar ? `دورة ${idx+1}` : `תקופה ${idx+1}`,
+    [ar?'أكواب':'כוסות']: Math.round(cupsBreakdown.byPeriod[idx+1] || 0),
+  }));
+
   return (
     <div>
       <div className="flex-between mb-20">
@@ -213,6 +226,7 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
           { label:ar?'عدد المزارعين':'חקלאים', value:(report.farmers||[]).length, icon:'👨‍🌾' },
           { label:ar?'عدد القراءات':'קריאות',  value:(report.readings||[]).length, icon:'📏' },
           { label:ar?'عدد الدفعات':'תשלומים',  value:data.payments.length, icon:'🧾' },
+          { label:(ar?'إجمالي الأكواب ':'סה"כ כוסות ')+cupsYear, value:Math.round(cupsBreakdown.total).toLocaleString(), icon:'🥤' },
         ].map((s,i) => (
           <div key={i} className={`stat-card ${s.accent?'accent':''}`} style={{padding:'14px 16px'}}>
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
@@ -260,6 +274,24 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
                 </Pie>
                 <Tooltip formatter={v=>`₪${v.toLocaleString()}`}/>
               </PieChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {/* توزيع الأكواب حسب الدورة */}
+        {cupsChartData.length > 0 && (
+          <div className="card">
+            <h3 className="mb-16">🥤 {(ar?'توزيع الأكواب حسب الدورة — ':'חלוקת כוסות לפי תקופה — ')}{cupsYear}</h3>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={cupsChartData} barGap={4}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb"/>
+                <XAxis dataKey="period" tick={{fontFamily:'Tajawal,Heebo',fontSize:12}}/>
+                <YAxis tick={{fontFamily:'Tajawal,Heebo',fontSize:11}}/>
+                <Tooltip formatter={v=>[v.toLocaleString(), ar?'أكواب':'כוסות']} contentStyle={{fontFamily:'Tajawal,Heebo'}}/>
+                <Bar dataKey={ar?'أكواب':'כוסות'} radius={[4,4,0,0]}>
+                  {cupsChartData.map((_,i) => <Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
           </div>
         )}

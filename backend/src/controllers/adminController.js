@@ -303,16 +303,17 @@ const deleteReading = async (req, res) => {
 const getPrices = async (req, res) => {
   try {
     const doc = await Prices.findOne({ key: 'prices' }).lean();
-    if (!doc) return res.json({ globalPrice: 0, yearPrices: {}, landPrices: {} });
-    return res.json({ globalPrice: doc.globalPrice || 0, yearPrices: doc.yearPrices || {}, landPrices: doc.landPrices || {} });
+    if (!doc) return res.json({ globalPrice: 0, yearPrices: {}, landPrices: {}, vatRate: 18 });
+    return res.json({ globalPrice: doc.globalPrice || 0, yearPrices: doc.yearPrices || {}, landPrices: doc.landPrices || {}, vatRate: doc.vatRate ?? 18 });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
 
 const updatePrices = async (req, res) => {
   try {
-    const { globalPrice, yearPrices, landPrices } = req.body;
+    const { globalPrice, yearPrices, landPrices, vatRate } = req.body;
     const doc = await Prices.findOneAndUpdate({ key: 'prices' }, { $set: { globalPrice: parseFloat(globalPrice) || 0 } }, { upsert: true, new: true });
     doc.yearPrices = yearPrices || {}; doc.landPrices = landPrices || {};
+    if (vatRate !== undefined && vatRate !== null && vatRate !== '') doc.vatRate = parseFloat(vatRate) || 0;
     doc.markModified('yearPrices'); doc.markModified('landPrices');
     await doc.save();
     return res.json({ success: true });

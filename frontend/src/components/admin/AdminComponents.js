@@ -103,6 +103,11 @@ export function AdminPrices() {
           4️⃣ {ar?'سعر عام لسنة':'מחיר כללי לשנה'} &nbsp;·&nbsp;
           5️⃣ {t('globalPrice', lang)}
         </div>
+        <div style={{ fontSize:12, color:'#92400e', background:'#fff7ed', border:'1px solid #fed7aa', borderRadius:6, padding:'6px 10px', marginTop:10, fontWeight:600 }}>
+          🧾 {ar
+            ? 'كل الأسعار هنا تُدخَل قبل الضريبة (מע"מ) — الضريبة تُضاف تلقائياً في حسابات القراءات والتقارير. لتغيير نسبة الضريبة: صفحة الإعدادات.'
+            : 'כל המחירים כאן מוזנים לפני מע"מ — המע"מ מתווסף אוטומטית בחישובי הקריאות והדוחות. לשינוי אחוז המע"מ: עמוד ההגדרות.'}
+        </div>
       </div>
 
       {/* تبويبات الأقسام */}
@@ -466,6 +471,8 @@ export function AdminSettings() {
       {success && <div className="alert alert-success mb-16">{success}</div>}
       {error   && <div className="alert alert-error mb-16">{error}</div>}
 
+      <VatSettings ar={ar} lang={lang} />
+
       <div className="card mb-20">
         <h3 className="mb-8">📢 {t('announcement', lang)}</h3>
         <p style={{ color:'var(--text-muted)', fontSize:13, marginBottom:16 }}>{t('announcementDesc', lang)}</p>
@@ -504,6 +511,51 @@ export function AdminSettings() {
       </div>
 
       <PrivilegedUsers lang={lang} ar={ar} />
+    </div>
+  );
+}
+
+// ── إعداد نسبة الضريبة (מע"מ) ──────────────────────────────────
+function VatSettings({ ar, lang }) {
+  const [prices, setPrices] = useState(null);
+  const [vat, setVat]       = useState('18');
+  const [saving, setSaving] = useState(false);
+  const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    adminAPI.getPrices().then(p => {
+      setPrices(p);
+      setVat(String(p?.vatRate ?? 18));
+    }).catch(() => {});
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await adminAPI.updatePrices({ ...prices, vatRate: parseFloat(vat) || 0 });
+      setSuccess('✅ ' + (ar ? 'تم الحفظ' : 'נשמר'));
+      setTimeout(() => setSuccess(''), 3000);
+    } catch(e) { alert(e.message); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="card mb-20">
+      <h3 className="mb-8">🧾 {ar ? 'نسبة الضريبة (מע"מ)' : 'אחוז מע"מ'}</h3>
+      <p style={{ color:'var(--text-muted)', fontSize:13, marginBottom:16 }}>
+        {ar
+          ? 'الأسعار في صفحة "الأسعار" تُدخل دائماً قبل الضريبة. هذه النسبة تُضاف تلقائياً على كل حسابات القراءات والتقارير.'
+          : 'המחירים בעמוד "מחירים" מוזנים תמיד לפני מע"מ. אחוז זה מתווסף אוטומטית לכל חישובי הקריאות והדוחות.'}
+      </p>
+      {success && <div className="alert alert-success mb-16">{success}</div>}
+      <div style={{ display:'flex', gap:12, alignItems:'flex-end', maxWidth:260 }}>
+        <div className="form-group" style={{ marginBottom:0, flex:1 }}>
+          <label>{ar ? 'نسبة الضريبة (%)' : 'אחוז מע"מ (%)'}</label>
+          <input type="number" step="0.1" min="0" max="100"
+            value={vat} onChange={e => setVat(e.target.value)} placeholder="18"/>
+        </div>
+        <button className="btn btn-primary" onClick={save} disabled={saving || prices===null}>💾</button>
+      </div>
     </div>
   );
 }

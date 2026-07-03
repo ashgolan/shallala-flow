@@ -5,6 +5,7 @@ const pricesSchema = new mongoose.Schema({
   globalPrice: { type: Number, default: 0 },
   yearPrices:  { type: mongoose.Schema.Types.Mixed, default: {} },
   landPrices:  { type: mongoose.Schema.Types.Mixed, default: {} },
+  vatRate:     { type: Number, default: 18 }, // ✅ نسبة الضريبة (מע"מ) %
 }, { collection: 'settings_prices', timestamps: true });
 
 const announcementSchema = new mongoose.Schema({

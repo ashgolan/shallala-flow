@@ -4,16 +4,9 @@ import { adminAPI, regionsAPI } from '../../api';
 import { useLang } from '../../contexts/LangContext';
 import ReadingsTable from './ReadingsTable';
 
-const getP = (prices, year, landId, idx) => {
-  if (!prices) return 0;
-  const lp = prices.landPrices?.[String(landId)];
-  if (lp?.[`reading_${idx}`]) return parseFloat(lp[`reading_${idx}`]) || 0;
-  if (lp?.default) return parseFloat(lp.default) || 0;
-  const yp = prices.yearPrices?.[String(year)];
-  if (yp?.[`reading_${idx}`]) return parseFloat(yp[`reading_${idx}`]) || 0;
-  if (yp?.default) return parseFloat(yp.default) || 0;
-  return parseFloat(prices?.globalPrice) || 0;
-};
+import { getPrice as getP, getBasePrice as getBaseP } from '../../utils/pricing'; // ✅ سعر موحّد شامل الضريبة (מע"מ)
+import { cupsDiff, cupsPositive } from '../../utils/cups'; // ✅ فرق أكواب موحّد
+import { getExtrasNet } from '../../utils/extras'; // ✅ إضافات موحّدة (تدعم extras[] + الحقول القديمة)
 
 export function AdminReports({ adminRole='admin' }) {
   const { lang } = useLang();
@@ -90,19 +83,40 @@ export function AdminReports({ adminRole='admin' }) {
   const calcRow = r => {
     const vals = r.readings || [];
     const periods = vals.slice(1).map((v, i) => {
-      const cups  = parseFloat(vals[i+1]) - parseFloat(vals[i]);
+      const cups  = cupsPositive(vals, i);
       const price = getP(prices, r.year, r.landId, i+1);
-      return { cups: cups > 0 ? cups : 0, price, amount: cups > 0 ? cups * price : 0 };
+      return { cups, price, amount: cups * price };
     });
     const totalCups  = periods.reduce((s,p) => s + p.cups, 0);
     const cupsAmount = periods.reduce((s,p) => s + p.amount, 0);
-    const extra      = parseFloat(r.extra) || 0;
-    const extraPaid  = parseFloat(r.extraPaid) || 0;
-    const total      = cupsAmount + extra - extraPaid;
-    return { periods, totalCups, cupsAmount, extra, extraPaid, total };
+    const extraNet   = getExtrasNet(r); // ✅ يشمل extras[] الجديدة + الحقول القديمة معاً
+    const total      = cupsAmount + extraNet;
+    return { periods, totalCups, cupsAmount, extraNet, total };
   };
 
   const years = [...new Set(readings.map(r => r.year))].sort((a,b) => b-a);
+
+  // ✅ تدقيق البيانات: فحص كل القراءات عن شذوذ (فرق سالب / إعادة تصفير)
+  const dataAnomalies = (() => {
+    const negatives = []; // فرق سالب حقيقي — على الأغلب خطأ إدخال
+    const resets     = []; // إعادة تصفير عداد (0 بعد قيمة أكبر) — معلومة، مو بالضرورة خطأ
+    readings.forEach(r => {
+      const vals = r.readings || [];
+      vals.slice(1).forEach((_, i) => {
+        const a = vals[i], b = vals[i+1];
+        if (a == null || a === '' || b == null || b === '') return;
+        const fa = parseFloat(a), fb = parseFloat(b);
+        if (isNaN(fa) || isNaN(fb)) return;
+        const row = {
+          readingId: r.id, farmerId: r.farmerId, landId: r.landId, year: r.year,
+          period: i+1, from: fa, to: fb, diff: fb - fa,
+        };
+        if (fb === 0 && fa > 0) resets.push(row);
+        else if (fb < fa)       negatives.push(row);
+      });
+    });
+    return { negatives, resets, total: negatives.length + resets.length };
+  })();
 
   // ✅ جمع كل extraNotes الفريدة الموجودة في النظام
   // ✅ جمع كل أسماء الإضافات من extras[] الجديدة + الحقول القديمة
@@ -251,7 +265,7 @@ export function AdminReports({ adminRole='admin' }) {
     const yearLabel = filterYear || (ar?'جميع السنوات':'כל השנים');
     const farmerLabel = filterFarmer ? (farmers.find(f=>f.id===filterFarmer)?.nameHeb||'—') : (ar?'جميع المزارعين':'כל החקלאים');
     const rows = filtered.map(r => {
-      const { totalCups, extra, extraPaid, total } = calcRow(r);
+      const { totalCups, extraNet, total } = calcRow(r);
       const land = lands.find(l => String(l.id) === String(r.landId));
       const isPaid = !!r.paid;
       return `<tr style="background:${isPaid?'#f0fdf4':'#fff5f5'}">
@@ -260,7 +274,7 @@ export function AdminReports({ adminRole='admin' }) {
         <td style="text-align:center">${r.year}</td>
         <td style="text-align:center">${land?.stationNumber||r.stationNumber||'—'}</td>
         <td style="text-align:center">${totalCups.toLocaleString()}</td>
-        <td style="text-align:center">${extra>0?'+₪'+extra.toLocaleString():'—'}</td>
+        <td style="text-align:center">${extraNet>0?'+₪'+Math.round(extraNet).toLocaleString():'—'}</td>
         <td style="text-align:center;font-weight:bold">₪${Math.round(total).toLocaleString()}</td>
         <td style="text-align:center;color:${isPaid?'#16a34a':'#dc2626'};font-weight:bold">${isPaid?'✓':'○'}</td>
       </tr>`;
@@ -368,7 +382,83 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
     XLSX.writeFile(wb, `alshallala-watchman-${year}.xlsx`);
   };
 
-  // ✅ حساب العدادات التي لم تدفع الاشتراك المحدد
+  // ✅ Excel لكل القراءات (قراءة أولى / قراءة ثانية / الفرق) — للتحقق اليدوي من صحة الحسابات
+  const handleAuditExcel = () => {
+    const rows = [];
+    readings.forEach(r => {
+      const vals   = r.readings || [];
+      const farmer = farmers.find(f => String(f.id) === String(r.farmerId));
+      const land   = lands.find(l => String(l.id) === String(r.landId));
+      const extraNet = getExtrasNet(r); // ✅ صافي الإضافات (extras[] + الحقول القديمة) — مرة واحدة فقط لكل قراءة
+      let firstRowOfReading = true;
+      vals.slice(1).forEach((_, i) => {
+        const from = vals[i], to = vals[i+1];
+        if (from == null || from === '' || to == null || to === '') return;
+        const fa = parseFloat(from), fb = parseFloat(to);
+        if (isNaN(fa) || isNaN(fb)) return;
+        const price = getP(prices, r.year, r.landId, i+1);
+        rows.push({
+          'المزارع':                    farmer?.nameHeb || farmer?.name || '—',
+          'المحطة':                     land?.stationNumber || r.stationNumber || '—',
+          'السنة':                       r.year,
+          'الفترة':                      `${i+1}←${i+2}`,
+          'القراءة الأولى':              fa,
+          'القراءة الثانية':             fb,
+          'الفرق (أكواب) - خام':         fb - fa,
+          'الفرق المعتمد للمجموع':       fb - fa, // ✅ سيُستبدل بمعادلة MAX(0,...) بالأسفل
+          'السعر (قبل الضريبة)':         Math.round(getBaseP(prices, r.year, r.landId, i+1) * 100) / 100,
+          'المبلغ قبل الضريبة':          Math.round((fb - fa > 0 ? (fb - fa) : 0) * getBaseP(prices, r.year, r.landId, i+1) * 100) / 100,
+          'المبلغ بعد الضريبة':          Math.round((fb - fa > 0 ? (fb - fa) : 0) * price * 100) / 100,
+          // ✅ الإضافات تُكتب مرة واحدة فقط في أول فترة لكل قراءة (لتفادي تكرارها بكل مجموع)
+          'الإضافات (صافي)':             firstRowOfReading ? Math.round(extraNet * 100) / 100 : 0,
+        });
+        firstRowOfReading = false;
+      });
+      // لو القراءة عندها إضافة لكن ما عندها أي فترة صالحة (قراءة واحدة فقط)، أضف صفاً خاصاً لها حتى ما تضيع من المجموع
+      if (firstRowOfReading && extraNet) {
+        rows.push({
+          'المزارع': farmer?.nameHeb || farmer?.name || '—',
+          'المحطة':  land?.stationNumber || r.stationNumber || '—',
+          'السنة':    r.year,
+          'الفترة':   '—',
+          'القراءة الأولى': '—', 'القراءة الثانية': '—',
+          'الفرق (أكواب) - خام': 0, 'الفرق المعتمد للمجموع': 0,
+          'السعر (قبل الضريبة)': 0, 'المبلغ قبل الضريبة': 0, 'المبلغ بعد الضريبة': 0,
+          'الإضافات (صافي)': Math.round(extraNet * 100) / 100,
+        });
+      }
+    });
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    // A            B        C     D       E              F               G                   H                        I                     J                    K                    L
+    // المزارع      المحطة   السنة الفترة  القراءة الأولى القراءة الثانية الفرق(خام)          الفرق المعتمد للمجموع    السعر(قبل الضريبة)   المبلغ قبل الضريبة  المبلغ بعد الضريبة  الإضافات(صافي)
+    ws['!cols'] = [{wch:20},{wch:10},{wch:8},{wch:10},{wch:14},{wch:14},{wch:14},{wch:16},{wch:16},{wch:16},{wch:16},{wch:16}];
+
+    // ✅ عمود H: معادلة MAX(0,...) حقيقية — نفس منطق cupsPositive المستخدم في كل حسابات التطبيق بالضبط
+    for (let idx = 0; idx < rows.length; idx++) {
+      const excelRow = idx + 2;
+      ws[`H${excelRow}`] = { t:'n', f:`MAX(0,G${excelRow})` };
+    }
+
+    // ✅ صف إجمالي بمعادلة SUM حقيقية (يعيد حسابها Excel نفسه)
+    const totalRow = rows.length + 2; // +1 للعنوان +1 لأن Excel 1-indexed
+    XLSX.utils.sheet_add_aoa(ws, [['الإجمالي']], { origin: `A${totalRow}` });
+    ['H','J','K','L'].forEach(col => {
+      ws[`${col}${totalRow}`] = { t:'n', f:`SUM(${col}2:${col}${totalRow-1})` };
+    });
+    // ✅ خلية توضيحية: الإجمالي الكلي المتوقع (يطابق "الإجمالي الكلي" في التطبيق)
+    ws[`N1`] = { t:'s', v: ar ? '← إجمالي الأكواب المتوقع (يطابق التطبيق)' : '← סה"כ כוסות צפוי (תואם לאפליקציה)' };
+    ws[`N${totalRow}`] = { t:'n', f:`H${totalRow}` };
+    ws[`O1`] = { t:'s', v: ar ? '← الإجمالي المالي الكلي المتوقع (بعد الضريبة + الإضافات)' : '← סה"כ כספי צפוי (אחרי מע"מ + תוספות)' };
+    ws[`O${totalRow}`] = { t:'n', f:`K${totalRow}+L${totalRow}` };
+    ws['!ref'] = `A1:O${totalRow}`; // ✅ تمديد النطاق يدوياً ليشمل خلايا الملاحظات خارج نطاق البيانات الأصلي
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'تدقيق القراءات');
+    XLSX.writeFile(wb, `alshallala-audit-${new Date().toISOString().slice(0,10)}.xlsx`);
+  };
+
+
   const missingSubscription = (() => {
     if (!subName.trim()) return [];
     const nameNorm = subName.trim().toLowerCase();
@@ -478,6 +568,26 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
             }}>
             🔍 {ar?'عدادات بدون اشتراك':'מונים ללא מנוי'}
           </button>
+          <button
+            onClick={()=>setActiveTab('audit')}
+            style={{
+              padding:'8px 18px', borderRadius:10, fontWeight:700, fontSize:14, cursor:'pointer', border:'none',
+              background: activeTab==='audit' ? '#dc2626' : 'var(--surface-2)',
+              color: activeTab==='audit' ? '#fff' : 'var(--text-muted)',
+              position:'relative',
+            }}>
+            🧪 {ar?'تدقيق البيانات':'ביקורת נתונים'}
+            {dataAnomalies.total > 0 && (
+              <span style={{
+                position:'absolute', top:-6, left:-6,
+                background:'#dc2626', color:'#fff',
+                borderRadius:'50%', width:20, height:20,
+                fontSize:11, fontWeight:900,
+                display:'flex', alignItems:'center', justifyContent:'center',
+                border:'2px solid #fff',
+              }}>{dataAnomalies.total}</span>
+            )}
+          </button>
         </div>
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
           {activeTab==='main' && <>
@@ -486,6 +596,11 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
           </>}
           {activeTab==='extras' && extrasFiltered.length > 0 && (
             <button className="btn btn-outline" onClick={handlePrintExtras}>🖨️ {ar?'طباعة':'הדפסה'}</button>
+          )}
+          {activeTab==='audit' && (
+            <button className="btn btn-primary" onClick={handleAuditExcel}>
+              📥 {ar?'تحميل Excel (كل القراءات)':'הורד Excel (כל הקריאות)'}
+            </button>
           )}
         </div>
       </div>
@@ -936,6 +1051,120 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
                 </table>
               </div>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* ══ تبويب تدقيق البيانات ══ */}
+      {activeTab === 'audit' && (
+        <div>
+          <div className="card mb-16" style={{ borderRight:'4px solid #dc2626' }}>
+            <h3 className="mb-8" style={{ color:'#dc2626' }}>
+              🧪 {ar?'تدقيق البيانات':'ביקורת נתונים'}
+            </h3>
+            <p style={{ color:'var(--text-muted)', fontSize:13 }}>
+              {ar
+                ? 'فحص تلقائي لكل القراءات المسجّلة في النظام (بدون فلاتر) للكشف عن أي فرق سالب بين قراءتين متتاليتين — عادة يعني خطأ إدخال (رقم أُدخل أصغر من السابق بالغلط). هذه هي القراءات المستثناة من كل الإجماليات في النظام.'
+                : 'סריקה אוטומטית של כל הקריאות במערכת (ללא סינון) לאיתור הפרש שלילי בין שתי קריאות רצופות — לרוב טעות הזנה. אלו הקריאות המוחרגות מכל הסיכומים במערכת.'}
+            </p>
+          </div>
+
+          {dataAnomalies.total === 0 ? (
+            <div className="card" style={{ textAlign:'center', padding:32, color:'#16a34a' }}>
+              <div style={{ fontSize:40, marginBottom:8 }}>✅</div>
+              <div style={{ fontWeight:700, fontSize:15 }}>
+                {ar ? 'لا يوجد أي شذوذ! كل القراءات سليمة' : 'אין חריגות! כל הקריאות תקינות'}
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* ── فروق سالبة (خطأ إدخال محتمل) ── */}
+              {dataAnomalies.negatives.length > 0 && (
+                <div className="card mb-16" style={{ padding:0, overflow:'hidden' }}>
+                  <div style={{ background:'#dc2626', color:'#fff', padding:'10px 16px', fontWeight:800, fontSize:14 }}>
+                    ⚠️ {ar?`فروق سالبة — خطأ إدخال محتمل (${dataAnomalies.negatives.length})`:`הפרשים שליליים — ייתכן טעות הזנה (${dataAnomalies.negatives.length})`}
+                  </div>
+                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+                    <thead>
+                      <tr style={{ background:'#fff1f2' }}>
+                        <th style={{ padding:'8px 12px', textAlign:'right' }}>{ar?'المزارع':'חקלאי'}</th>
+                        <th style={{ padding:'8px 12px', textAlign:'center' }}>{ar?'المحطة':'עמדה'}</th>
+                        <th style={{ padding:'8px 12px', textAlign:'center' }}>{ar?'السنة':'שנה'}</th>
+                        <th style={{ padding:'8px 12px', textAlign:'center' }}>{ar?'الفترة':'תקופה'}</th>
+                        <th style={{ padding:'8px 12px', textAlign:'center' }}>{ar?'من':'מ'}</th>
+                        <th style={{ padding:'8px 12px', textAlign:'center' }}>{ar?'إلى':'עד'}</th>
+                        <th style={{ padding:'8px 12px', textAlign:'center' }}>{ar?'الفرق':'הפרש'}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dataAnomalies.negatives.map((row, i) => {
+                        const land = lands.find(l => String(l.id) === String(row.landId));
+                        return (
+                          <tr key={i} style={{ borderBottom:'1px solid #f3f4f6', background:i%2===0?'#fff':'#fff5f5' }}>
+                            <td style={{ padding:'8px 12px', fontFamily:'Heebo,sans-serif', fontWeight:700 }}>{farmerName(row.farmerId)}</td>
+                            <td style={{ padding:'8px 12px', textAlign:'center' }}>
+                              {land?.stationNumber
+                                ? <code style={{ background:'#fff1f2', border:'1px solid #fca5a5', padding:'2px 8px', borderRadius:5, fontWeight:900 }}>{land.stationNumber}</code>
+                                : '—'}
+                            </td>
+                            <td style={{ padding:'8px 12px', textAlign:'center', color:'var(--text-muted)' }}>{row.year}</td>
+                            <td style={{ padding:'8px 12px', textAlign:'center' }}>{ar?`${row.period}←${row.period+1}`:`${row.period}←${row.period+1}`}</td>
+                            <td style={{ padding:'8px 12px', textAlign:'center', fontWeight:700 }}>{row.from.toLocaleString()}</td>
+                            <td style={{ padding:'8px 12px', textAlign:'center', fontWeight:700 }}>{row.to.toLocaleString()}</td>
+                            <td style={{ padding:'8px 12px', textAlign:'center', fontWeight:900, color:'#dc2626' }}>{row.diff.toLocaleString()}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* ── إعادة تصفير عداد (معلومة فقط) ── */}
+              {dataAnomalies.resets.length > 0 && (
+                <div className="card" style={{ padding:0, overflow:'hidden' }}>
+                  <div style={{ background:'#d97706', color:'#fff', padding:'10px 16px', fontWeight:800, fontSize:14 }}>
+                    ℹ️ {ar?`إعادة تصفير عداد — معلومة فقط (${dataAnomalies.resets.length})`:`איפוס מונה — מידע בלבד (${dataAnomalies.resets.length})`}
+                  </div>
+                  <p style={{ padding:'8px 16px', fontSize:12, color:'var(--text-muted)', margin:0, background:'#fffbeb' }}>
+                    {ar
+                      ? 'القراءة الحالية = 0 والسابقة أكبر من صفر — هذا طبيعي عند تركيب عداد جديد، لكن يُستثنى تلقائياً من الإجماليات.'
+                      : 'הקריאה הנוכחית = 0 והקודמת גדולה מאפס — נורמלי בהתקנת מונה חדש, אך מוחרג אוטומטית מהסיכומים.'}
+                  </p>
+                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+                    <thead>
+                      <tr style={{ background:'#fffbeb' }}>
+                        <th style={{ padding:'8px 12px', textAlign:'right' }}>{ar?'المزارع':'חקלאי'}</th>
+                        <th style={{ padding:'8px 12px', textAlign:'center' }}>{ar?'المحطة':'עמדה'}</th>
+                        <th style={{ padding:'8px 12px', textAlign:'center' }}>{ar?'السنة':'שנה'}</th>
+                        <th style={{ padding:'8px 12px', textAlign:'center' }}>{ar?'الفترة':'תקופה'}</th>
+                        <th style={{ padding:'8px 12px', textAlign:'center' }}>{ar?'من':'מ'}</th>
+                        <th style={{ padding:'8px 12px', textAlign:'center' }}>{ar?'إلى':'עד'}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dataAnomalies.resets.map((row, i) => {
+                        const land = lands.find(l => String(l.id) === String(row.landId));
+                        return (
+                          <tr key={i} style={{ borderBottom:'1px solid #f3f4f6', background:i%2===0?'#fff':'#fffbeb' }}>
+                            <td style={{ padding:'8px 12px', fontFamily:'Heebo,sans-serif', fontWeight:700 }}>{farmerName(row.farmerId)}</td>
+                            <td style={{ padding:'8px 12px', textAlign:'center' }}>
+                              {land?.stationNumber
+                                ? <code style={{ background:'#fffbeb', border:'1px solid #fde68a', padding:'2px 8px', borderRadius:5, fontWeight:900 }}>{land.stationNumber}</code>
+                                : '—'}
+                            </td>
+                            <td style={{ padding:'8px 12px', textAlign:'center', color:'var(--text-muted)' }}>{row.year}</td>
+                            <td style={{ padding:'8px 12px', textAlign:'center' }}>{row.period}←{row.period+1}</td>
+                            <td style={{ padding:'8px 12px', textAlign:'center', fontWeight:700 }}>{row.from.toLocaleString()}</td>
+                            <td style={{ padding:'8px 12px', textAlign:'center', fontWeight:700, color:'#d97706' }}>{row.to.toLocaleString()}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

@@ -3,6 +3,9 @@ import * as XLSX from 'xlsx';
 import { adminAPI } from '../../api';
 import { useLang } from '../../contexts/LangContext';
 import { t } from '../../i18n/translations';
+import { getPrice as getPriceWithVat } from '../../utils/pricing'; // ✅ سعر موحّد شامل الضريبة (מע"מ)
+import { cupsPositive } from '../../utils/cups'; // ✅ فرق أكواب موحّد (مجاميع فقط)
+import { getExtrasNet } from '../../utils/extras'; // ✅ إضافات موحّدة (تدعم extras[] + الحقول القديمة)
 
 const dmsToDecimal = (deg, min, sec, dir) => {
   let dd = parseFloat(deg) + parseFloat(min)/60 + parseFloat(sec)/3600;
@@ -90,23 +93,14 @@ export default function AdminFarmers({ adminRole='admin' }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const getPrice = (year, landId, idx) => {
-    if (!prices) return 0;
-    const lp = prices.landPrices?.[String(landId)];
-    if (lp?.[`reading_${idx}`]) return parseFloat(lp[`reading_${idx}`]) || 0;
-    if (lp?.default) return parseFloat(lp.default) || 0;
-    const yp = prices.yearPrices?.[String(year)];
-    if (yp?.[`reading_${idx}`]) return parseFloat(yp[`reading_${idx}`]) || 0;
-    if (yp?.default) return parseFloat(yp.default) || 0;
-    return parseFloat(prices?.globalPrice) || 0;
-  };
+  const getPrice = (year, landId, idx) => getPriceWithVat(prices, year, landId, idx);
 
   const calcUnpaid = farmerId => readings
     .filter(r => String(r.farmerId).trim() === String(farmerId).trim() && !r.paid)
     .reduce((total, r) => {
       const vals = r.readings || [];
-      const cups = vals.slice(1).reduce((s,_,i) => { const c = vals[i+1]-vals[i]; return s+(c>0?c*getPrice(r.year,r.landId,i+1):0); }, 0);
-      return total + cups + (parseFloat(r.extra)||0) - (parseFloat(r.extraPaid)||0);
+      const cups = vals.slice(1).reduce((s,_,i) => s + cupsPositive(vals,i) * getPrice(r.year,r.landId,i+1), 0);
+      return total + cups + getExtrasNet(r);
     }, 0);
 
   const openAdd  = () => { setEdit(null); setForm(EMPTY_FARMER); setNewCode(null); setError(''); setShowForm(true); };
