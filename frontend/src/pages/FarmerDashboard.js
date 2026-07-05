@@ -93,6 +93,31 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { publicAPI.getSettings().then(d => setPub(d || {})).catch(() => {}); }, []);
+  // ✅ لا نرسم أي رسم بياني بعرض نسبي (100%) إلا بعد اكتمال رسم الصفحة فعلياً
+  // (لا نعتمد على حدث "تغيير حجم" وهمي، بل ننتظر فريمين فعليين من المتصفح)
+  // هذا يحل مشكلة ظهور الرسوم فارغة على بعض المتصفحات/الأجهزة عند القياس
+  // قبل اكتمال التخطيط (Layout) الفعلي للصفحة.
+  const [chartsReady, setChartsReady] = useState(false);
+  // ✅ "إعادة تركيب" قسرية للرسوم البيانية بعد قليل من ظهورها — نفس تأثير
+  // تدوير الهاتف (اللي أكّدنا إنه يصلح المشكلة) لكن تلقائياً بدون ما يحتاج
+  // المستخدم يدوّر جهازه. نغيّر key فيعيد React بناء العنصر من الصفر
+  // فتقيس المكتبة عرض الحاوية الصحيح (بعض متصفحات الموبايل تحتاج قياس ثانٍ
+  // بعد استقرار شريط العنوان/لوحة المفاتيح/الخطوط).
+  const [chartsKey, setChartsKey] = useState(0);
+  useEffect(() => {
+    if (loading) { setChartsReady(false); return; }
+    let raf1, raf2;
+    raf1 = requestAnimationFrame(() => { raf2 = requestAnimationFrame(() => setChartsReady(true)); });
+    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
+  }, [loading]);
+
+  useEffect(() => {
+    if (!chartsReady) return;
+    // إعادة تركيب مرتين بفارق زمني — يغطي حالات استقرار الصفحة المتأخر
+    const t1 = setTimeout(() => setChartsKey(k => k + 1), 350);
+    const t2 = setTimeout(() => setChartsKey(k => k + 1), 900);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [chartsReady]);
 
   const handleLogout = () => { onLogout && onLogout(); onLogout(); };
 
@@ -164,7 +189,10 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
       <style>{`
         @keyframes fdUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
         @keyframes fdIn { from{opacity:0} to{opacity:1} }
-        .fd-card { animation: fdUp 0.4s ease both; }
+        .fd-card { animation: fdUp 0.4s ease both; min-width: 0; }
+        .charts-grid { min-width: 0; }
+        .charts-grid > * { min-width: 0; }
+        .charts-grid .recharts-responsive-container { min-width: 0; width: 100% !important; }
         @media(max-width:768px){ .fd-desktop-tabs{ display:none!important; } .fd-mobile-nav{ display:flex!important; } .fd-page-content{ padding-bottom:80px!important; } }
         @media(min-width:769px){ .fd-mobile-nav{ display:none!important; } }
         .fd-year-card:hover{ border-color:#ea580c!important; transform:translateX(${ar?'-3px':'3px'}); }
@@ -279,7 +307,7 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
 
             {/* Charts */}
             {yearlyData.length > 0 ? (
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))', gap:14 }}>
+              <div className="charts-grid" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))', gap:14 }}>
 
                 {/* رسم بياني الأكواب */}
                 <div className="fd-card" style={{ background:'#fff', borderRadius:16, border:'1.5px solid #e5e7eb', padding:16, animationDelay:'0.25s' }}>
@@ -287,17 +315,19 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
                     <div style={{ fontSize:13, fontWeight:900, color:'#111827' }}>📈 {t('consumptionChart', lang)}</div>
                     <span style={{ fontSize:9, fontWeight:700, padding:'2px 8px', borderRadius:6, background:'#fff7ed', color:'#c2410c', border:'1px solid #fed7aa' }}>{ar?'كوب':'קוב'}</span>
                   </div>
-                  <ResponsiveContainer width="100%" height={180}>
-                    <BarChart data={yearlyData} barSize={28}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6"/>
-                      <XAxis dataKey="year" tick={{ fontFamily:'Tajawal,Heebo', fontSize:11, fill:'#9ca3af' }}/>
-                      <YAxis tick={{ fontFamily:'Tajawal,Heebo', fontSize:11, fill:'#9ca3af' }}/>
-                      <Tooltip formatter={v=>[v.toLocaleString()+' '+t('cups',lang),'']} contentStyle={{ fontFamily:'Tajawal,Heebo', borderRadius:10, border:'1px solid #e5e7eb' }}/>
-                      <Bar dataKey="cups" radius={[6,6,0,0]}>
-                        {yearlyData.map((_,i)=><Cell key={i} fill={i===yearlyData.length-1?'#ea580c':'#fed7aa'}/>)}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+                  {chartsReady ? (
+                    <ResponsiveContainer key={chartsKey} width="100%" height={180}>
+                      <BarChart data={yearlyData} barSize={28}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6"/>
+                        <XAxis dataKey="year" tick={{ fontFamily:'Tajawal,Heebo', fontSize:11, fill:'#9ca3af' }}/>
+                        <YAxis tick={{ fontFamily:'Tajawal,Heebo', fontSize:11, fill:'#9ca3af' }}/>
+                        <Tooltip formatter={v=>[v.toLocaleString()+' '+t('cups',lang),'']} contentStyle={{ fontFamily:'Tajawal,Heebo', borderRadius:10, border:'1px solid #e5e7eb' }}/>
+                        <Bar dataKey="cups" radius={[6,6,0,0]}>
+                          {yearlyData.map((_,i)=><Cell key={i} fill={i===yearlyData.length-1?'#ea580c':'#fed7aa'}/>)}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : <div style={{ height:180 }}/>}
                 </div>
 
                 {/* رسم بياني المبلغ */}
@@ -306,15 +336,17 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
                     <div style={{ fontSize:13, fontWeight:900, color:'#111827' }}>💰 {t('amountChart', lang)}</div>
                     <span style={{ fontSize:9, fontWeight:700, padding:'2px 8px', borderRadius:6, background:'#f5f3ff', color:'#6d28d9', border:'1px solid #ddd6fe' }}>₪</span>
                   </div>
-                  <ResponsiveContainer width="100%" height={180}>
-                    <LineChart data={yearlyData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6"/>
-                      <XAxis dataKey="year" tick={{ fontFamily:'Tajawal,Heebo', fontSize:11, fill:'#9ca3af' }}/>
-                      <YAxis tick={{ fontFamily:'Tajawal,Heebo', fontSize:11, fill:'#9ca3af' }} tickFormatter={v=>`₪${(v/1000).toFixed(0)}k`}/>
-                      <Tooltip formatter={v=>[`₪${Math.round(v).toLocaleString()}`,t('amount',lang)]} contentStyle={{ fontFamily:'Tajawal,Heebo', borderRadius:10, border:'1px solid #e5e7eb' }}/>
-                      <Line type="monotone" dataKey="amount" stroke="#7c3aed" strokeWidth={2.5} dot={{ fill:'#7c3aed', r:4, strokeWidth:0 }}/>
-                    </LineChart>
-                  </ResponsiveContainer>
+                  {chartsReady ? (
+                    <ResponsiveContainer key={chartsKey} width="100%" height={180}>
+                      <LineChart data={yearlyData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6"/>
+                        <XAxis dataKey="year" tick={{ fontFamily:'Tajawal,Heebo', fontSize:11, fill:'#9ca3af' }}/>
+                        <YAxis tick={{ fontFamily:'Tajawal,Heebo', fontSize:11, fill:'#9ca3af' }} tickFormatter={v=>`₪${(v/1000).toFixed(0)}k`}/>
+                        <Tooltip formatter={v=>[`₪${Math.round(v).toLocaleString()}`,t('amount',lang)]} contentStyle={{ fontFamily:'Tajawal,Heebo', borderRadius:10, border:'1px solid #e5e7eb' }}/>
+                        <Line type="monotone" dataKey="amount" stroke="#7c3aed" strokeWidth={2.5} dot={{ fill:'#7c3aed', r:4, strokeWidth:0 }}/>
+                      </LineChart>
+                    </ResponsiveContainer>
+                  ) : <div style={{ height:180 }}/>}
                 </div>
 
                 {/* توزيع الأراضي Pie */}
@@ -491,15 +523,17 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
                       </div>
                     </div>
                     {chartData.length > 0 ? (
-                      <ResponsiveContainer width="100%" height={120}>
-                        <BarChart data={chartData} barSize={20}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6"/>
-                          <XAxis dataKey="year" tick={{ fontFamily:'Tajawal,Heebo', fontSize:10, fill:'#9ca3af' }}/>
-                          <YAxis tick={{ fontFamily:'Tajawal,Heebo', fontSize:10, fill:'#9ca3af' }}/>
-                          <Tooltip formatter={v=>[v.toLocaleString()+' '+t('cups',lang),'']} contentStyle={{ fontFamily:'Tajawal,Heebo', borderRadius:10, border:'1px solid #e5e7eb' }}/>
-                          <Bar dataKey="cups" fill={color} radius={[5,5,0,0]}/>
-                        </BarChart>
-                      </ResponsiveContainer>
+                      chartsReady ? (
+                        <ResponsiveContainer key={chartsKey} width="100%" height={120}>
+                          <BarChart data={chartData} barSize={20}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6"/>
+                            <XAxis dataKey="year" tick={{ fontFamily:'Tajawal,Heebo', fontSize:10, fill:'#9ca3af' }}/>
+                            <YAxis tick={{ fontFamily:'Tajawal,Heebo', fontSize:10, fill:'#9ca3af' }}/>
+                            <Tooltip formatter={v=>[v.toLocaleString()+' '+t('cups',lang),'']} contentStyle={{ fontFamily:'Tajawal,Heebo', borderRadius:10, border:'1px solid #e5e7eb' }}/>
+                            <Bar dataKey="cups" fill={color} radius={[5,5,0,0]}/>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : <div style={{ height:120 }}/>
                     ) : (
                       <p style={{ color:'#9ca3af', textAlign:'center', padding:16, fontSize:12 }}>{t('noReadings',lang)}</p>
                     )}

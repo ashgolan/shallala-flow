@@ -434,7 +434,9 @@ tr:hover td { background: var(--surface); }
   border-top: 4px solid var(--panel-accent, var(--green-600));
   border-radius: 12px; padding: 18px 20px 16px;
   box-shadow: var(--shadow-sm);
+  min-width: 0; /* ✅ يمنع تعارض القياس الدائري بين الشبكة والرسم البياني */
 }
+.dv2-panel .recharts-responsive-container { min-width: 0; width: 100% !important; }
 .dv2-panel-title {
   font-weight: 800; font-size: 14px; color: var(--text-secondary);
   margin-bottom: 14px; display:flex; align-items:center; gap:8px;
