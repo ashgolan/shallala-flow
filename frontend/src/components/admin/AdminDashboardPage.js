@@ -83,17 +83,17 @@ function CatChartBox({ data }) {
   return (
     <div ref={ref} style={{ width:'100%' }}>
       {width > 0 && (
-        <div style={{ display:'flex', alignItems:'center', gap:20, flexWrap: width<380?'wrap':'nowrap' }}>
-          <PieChart width={Math.min(180, width)} height={180}>
-            <Pie data={sorted} cx="50%" cy="50%" innerRadius={45} outerRadius={80} dataKey="value" paddingAngle={2}>
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'center' }}>
+          <PieChart width={150} height={150}>
+            <Pie data={sorted} cx="50%" cy="50%" innerRadius={45} outerRadius={70} dataKey="value" paddingAngle={2}>
               {sorted.map((_,i) => <Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
             </Pie>
             <Tooltip formatter={v=>`₪${v.toLocaleString()}`}/>
           </PieChart>
-          <div style={{ display:'flex', flexDirection:'column', gap:8, flex:1, minWidth:150 }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:6, marginTop:10, fontSize:12, width:'100%', maxWidth:260 }}>
             {sorted.map((d,i) => (
-              <div key={i} style={{ display:'flex', alignItems:'center', gap:8, fontSize:12.5 }}>
-                <div style={{ width:10, height:10, borderRadius:'50%', background:COLORS[i%COLORS.length], flexShrink:0 }}/>
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <div style={{ width:9, height:9, borderRadius:'50%', background:COLORS[i%COLORS.length], flexShrink:0 }}/>
                 <span style={{ flex:1, fontWeight:700, color:'var(--text-primary)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{d.name}</span>
                 <span style={{ fontWeight:800, color:'var(--text-muted)' }}>{total>0?Math.round(d.value/total*100):0}%</span>
                 <span style={{ fontWeight:900, color:COLORS[i%COLORS.length], minWidth:60, textAlign:'left' }}>₪{d.value.toLocaleString()}</span>
