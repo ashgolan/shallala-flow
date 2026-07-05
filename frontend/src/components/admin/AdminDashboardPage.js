@@ -196,12 +196,13 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
   const cupsBreakdown = calcCupsBreakdown(cupsYear);
   const cupsChartData = Array.from({ length: cupsBreakdown.maxPeriods }, (_, idx) => ({
     period: ar ? `دورة ${idx+1}` : `תקופה ${idx+1}`,
-    [ar?'أكواب':'כוסות']: Math.round(cupsBreakdown.byPeriod[idx+1] || 0),
+    [ar?'أكواب':'קובים']: Math.round(cupsBreakdown.byPeriod[idx+1] || 0),
   }));
 
   return (
-    <div>
-      <div className="flex-between mb-20">
+    <div className="dashboard-v2">
+
+      <div className="flex-between mb-16" style={{flexWrap:'wrap',gap:12}}>
         <div>
           <h2 className="mb-4">📊 {ar?'لوحة التحكم':'לוח בקרה'}</h2>
           <p style={{color:'var(--text-muted)',fontSize:13}}>
@@ -217,36 +218,59 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
         </button>}
       </div>
 
-      {/* ── بطاقات الملخص ── */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:12,marginBottom:24}}>
+      {/* ── الوضع المالي: 3 مؤشرات رئيسية كبيرة ── */}
+      <div className="dv2-section-label">{ar?'الوضع المالي':'מצב כספי'}</div>
+      <div className="dv2-kpi-primary">
+        <div className="dv2-kpi-lg" style={{background:'var(--green-800)'}}>
+          <div>
+            <div className="v">₪{Math.round(totalIncome).toLocaleString()}</div>
+            <div className="l">{ar?'إجمالي الإيرادات':'סה"כ הכנסות'}</div>
+          </div>
+          <div className="ico">💰</div>
+        </div>
+        <div className="dv2-kpi-lg" style={{background: netProfit>=0?'#0ea5e9':'#dc2626'}}>
+          <div>
+            <div className="v">₪{Math.round(netProfit).toLocaleString()}</div>
+            <div className="l">{netProfit>=0?'📈':'📉'} {ar?'صافي الربح':'רווח נקי'}</div>
+          </div>
+          <div className="ico">{netProfit>=0?'📈':'📉'}</div>
+        </div>
+        <div className="dv2-kpi-lg" style={{background:'#f59e0b'}}>
+          <div>
+            <div className="v">₪{Math.round(totalPayments).toLocaleString()}</div>
+            <div className="l">{ar?'إجمالي المدفوعات':'סה"כ תשלומים'}</div>
+          </div>
+          <div className="ico">💸</div>
+        </div>
+      </div>
+
+      {/* ── النشاط التشغيلي: مؤشرات ثانوية أصغر ── */}
+      <div className="dv2-section-label">{ar?'النشاط التشغيلي':'פעילות תפעולית'}</div>
+      <div className="dv2-kpi-sec-grid">
         {[
-          { label:ar?'إجمالي الإيرادات':'סה"כ הכנסות', value:`₪${Math.round(totalIncome).toLocaleString()}`, icon:'💰', accent:true },
-          { label:ar?'إجمالي المدفوعات':'סה"כ תשלומים', value:`₪${Math.round(totalPayments).toLocaleString()}`, icon:'💸' },
-          { label:ar?'صافي الربح':'רווח נקי',  value:`₪${Math.round(netProfit).toLocaleString()}`, icon: netProfit>=0?'📈':'📉', accent: netProfit<0 },
-          { label:ar?'عدد المزارعين':'חקלאים', value:(report.farmers||[]).length, icon:'👨‍🌾' },
-          { label:ar?'عدد القراءات':'קריאות',  value:(report.readings||[]).length, icon:'📏' },
-          { label:ar?'عدد الدفعات':'תשלומים',  value:data.payments.length, icon:'🧾' },
-          { label:(ar?'إجمالي الأكواب ':'סה"כ כוסות ')+cupsYear, value:Math.round(cupsBreakdown.total).toLocaleString(), icon:'🥤' },
+          { label:(ar?'أكواب ':'קובים ')+cupsYear, value:Math.round(cupsBreakdown.total).toLocaleString(), icon:'🥤', bg:'#e0f2fe', color:'#0369a1' },
+          { label:ar?'مزارعون':'חקלאים', value:(report.farmers||[]).length, icon:'👨‍🌾', bg:'#f3f4f6', color:'#4b5563' },
+          { label:ar?'قراءات':'קריאות', value:(report.readings||[]).length, icon:'📏', bg:'#dcfce7', color:'#15803d' },
+          { label:ar?'دفعات':'תשלומים', value:data.payments.length, icon:'🧾', bg:'#fef3c7', color:'#92400e' },
         ].map((s,i) => (
-          <div key={i} className={`stat-card ${s.accent?'accent':''}`} style={{padding:'14px 16px'}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-              <div>
-                <div style={{fontWeight:900,fontSize:'clamp(1rem,3vw,1.4rem)',lineHeight:1.1,color:s.accent?'#fff':'var(--primary)'}}>{s.value}</div>
-                <div style={{fontSize:11,marginTop:4,opacity:0.75,color:s.accent?'#fff':'var(--text-muted)'}}>{s.label}</div>
-              </div>
-              <div style={{fontSize:24,flexShrink:0}}>{s.icon}</div>
+          <div key={i} className="dv2-kpi-sm">
+            <div className="ico" style={{background:s.bg, color:s.color}}>{s.icon}</div>
+            <div>
+              <div className="v">{s.value}</div>
+              <div className="l">{s.label}</div>
             </div>
           </div>
         ))}
       </div>
 
       {/* ── الرسوم البيانية ── */}
+      <div className="dv2-section-label">{ar?'التحليلات':'ניתוחים'}</div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(400px,1fr))',gap:16,marginBottom:20}}>
 
         {/* مقارنة الإيرادات والمدفوعات */}
         {compChart.length > 0 && (
-          <div className="card">
-            <h3 className="mb-16">📊 {ar?'مقارنة الإيرادات والمدفوعات':'השוואת הכנסות ותשלומים'}</h3>
+          <div className="dv2-panel" style={{'--panel-accent':'#16a34a'}}>
+            <div className="dv2-panel-title">📊 {ar?'مقارنة الإيرادات والمدفوعات':'השוואת הכנסות ותשלומים'}</div>
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={compChart} barGap={4}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb"/>
@@ -264,8 +288,8 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
 
         {/* توزيع المدفوعات بالتصنيف */}
         {catChart.length > 0 && (
-          <div className="card">
-            <h3 className="mb-16">🥧 {ar?'توزيع المدفوعات':'חלוקת תשלומים'}</h3>
+          <div className="dv2-panel" style={{'--panel-accent':'#f59e0b'}}>
+            <div className="dv2-panel-title">🥧 {ar?'توزيع المدفوعات':'חלוקת תשלומים'}</div>
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie data={catChart} cx="50%" cy="50%" outerRadius={80} dataKey="value"
@@ -280,15 +304,15 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
 
         {/* توزيع الأكواب حسب الدورة */}
         {cupsChartData.length > 0 && (
-          <div className="card">
-            <h3 className="mb-16">🥤 {(ar?'توزيع الأكواب حسب الدورة — ':'חלוקת כוסות לפי תקופה — ')}{cupsYear}</h3>
+          <div className="dv2-panel" style={{'--panel-accent':'#0ea5e9'}}>
+            <div className="dv2-panel-title">🥤 {(ar?'توزيع الأكواب حسب الدورة — ':'חלוקת קובים לפי תקופה — ')}{cupsYear}</div>
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={cupsChartData} barGap={4}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb"/>
                 <XAxis dataKey="period" tick={{fontFamily:'Tajawal,Heebo',fontSize:12}}/>
                 <YAxis tick={{fontFamily:'Tajawal,Heebo',fontSize:11}}/>
-                <Tooltip formatter={v=>[v.toLocaleString(), ar?'أكواب':'כוסות']} contentStyle={{fontFamily:'Tajawal,Heebo'}}/>
-                <Bar dataKey={ar?'أكواب':'כוסות'} radius={[4,4,0,0]}>
+                <Tooltip formatter={v=>[v.toLocaleString(), ar?'أكواب':'קובים']} contentStyle={{fontFamily:'Tajawal,Heebo'}}/>
+                <Bar dataKey={ar?'أكواب':'קובים'} radius={[4,4,0,0]}>
                   {cupsChartData.map((_,i) => <Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
                 </Bar>
               </BarChart>
@@ -298,8 +322,8 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
 
         {/* الإيرادات السنوية */}
         {yearlyIncome.length > 0 && (
-          <div className="card">
-            <h3 className="mb-16">📈 {ar?'الإيرادات السنوية':'הכנסות שנתיות'}</h3>
+          <div className="dv2-panel" style={{'--panel-accent':'#16a34a'}}>
+            <div className="dv2-panel-title">📈 {ar?'الإيرادات السنوية':'הכנסות שנתיות'}</div>
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={yearlyIncome.map(y=>({year:String(y.year), income:Math.round(y.income)}))}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb"/>
@@ -314,8 +338,10 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
       </div>
 
       {/* ── النسخة الاحتياطية ── */}
-      {adminRole !== 'viewer' && <div className="card">
-        <div className="flex-between mb-12">
+      {adminRole !== 'viewer' && <>
+        <div className="dv2-section-label">{ar?'النسخة الاحتياطية':'גיבוי נתונים'}</div>
+        <div className="dv2-panel" style={{'--panel-accent':'#6b7280'}}>
+        <div className="flex-between mb-12" style={{flexWrap:'wrap',gap:12}}>
           <div>
             <h3 className="mb-4">💾 {ar?'النسخة الاحتياطية':'גיבוי נתונים'}</h3>
             <p style={{color:'var(--text-muted)',fontSize:13}}>
@@ -341,7 +367,8 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
             </div>
           ))}
         </div>
-      </div>}
+      </div>
+      </>}
     </div>
   );
 }

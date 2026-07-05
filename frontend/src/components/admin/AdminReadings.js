@@ -345,7 +345,7 @@ export default function AdminReadings({ adminRole='admin' }) {
       <div className="card mb-16">
         <div className="flex-between mb-12" style={{ flexWrap:'wrap', gap:8 }}>
           <h3 style={{ margin:0 }}>
-            🥤 {ar ? 'إجمالي الأكواب' : 'סה"כ כוסות'}
+            🥤 {ar ? 'إجمالي الأكواب' : 'סה"כ קובים'}
             {filterY && <span style={{ color:'var(--text-muted)', fontWeight:600, fontSize:14 }}> — {filterY}</span>}
           </h3>
           <div style={{ fontSize:24, fontWeight:900, color:'var(--primary)' }}>

@@ -65,21 +65,40 @@ router.post('/upload-image', uploadLimiter, async (req, res) => {
     const bb = busboy({ headers: req.headers, limits: { fileSize: 5 * 1024 * 1024 } });
     const storage = getStorage();
     const bucket  = storage.bucket();
-    let uploadedUrl = null, uploadedPath = null;
+    let fileReceived = false;
+
     bb.on('file', (name, file, info) => {
+      fileReceived = true;
       const { mimeType } = info;
       const allowed = ['image/jpeg','image/png','image/webp','image/gif'];
-      if (!allowed.includes(mimeType)) { file.resume(); return res.status(400).json({ error: 'نوع الملف غير مسموح' }); }
+      if (!allowed.includes(mimeType)) {
+        file.resume();
+        if (!res.headersSent) res.status(400).json({ error: 'نوع الملف غير مسموح' });
+        return;
+      }
       const ext      = mimeType.split('/')[1];
       const fileName = `gallery/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
       const fileRef  = bucket.file(fileName);
-      uploadedPath   = fileName;
       const stream   = fileRef.createWriteStream({ metadata: { contentType: mimeType }, public: true });
       file.pipe(stream);
-      stream.on('finish', async () => { uploadedUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`; });
-      stream.on('error', () => { if (!res.headersSent) res.status(500).json({ error: 'فشل الرفع' }); });
+      // ✅ الرد يُرسَل فقط بعد اكتمال الرفع الفعلي لغوغل كلاود (مو بعد استقبال البيانات فقط)
+      stream.on('finish', () => {
+        if (res.headersSent) return;
+        const uploadedUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+        res.json({ success: true, url: uploadedUrl, path: fileName });
+      });
+      stream.on('error', (err) => {
+        console.error('GCS upload stream error:', err.message);
+        if (!res.headersSent) res.status(500).json({ error: 'فشل الرفع إلى التخزين' });
+      });
     });
-    bb.on('finish', () => { if (uploadedUrl) return res.json({ success: true, url: uploadedUrl, path: uploadedPath }); });
+    bb.on('finish', () => {
+      if (!fileReceived && !res.headersSent) res.status(400).json({ error: 'لم يتم إرسال أي ملف' });
+    });
+    bb.on('error', (err) => {
+      console.error('Busboy parse error:', err.message);
+      if (!res.headersSent) res.status(500).json({ error: 'خطأ في معالجة الملف المرفوع' });
+    });
     req.pipe(bb);
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 });

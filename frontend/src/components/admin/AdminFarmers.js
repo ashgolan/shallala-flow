@@ -30,7 +30,7 @@ const parseGoogleCoords = (raw) => {
 };
 
 const EMPTY_FARMER = { firstName:'', lastName:'', idNumber:'', phone:'', notes:'' };
-const EMPTY_LAND   = { regionId:'', stationNumber:'', gpsRaw:'', stationLat:'', stationLng:'', description:'' };
+const EMPTY_LAND   = { regionId:'', stationNumber:'', gpsRaw:'', stationLat:'', stationLng:'', description:'', name:'' };
 const safeFloat = v => { const f = parseFloat(v); return (!isNaN(f) && v !== '' && v !== null) ? f : null; };
 
 export default function AdminFarmers({ adminRole='admin' }) {
@@ -158,7 +158,7 @@ export default function AdminFarmers({ adminRole='admin' }) {
 
   const openEditLand = land => {
     setEditLand(land);
-    setLandFormData({ regionId:land.regionId||'', stationNumber:land.stationNumber||'', gpsRaw:(land.stationLat&&land.stationLng)?`${land.stationLat}, ${land.stationLng}`:'', stationLat:land.stationLat||'', stationLng:land.stationLng||'', description:land.description||'' });
+    setLandFormData({ regionId:land.regionId||'', stationNumber:land.stationNumber||'', gpsRaw:(land.stationLat&&land.stationLng)?`${land.stationLat}, ${land.stationLng}`:'', stationLat:land.stationLat||'', stationLng:land.stationLng||'', description:land.description||'', name:(land.name && land.name!==land.stationNumber) ? land.name : '' });
     setLandError(''); setManualMode(false); setLandForm('edit');
   };
 
@@ -176,7 +176,8 @@ export default function AdminFarmers({ adminRole='admin' }) {
     if (!landFormData.stationNumber.trim()) { setLandError(ar?'رقم المحطة مطلوب':'מספר תחנה חובה'); return; }
     setSavingLand(true); setLandError('');
     try {
-      const payload = { farmerId:expandedFarmer, regionId:landFormData.regionId||null, name:landFormData.stationNumber.trim(), nameHeb:landFormData.stationNumber.trim(), stationNumber:landFormData.stationNumber.trim(), description:landFormData.description||'', stationLat:safeFloat(landFormData.stationLat), stationLng:safeFloat(landFormData.stationLng) };
+      const finalName = (landFormData.name||'').trim() || landFormData.stationNumber.trim();
+      const payload = { farmerId:expandedFarmer, regionId:landFormData.regionId||null, name:finalName, nameHeb:finalName, stationNumber:landFormData.stationNumber.trim(), description:landFormData.description||'', stationLat:safeFloat(landFormData.stationLat), stationLng:safeFloat(landFormData.stationLng) };
       await adminAPI.updateLand(editLand.id, payload);
       setLandForm(null);
       await loadFarmerLands(expandedFarmer);
@@ -1132,7 +1133,14 @@ export default function AdminFarmers({ adminRole='admin' }) {
                                       </div>
                                     )}
 
-                                    {landError && <div className="alert alert-error mb-8">{landError}</div>}
+                                    {editLand && (
+                                      <div className="form-group">
+                                        <label>🏷️ {ar?'اسم الأرض':'שם הקרקע'} <span style={{fontWeight:400,color:'var(--text-muted)'}}>({ar?'اختياري — يظهر مع رقم المحطة':'אופציונלי — יוצג עם מספר העמדה'})</span></label>
+                                        <input value={landFormData.name} onChange={e=>setLandFormData({...landFormData,name:e.target.value})}
+                                          placeholder={ar?'مثال: أرض الزيتون':'לדוגמה: מטע הזיתים'}/>
+                                      </div>
+                                    )}
+
                                     <div className="flex-gap gap-8">
                                       {editLand ? (
                                         <>
@@ -1202,7 +1210,23 @@ export default function AdminFarmers({ adminRole='admin' }) {
                                     {farmerLands.map(l => (
                                       <tr key={l.id} style={{borderBottom:'1px solid #e5e7eb'}}>
                                         <td style={{padding:'7px 10px',textAlign:'center'}}>
-                                          {l.stationNumber?<code style={{background:'#f0fdf4',border:'1px solid #bbf7d0',padding:'3px 12px',borderRadius:6,fontWeight:900,fontSize:15,letterSpacing:2}}>{l.stationNumber}</code>:<span style={{color:'var(--border)'}}>—</span>}
+                                          {l.stationNumber ? (
+                                            <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+                                              {(()=>{
+                                                // ✅ اسم مخصص (لو أُدخل يدوياً) وإلا اسم المنطقة تلقائياً
+                                                let label = (l.name && l.name!==l.stationNumber) ? l.name : '';
+                                                if (!label) {
+                                                  const reg = l.regionId ? regions.find(r=>String(r.id)===String(l.regionId)) : null;
+                                                  const code = l.stationNumber?.match(/^([A-Za-z]+)/)?.[1]?.toUpperCase();
+                                                  const byCode = !reg && code ? regions.find(r=>r.name?.toUpperCase()===code) : null;
+                                                  const found = reg || byCode;
+                                                  label = found ? ((found.nameHeb && found.nameHeb!==found.name) ? found.nameHeb : (found.name||'')) : '';
+                                                }
+                                                return label && <span style={{fontWeight:700,fontSize:12,color:'var(--text-primary)',fontFamily:'Heebo,sans-serif'}}>{label}</span>;
+                                              })()}
+                                              <code style={{background:'#f0fdf4',border:'1px solid #bbf7d0',padding:'3px 12px',borderRadius:6,fontWeight:900,fontSize:15,letterSpacing:2}}>{l.stationNumber}</code>
+                                            </div>
+                                          ) : <span style={{color:'var(--border)'}}>—</span>}
                                         </td>
                                         <td style={{padding:'7px 10px',textAlign:'center',fontSize:13}}>
                                           {(()=>{ const reg=regions.find(r=>r.id===l.regionId); return reg?<span style={{background:'#f0fdf4',border:'1px solid #bbf7d0',padding:'2px 10px',borderRadius:6,fontWeight:700,color:'var(--primary)'}}>{reg.name}{reg.nameHeb&&reg.nameHeb!==reg.name?` — ${reg.nameHeb}`:''}</span>:<span style={{color:'var(--border)'}}>—</span>; })()}

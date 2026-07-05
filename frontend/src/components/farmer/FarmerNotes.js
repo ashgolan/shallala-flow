@@ -76,7 +76,17 @@ export default function FarmerNotes({ farmer, lands, lang = 'ar' }) {
     loadNotes();
   };
 
-  const landName = id => lands.find(l => l.id === id)?.name || '';
+  const landName = id => landLabel(lands.find(l => l.id === id));
+  // ✅ اسم المنطقة (تلقائياً) مع رقم المحطة بين قوسين — nameHeb يُفضَّل دائماً
+  // (نفس قاعدة صفحة التقارير بالإدارة، بغض النظر عن لغة الواجهة)
+  function landLabel(l) {
+    if (!l) return '';
+    const regionLabel = (l.regionNameHeb && l.regionNameHeb !== l.regionName)
+      ? l.regionNameHeb
+      : (l.regionName || '');
+    if (regionLabel) return `${regionLabel} (${l.stationNumber || ''})`.replace(' ()', '');
+    return l.name || l.stationNumber || '';
+  }
   const filtered = filterLand ? notes.filter(n => n.landId === filterLand) : notes;
 
   return (
@@ -103,7 +113,7 @@ export default function FarmerNotes({ farmer, lands, lang = 'ar' }) {
                 <label>{t('lands', lang)} *</label>
                 <select value={form.landId} onChange={e => setForm({ ...form, landId: e.target.value })}>
                   <option value="">— {t('chooseLandOpt', lang)} —</option>
-                  {lands.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  {lands.map(l => <option key={l.id} value={l.id}>{landLabel(l)}</option>)}
                 </select>
               </div>
               <div className="form-group">
@@ -153,7 +163,7 @@ export default function FarmerNotes({ farmer, lands, lang = 'ar' }) {
           <option value="">{t('allLands', lang)} ({notes.length})</option>
           {lands.map(l => (
             <option key={l.id} value={l.id}>
-              {l.name} ({notes.filter(n => n.landId === l.id).length})
+              {landLabel(l)} ({notes.filter(n => n.landId === l.id).length})
             </option>
           ))}
         </select>

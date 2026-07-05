@@ -1,7 +1,23 @@
 const Land       = require('../models/Land');
 const Reading    = require('../models/Reading');
 const FarmerNote = require('../models/FarmerNote');
-const { Prices } = require('../models/Settings');
+const { Prices, Region } = require('../models/Settings');
+
+// ✅ نفس منطق استنتاج اسم المنطقة المستخدم في صفحة التقارير للإدارة:
+// أولوية لاسم المنطقة المرتبطة صراحة بالأرض، وإلا نحاول مطابقة أول حروف
+// رقم المحطة (مثل "A14" → "A") مع اسم منطقة مطابق.
+const resolveRegionName = (land, regions) => {
+  if (land.regionId) {
+    const reg = regions.find(r => r._id.toString() === land.regionId.toString());
+    if (reg) return { name: reg.name || '', nameHeb: reg.nameHeb || '' };
+  }
+  const code = land.stationNumber?.match(/^([A-Za-z]+)/)?.[1]?.toUpperCase();
+  if (code) {
+    const reg = regions.find(r => r.name?.toUpperCase() === code);
+    if (reg) return { name: reg.name || '', nameHeb: reg.nameHeb || '' };
+  }
+  return { name: '', nameHeb: '' };
+};
 
 // ─── My Data ───────────────────────────────────────────────────
 const getMyData = async (req, res) => {
@@ -13,9 +29,10 @@ const getMyData = async (req, res) => {
 
     // 2. الأراضي من القراءات
     const landIds = [...new Set(readings.map(r => r.landId?.toString()).filter(Boolean))];
-    const [lands, pricesDoc] = await Promise.all([
+    const [lands, pricesDoc, regions] = await Promise.all([
       landIds.length > 0 ? Land.find({ _id: { $in: landIds } }).lean() : Promise.resolve([]),
       Prices.findOne({ key: 'prices' }).lean(),
+      Region.find({}).lean(),
     ]);
 
     // ✅ Mixed type — لا نستخدم Object.fromEntries
@@ -26,12 +43,17 @@ const getMyData = async (req, res) => {
     } : { globalPrice: 0, yearPrices: {}, landPrices: {} };
 
     return res.json({
-      lands: lands.map(l => ({
-        ...l,
-        id:       l._id.toString(),
-        farmerId: l.farmerId?.toString() || null,
-        regionId: l.regionId?.toString() || null,
-      })),
+      lands: lands.map(l => {
+        const region = resolveRegionName(l, regions);
+        return {
+          ...l,
+          id:            l._id.toString(),
+          farmerId:      l.farmerId?.toString() || null,
+          regionId:      l.regionId?.toString() || null,
+          regionName:    region.name,
+          regionNameHeb: region.nameHeb,
+        };
+      }),
       readings: readings.map(r => ({
         ...r,
         id:            r._id.toString(),

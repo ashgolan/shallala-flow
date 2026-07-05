@@ -120,7 +120,18 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
   const totalAmount = yearlyData.reduce((s, y) => s + y.amount, 0);
   const maxCups     = Math.max(...yearlyData.map(y => y.cups), 1);
 
-  const landName     = id => lands.find(l => l.id === id)?.name || '';
+  // ✅ اسم المنطقة (تلقائياً من صفحة المناطق) مع رقم المحطة بين قوسين
+  // ملاحظة: نفس قاعدة صفحة التقارير بالإدارة — nameHeb هو الاسم الحقيقي المُدخَل
+  // غالباً، فنفضّله دائماً بغض النظر عن لغة الواجهة (name غالباً رمز مطابقة فقط)
+  const landLabel = land => {
+    if (!land) return '';
+    const regionLabel = (land.regionNameHeb && land.regionNameHeb !== land.regionName)
+      ? land.regionNameHeb
+      : (land.regionName || '');
+    if (regionLabel) return `${regionLabel} (${land.stationNumber || ''})`.replace(' ()', '');
+    return land.name || land.stationNumber || '';
+  };
+  const landName     = id => landLabel(lands.find(l => l.id === id));
   const filteredLands = lands.filter(l =>
     !search || l.name.includes(search) || (l.nameHeb || '').includes(search)
   );
@@ -129,7 +140,7 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
   const landPie = lands.map((l, i) => {
     const lR   = readings.filter(r => r.landId === l.id);
     const cups = lR.reduce((s, r) => s + calcConsumption(r, prices).reduce((ss, c) => ss + c.cupsForTotal, 0), 0);
-    return { name: l.name, value: Math.round(cups), color: CHART_COLORS[i % CHART_COLORS.length] };
+    return { name: landLabel(l), value: Math.round(cups), color: CHART_COLORS[i % CHART_COLORS.length] };
   }).filter(d => d.value > 0);
 
   const tabs = [
@@ -347,7 +358,7 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
                       return (
                         <div key={l.id}>
                           <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, fontWeight:700, marginBottom:5 }}>
-                            <span style={{ color:'#374151' }}>{l.name}</span>
+                            <span style={{ color:'#374151' }}>{landLabel(l)}</span>
                             <span style={{ color }}>{pct}% — ₪{Math.round(amt).toLocaleString()}</span>
                           </div>
                           <div style={{ height:6, background:'#f3f4f6', borderRadius:3, overflow:'hidden' }}>
@@ -471,7 +482,7 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
                     style={{ background:'#fff', borderRadius:16, border:'1.5px solid #e5e7eb', padding:16, transition:'all 0.2s', animationDelay:`${li*0.06}s` }}>
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14, flexWrap:'wrap', gap:10 }}>
                       <div>
-                        <div style={{ fontSize:15, fontWeight:900, color:'#111827' }}>{land.name}</div>
+                        <div style={{ fontSize:15, fontWeight:900, color:'#111827' }}>{landLabel(land)}</div>
                         {land.area && <div style={{ fontSize:10, color:'#9ca3af', fontWeight:700, marginTop:2 }}>{land.area} {t('dunam',lang)}</div>}
                       </div>
                       <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>

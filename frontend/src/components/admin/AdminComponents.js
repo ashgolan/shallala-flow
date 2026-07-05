@@ -156,12 +156,17 @@ export function AdminPrices() {
               </div>
               {['1','2','3'].map(n => (
                 <div className="form-group" key={n}>
-                  <label>{t('readingNum', lang)} {n} ({t('optional', lang)})</label>
+                  <label>{ar?`الفترة ${n}`:`תקופה ${n}`} <span style={{fontWeight:400,color:'var(--text-muted)'}}>({ar?`قراءة ${n}←${Number(n)+1}`:`קריאה ${n}←${Number(n)+1}`}, {t('optional', lang)})</span></label>
                   <input type="number" step="0.01" value={nyP[`reading_${n}`]}
                     onChange={e => setNyP({...nyP, [`reading_${n}`]: e.target.value})} placeholder="0.00"/>
                 </div>
               ))}
             </div>
+            <p style={{fontSize:12, color:'var(--text-muted)', marginTop:-6, marginBottom:10}}>
+              💡 {ar
+                ? 'كل حقل هو سعر الفترة (الفرق) بين قراءتين متتاليتين، وليس سعر القراءة نفسها — مثال: "الفترة 1" = الفرق بين القراءة الأولى والثانية.'
+                : 'כל שדה הוא מחיר התקופה (ההפרש) בין שתי קריאות רצופות, לא מחיר הקריאה עצמה — לדוגמה: "תקופה 1" = ההפרש בין הקריאה הראשונה לשנייה.'}
+            </p>
             <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>+ {t('add', lang)}</button>
           </form>
 
@@ -174,7 +179,9 @@ export function AdminPrices() {
                     <tr>
                       <th>{t('year', lang)}</th>
                       <th>{t('defaultPrice', lang)}</th>
-                      <th>{ar?'ق1':'ק1'}</th><th>{ar?'ق2':'ק2'}</th><th>{ar?'ق3':'ק3'}</th>
+                      <th title={ar?'الفترة 1 (قراءة 1←2)':'תקופה 1 (קריאה 1←2)'}>{ar?'فترة 1':'תק׳1'}</th>
+                      <th title={ar?'الفترة 2 (قراءة 2←3)':'תקופה 2 (קריאה 2←3)'}>{ar?'فترة 2':'תק׳2'}</th>
+                      <th title={ar?'الفترة 3 (قراءة 3←4)':'תקופה 3 (קריאה 3←4)'}>{ar?'فترة 3':'תק׳3'}</th>
                       <th>{t('delete', lang)}</th>
                     </tr>
                   </thead>
@@ -222,12 +229,17 @@ export function AdminPrices() {
               </div>
               {['1','2','3'].map(n => (
                 <div className="form-group" key={n}>
-                  <label>{t('readingNum', lang)} {n} ({t('optional', lang)})</label>
+                  <label>{ar?`الفترة ${n}`:`תקופה ${n}`} <span style={{fontWeight:400,color:'var(--text-muted)'}}>({ar?`قراءة ${n}←${Number(n)+1}`:`קריאה ${n}←${Number(n)+1}`}, {t('optional', lang)})</span></label>
                   <input type="number" step="0.01" value={nlP[`reading_${n}`]}
                     onChange={e => setNlP({...nlP, [`reading_${n}`]: e.target.value})} placeholder="0.00"/>
                 </div>
               ))}
             </div>
+            <p style={{fontSize:12, color:'var(--text-muted)', marginTop:-6, marginBottom:10}}>
+              💡 {ar
+                ? 'كل حقل هو سعر الفترة (الفرق) بين قراءتين متتاليتين، وليس سعر القراءة نفسها — مثال: "الفترة 1" = الفرق بين القراءة الأولى والثانية.'
+                : 'כל שדה הוא מחיר התקופה (ההפרש) בין שתי קריאות רצופות, לא מחיר הקריאה עצמה — לדוגמה: "תקופה 1" = ההפרש בין הקריאה הראשונה לשנייה.'}
+            </p>
             <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>+ {t('add', lang)}</button>
           </form>
 
@@ -240,7 +252,9 @@ export function AdminPrices() {
                     <tr>
                       <th>{ar?'الأرض':'קרקע'}</th>
                       <th>{t('defaultPrice', lang)}</th>
-                      <th>{ar?'ق1':'ק1'}</th><th>{ar?'ق2':'ק2'}</th><th>{ar?'ق3':'ק3'}</th>
+                      <th title={ar?'الفترة 1 (قراءة 1←2)':'תקופה 1 (קריאה 1←2)'}>{ar?'فترة 1':'תק׳1'}</th>
+                      <th title={ar?'الفترة 2 (قراءة 2←3)':'תקופה 2 (קריאה 2←3)'}>{ar?'فترة 2':'תק׳2'}</th>
+                      <th title={ar?'الفترة 3 (قراءة 3←4)':'תקופה 3 (קריאה 3←4)'}>{ar?'فترة 3':'תק׳3'}</th>
                       <th>{t('delete', lang)}</th>
                     </tr>
                   </thead>
