@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLang } from '../contexts/LangContext';
 import { t } from '../i18n/translations';
 import { farmerAPI, publicAPI } from '../api';
@@ -11,6 +11,93 @@ import { LangToggleLight } from '../components/shared/LangToggle';
 import AnnouncementBanner from '../components/shared/AnnouncementBanner';
 import { getPrice } from '../utils/pricing'; // ✅ سعر موحّد شامل الضريبة (מע"מ)
 import { cupsDiff, cupsPositive } from '../utils/cups'; // ✅ فرق أكواب موحّد
+
+// ✅ قياس عرض العنصر يدوياً (بدل الاعتماد على قياس Recharts الداخلي، اللي
+// تبيّن إنه أحياناً يفشل على بعض متصفحات الموبايل حتى بعد الانتظار/إعادة
+// التركيب). نراقب: تغيّر حجم فعلي (ResizeObserver) + تغيير اتجاه الجهاز +
+// تغيير حجم النافذة، بالإضافة لقياس فوري متكرر لأول ثانيتين كشبكة أمان.
+function useElementWidth() {
+  const ref = useRef(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.offsetWidth;
+      if (w > 0) setWidth(w);
+    };
+    measure();
+    const ro = (typeof ResizeObserver !== 'undefined') ? new ResizeObserver(measure) : null;
+    if (ro) ro.observe(el);
+    window.addEventListener('resize', measure);
+    window.addEventListener('orientationchange', measure);
+    // شبكة أمان: قياسات متكررة خلال أول ثانيتين لأي متصفح يتأخر باستقرار التخطيط
+    const timers = [100,300,600,1000,1500,2000].map(ms => setTimeout(measure, ms));
+    return () => {
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('orientationchange', measure);
+      timers.forEach(clearTimeout);
+    };
+  }, []);
+  return [ref, width];
+}
+
+// ── رسم بياني الأكواب السنوي (مكوّن مستقل — يقيس نفسه عند ظهوره فعلياً) ──
+function CupsYearChart({ data, lang, t }) {
+  const [ref, width] = useElementWidth();
+  return (
+    <div ref={ref} style={{ width:'100%' }}>
+      {width > 0 && (
+        <BarChart width={width} height={180} data={data} barSize={28}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6"/>
+          <XAxis dataKey="year" tick={{ fontFamily:'Tajawal,Heebo', fontSize:11, fill:'#9ca3af' }}/>
+          <YAxis tick={{ fontFamily:'Tajawal,Heebo', fontSize:11, fill:'#9ca3af' }}/>
+          <Tooltip formatter={v=>[v.toLocaleString()+' '+t('cups',lang),'']} contentStyle={{ fontFamily:'Tajawal,Heebo', borderRadius:10, border:'1px solid #e5e7eb' }}/>
+          <Bar dataKey="cups" radius={[6,6,0,0]}>
+            {data.map((_,i)=><Cell key={i} fill={i===data.length-1?'#ea580c':'#fed7aa'}/>)}
+          </Bar>
+        </BarChart>
+      )}
+    </div>
+  );
+}
+
+// ── رسم بياني المبلغ السنوي (مكوّن مستقل) ──
+function AmountYearChart({ data, lang, t }) {
+  const [ref, width] = useElementWidth();
+  return (
+    <div ref={ref} style={{ width:'100%' }}>
+      {width > 0 && (
+        <LineChart width={width} height={180} data={data}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6"/>
+          <XAxis dataKey="year" tick={{ fontFamily:'Tajawal,Heebo', fontSize:11, fill:'#9ca3af' }}/>
+          <YAxis tick={{ fontFamily:'Tajawal,Heebo', fontSize:11, fill:'#9ca3af' }} tickFormatter={v=>`₪${(v/1000).toFixed(0)}k`}/>
+          <Tooltip formatter={v=>[`₪${Math.round(v).toLocaleString()}`,t('amount',lang)]} contentStyle={{ fontFamily:'Tajawal,Heebo', borderRadius:10, border:'1px solid #e5e7eb' }}/>
+          <Line type="monotone" dataKey="amount" stroke="#7c3aed" strokeWidth={2.5} dot={{ fill:'#7c3aed', r:4, strokeWidth:0 }}/>
+        </LineChart>
+      )}
+    </div>
+  );
+}
+
+// ── رسم بياني أكواب أرض واحدة (مكوّن مستقل لأنه يُستخدم داخل map) ──
+function LandCupsChart({ data, color, lang, t }) {
+  const [ref, width] = useElementWidth();
+  return (
+    <div ref={ref} style={{ width:'100%' }}>
+      {width > 0 && (
+        <BarChart width={width} height={120} data={data} barSize={20}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6"/>
+          <XAxis dataKey="year" tick={{ fontFamily:'Tajawal,Heebo', fontSize:10, fill:'#9ca3af' }}/>
+          <YAxis tick={{ fontFamily:'Tajawal,Heebo', fontSize:10, fill:'#9ca3af' }}/>
+          <Tooltip formatter={v=>[v.toLocaleString()+' '+t('cups',lang),'']} contentStyle={{ fontFamily:'Tajawal,Heebo', borderRadius:10, border:'1px solid #e5e7eb' }}/>
+          <Bar dataKey="cups" fill={color} radius={[5,5,0,0]}/>
+        </BarChart>
+      )}
+    </div>
+  );
+}
 
 // ── ألوان الرسوم البيانية ──
 const CHART_COLORS = ['#ea580c','#7c3aed','#0891b2','#15803d','#db2777','#d97706'];
@@ -93,31 +180,6 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { publicAPI.getSettings().then(d => setPub(d || {})).catch(() => {}); }, []);
-  // ✅ لا نرسم أي رسم بياني بعرض نسبي (100%) إلا بعد اكتمال رسم الصفحة فعلياً
-  // (لا نعتمد على حدث "تغيير حجم" وهمي، بل ننتظر فريمين فعليين من المتصفح)
-  // هذا يحل مشكلة ظهور الرسوم فارغة على بعض المتصفحات/الأجهزة عند القياس
-  // قبل اكتمال التخطيط (Layout) الفعلي للصفحة.
-  const [chartsReady, setChartsReady] = useState(false);
-  // ✅ "إعادة تركيب" قسرية للرسوم البيانية بعد قليل من ظهورها — نفس تأثير
-  // تدوير الهاتف (اللي أكّدنا إنه يصلح المشكلة) لكن تلقائياً بدون ما يحتاج
-  // المستخدم يدوّر جهازه. نغيّر key فيعيد React بناء العنصر من الصفر
-  // فتقيس المكتبة عرض الحاوية الصحيح (بعض متصفحات الموبايل تحتاج قياس ثانٍ
-  // بعد استقرار شريط العنوان/لوحة المفاتيح/الخطوط).
-  const [chartsKey, setChartsKey] = useState(0);
-  useEffect(() => {
-    if (loading) { setChartsReady(false); return; }
-    let raf1, raf2;
-    raf1 = requestAnimationFrame(() => { raf2 = requestAnimationFrame(() => setChartsReady(true)); });
-    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
-  }, [loading]);
-
-  useEffect(() => {
-    if (!chartsReady) return;
-    // إعادة تركيب مرتين بفارق زمني — يغطي حالات استقرار الصفحة المتأخر
-    const t1 = setTimeout(() => setChartsKey(k => k + 1), 350);
-    const t2 = setTimeout(() => setChartsKey(k => k + 1), 900);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [chartsReady]);
 
   const handleLogout = () => { onLogout && onLogout(); onLogout(); };
 
@@ -315,19 +377,7 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
                     <div style={{ fontSize:13, fontWeight:900, color:'#111827' }}>📈 {t('consumptionChart', lang)}</div>
                     <span style={{ fontSize:9, fontWeight:700, padding:'2px 8px', borderRadius:6, background:'#fff7ed', color:'#c2410c', border:'1px solid #fed7aa' }}>{ar?'كوب':'קוב'}</span>
                   </div>
-                  {chartsReady ? (
-                    <ResponsiveContainer key={chartsKey} width="100%" height={180}>
-                      <BarChart data={yearlyData} barSize={28}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6"/>
-                        <XAxis dataKey="year" tick={{ fontFamily:'Tajawal,Heebo', fontSize:11, fill:'#9ca3af' }}/>
-                        <YAxis tick={{ fontFamily:'Tajawal,Heebo', fontSize:11, fill:'#9ca3af' }}/>
-                        <Tooltip formatter={v=>[v.toLocaleString()+' '+t('cups',lang),'']} contentStyle={{ fontFamily:'Tajawal,Heebo', borderRadius:10, border:'1px solid #e5e7eb' }}/>
-                        <Bar dataKey="cups" radius={[6,6,0,0]}>
-                          {yearlyData.map((_,i)=><Cell key={i} fill={i===yearlyData.length-1?'#ea580c':'#fed7aa'}/>)}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : <div style={{ height:180 }}/>}
+                  <CupsYearChart data={yearlyData} lang={lang} t={t} />
                 </div>
 
                 {/* رسم بياني المبلغ */}
@@ -336,17 +386,7 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
                     <div style={{ fontSize:13, fontWeight:900, color:'#111827' }}>💰 {t('amountChart', lang)}</div>
                     <span style={{ fontSize:9, fontWeight:700, padding:'2px 8px', borderRadius:6, background:'#f5f3ff', color:'#6d28d9', border:'1px solid #ddd6fe' }}>₪</span>
                   </div>
-                  {chartsReady ? (
-                    <ResponsiveContainer key={chartsKey} width="100%" height={180}>
-                      <LineChart data={yearlyData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6"/>
-                        <XAxis dataKey="year" tick={{ fontFamily:'Tajawal,Heebo', fontSize:11, fill:'#9ca3af' }}/>
-                        <YAxis tick={{ fontFamily:'Tajawal,Heebo', fontSize:11, fill:'#9ca3af' }} tickFormatter={v=>`₪${(v/1000).toFixed(0)}k`}/>
-                        <Tooltip formatter={v=>[`₪${Math.round(v).toLocaleString()}`,t('amount',lang)]} contentStyle={{ fontFamily:'Tajawal,Heebo', borderRadius:10, border:'1px solid #e5e7eb' }}/>
-                        <Line type="monotone" dataKey="amount" stroke="#7c3aed" strokeWidth={2.5} dot={{ fill:'#7c3aed', r:4, strokeWidth:0 }}/>
-                      </LineChart>
-                    </ResponsiveContainer>
-                  ) : <div style={{ height:180 }}/>}
+                  <AmountYearChart data={yearlyData} lang={lang} t={t} />
                 </div>
 
                 {/* توزيع الأراضي Pie */}
@@ -523,17 +563,7 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
                       </div>
                     </div>
                     {chartData.length > 0 ? (
-                      chartsReady ? (
-                        <ResponsiveContainer key={chartsKey} width="100%" height={120}>
-                          <BarChart data={chartData} barSize={20}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6"/>
-                            <XAxis dataKey="year" tick={{ fontFamily:'Tajawal,Heebo', fontSize:10, fill:'#9ca3af' }}/>
-                            <YAxis tick={{ fontFamily:'Tajawal,Heebo', fontSize:10, fill:'#9ca3af' }}/>
-                            <Tooltip formatter={v=>[v.toLocaleString()+' '+t('cups',lang),'']} contentStyle={{ fontFamily:'Tajawal,Heebo', borderRadius:10, border:'1px solid #e5e7eb' }}/>
-                            <Bar dataKey="cups" fill={color} radius={[5,5,0,0]}/>
-                          </BarChart>
-                        </ResponsiveContainer>
-                      ) : <div style={{ height:120 }}/>
+                      <LandCupsChart data={chartData} color={color} lang={lang} t={t} />
                     ) : (
                       <p style={{ color:'#9ca3af', textAlign:'center', padding:16, fontSize:12 }}>{t('noReadings',lang)}</p>
                     )}
