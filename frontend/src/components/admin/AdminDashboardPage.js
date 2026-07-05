@@ -6,9 +6,10 @@ import { getPrice } from '../../utils/pricing'; // ✅ سعر موحّد شام�
 import { cupsPositive } from '../../utils/cups';     // ✅ فرق أكواب موحّد (مجاميع فقط، بدون قيم سالبة)
 import { getExtrasNet } from '../../utils/extras';   // ✅ إضافات موحّدة (تدعم extras[] + الحقول القديمة)
 import useElementWidth from '../../hooks/useElementWidth'; // ✅ قياس عرض موحّد للرسوم البيانية (يحل مشكلة الرسوم الفارغة)
+import { CATEGORIES } from './AdminPayments'; // ✅ نفس تصنيفات المدفوعات (لترجمة الأسماء بدل عرضها بالإنجليزي)
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, PieChart, Pie, Cell,
+  Tooltip, PieChart, Pie, Cell,
 } from 'recharts';
 
 
@@ -19,19 +20,57 @@ const COLORS = ['#16a34a','#84cc16','#0ea5e9','#f59e0b','#ef4444','#8b5cf6'];
 
 function CompChartBox({ data, ar }) {
   const [ref, width] = useElementWidth();
+  const incomeKey  = ar?'الإيرادات':'הכנסות';
+  const paymentsKey= ar?'المدفوعات':'תשלומים';
+  const profitKey  = ar?'الربح':'רווח';
   return (
     <div ref={ref} style={{ width:'100%' }}>
       {width > 0 && (
-        <BarChart width={width} height={220} data={data} barGap={4}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb"/>
-          <XAxis dataKey="year" tick={{fontFamily:'Tajawal,Heebo',fontSize:12}}/>
-          <YAxis tick={{fontFamily:'Tajawal,Heebo',fontSize:11}} tickFormatter={v=>`₪${(v/1000).toFixed(0)}k`}/>
-          <Tooltip formatter={(v,n)=>[`₪${v.toLocaleString()}`,n]} contentStyle={{fontFamily:'Tajawal,Heebo'}}/>
-          <Legend/>
-          <Bar dataKey={ar?'الإيرادات':'הכנסות'} fill="#16a34a" radius={[4,4,0,0]}/>
-          <Bar dataKey={ar?'المدفوعات':'תשלומים'} fill="#ef4444" radius={[4,4,0,0]}/>
-          <Bar dataKey={ar?'الربح':'רווח'} fill="#0ea5e9" radius={[4,4,0,0]}/>
-        </BarChart>
+        <div style={{ display:'flex', flexWrap:'wrap', gap:20, justifyContent:'center' }}>
+          {data.map((y,i) => {
+            const income   = y[incomeKey]   || 0;
+            const payments = y[paymentsKey] || 0;
+            const profit   = y[profitKey]   || 0;
+            const slices = [
+              { name: paymentsKey, value: Math.max(payments,0), color:'#ef4444' },
+              { name: profitKey,   value: Math.max(profit,0),   color:'#0ea5e9' },
+            ].filter(s=>s.value>0);
+            return (
+              <div key={i} style={{ display:'flex', flexDirection:'column', alignItems:'center', minWidth:150 }}>
+                <div style={{ position:'relative', width:150, height:150 }}>
+                  <PieChart width={150} height={150}>
+                    <Pie data={slices.length?slices:[{name:'-',value:1,color:'#e5e7eb'}]}
+                      cx="50%" cy="50%" innerRadius={45} outerRadius={70} dataKey="value" paddingAngle={3}>
+                      {(slices.length?slices:[{color:'#e5e7eb'}]).map((s,idx) => <Cell key={idx} fill={s.color}/>)}
+                    </Pie>
+                    <Tooltip formatter={v=>`₪${v.toLocaleString()}`}/>
+                  </PieChart>
+                  <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', pointerEvents:'none' }}>
+                    <div style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700 }}>{y.year}</div>
+                    <div style={{ fontSize:15, fontWeight:900, color:'#16a34a' }}>₪{(income/1000).toFixed(0)}k</div>
+                  </div>
+                </div>
+                <div style={{ display:'flex', flexDirection:'column', gap:4, marginTop:10, fontSize:12 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                    <div style={{ width:9, height:9, borderRadius:'50%', background:'#16a34a' }}/>
+                    <span style={{ color:'var(--text-muted)' }}>{incomeKey}:</span>
+                    <strong>₪{income.toLocaleString()}</strong>
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                    <div style={{ width:9, height:9, borderRadius:'50%', background:'#ef4444' }}/>
+                    <span style={{ color:'var(--text-muted)' }}>{paymentsKey}:</span>
+                    <strong>₪{payments.toLocaleString()}</strong>
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                    <div style={{ width:9, height:9, borderRadius:'50%', background:'#0ea5e9' }}/>
+                    <span style={{ color:'var(--text-muted)' }}>{profitKey}:</span>
+                    <strong style={{color: profit>=0?'inherit':'#dc2626'}}>₪{profit.toLocaleString()}</strong>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
@@ -39,16 +78,29 @@ function CompChartBox({ data, ar }) {
 
 function CatChartBox({ data }) {
   const [ref, width] = useElementWidth();
+  const total = data.reduce((s,d)=>s+d.value,0);
+  const sorted = [...data].sort((a,b)=>b.value-a.value);
   return (
     <div ref={ref} style={{ width:'100%' }}>
       {width > 0 && (
-        <PieChart width={width} height={220}>
-          <Pie data={data} cx="50%" cy="50%" outerRadius={80} dataKey="value"
-            label={({name,percent})=>`${name} ${(percent*100).toFixed(0)}%`}>
-            {data.map((_,i) => <Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
-          </Pie>
-          <Tooltip formatter={v=>`₪${v.toLocaleString()}`}/>
-        </PieChart>
+        <div style={{ display:'flex', alignItems:'center', gap:20, flexWrap: width<380?'wrap':'nowrap' }}>
+          <PieChart width={Math.min(180, width)} height={180}>
+            <Pie data={sorted} cx="50%" cy="50%" innerRadius={45} outerRadius={80} dataKey="value" paddingAngle={2}>
+              {sorted.map((_,i) => <Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
+            </Pie>
+            <Tooltip formatter={v=>`₪${v.toLocaleString()}`}/>
+          </PieChart>
+          <div style={{ display:'flex', flexDirection:'column', gap:8, flex:1, minWidth:150 }}>
+            {sorted.map((d,i) => (
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:8, fontSize:12.5 }}>
+                <div style={{ width:10, height:10, borderRadius:'50%', background:COLORS[i%COLORS.length], flexShrink:0 }}/>
+                <span style={{ flex:1, fontWeight:700, color:'var(--text-primary)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{d.name}</span>
+                <span style={{ fontWeight:800, color:'var(--text-muted)' }}>{total>0?Math.round(d.value/total*100):0}%</span>
+                <span style={{ fontWeight:900, color:COLORS[i%COLORS.length], minWidth:60, textAlign:'left' }}>₪{d.value.toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -209,7 +261,11 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
       const cat = p.category||'general';
       bycat[cat] = (bycat[cat]||0) + (parseFloat(p.amount)||0);
     });
-    return Object.entries(bycat).map(([name,value]) => ({ name, value:Math.round(value) }));
+    const catLabel = key => {
+      const c = CATEGORIES.find(x => x.key === key);
+      return c ? c[ar?'ar':'he'] : key;
+    };
+    return Object.entries(bycat).map(([name,value]) => ({ name: catLabel(name), value:Math.round(value) }));
   };
 
   // ── النسخة الاحتياطية ──

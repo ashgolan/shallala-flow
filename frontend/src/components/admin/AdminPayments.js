@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { paymentsAPI } from '../../api';
 import { useLang } from '../../contexts/LangContext';
 
-const CATEGORIES = [
+export const CATEGORIES = [
   { key:'contractor', ar:'مقاول', he:'קבלן' },
   { key:'company',    ar:'شركة',  he:'חברה' },
   { key:'committee',  ar:'لجنة',  he:'ועדה' },
