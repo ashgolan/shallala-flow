@@ -511,7 +511,7 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
                                         <td>{c.from}</td>
                                         <td>{c.to}</td>
                                         <td><strong style={{ color:'#ea580c' }}>{Math.round(c.cups).toLocaleString()}</strong></td>
-                                        <td>₪{c.price}</td>
+                                        <td>₪{c.price.toFixed(2)}</td>
                                         <td><strong>₪{Math.round(c.amount).toLocaleString()}</strong></td>
                                       </tr>
                                     ))}
