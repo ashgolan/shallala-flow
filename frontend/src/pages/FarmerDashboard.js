@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useLang } from '../contexts/LangContext';
 import { t } from '../i18n/translations';
 import { farmerAPI, publicAPI } from '../api';
@@ -11,37 +11,7 @@ import { LangToggleLight } from '../components/shared/LangToggle';
 import AnnouncementBanner from '../components/shared/AnnouncementBanner';
 import { getPrice } from '../utils/pricing'; // ✅ سعر موحّد شامل الضريبة (מע"מ)
 import { cupsDiff, cupsPositive } from '../utils/cups'; // ✅ فرق أكواب موحّد
-
-// ✅ قياس عرض العنصر يدوياً (بدل الاعتماد على قياس Recharts الداخلي، اللي
-// تبيّن إنه أحياناً يفشل على بعض متصفحات الموبايل حتى بعد الانتظار/إعادة
-// التركيب). نراقب: تغيّر حجم فعلي (ResizeObserver) + تغيير اتجاه الجهاز +
-// تغيير حجم النافذة، بالإضافة لقياس فوري متكرر لأول ثانيتين كشبكة أمان.
-function useElementWidth() {
-  const ref = useRef(null);
-  const [width, setWidth] = useState(0);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const measure = () => {
-      const w = el.offsetWidth;
-      if (w > 0) setWidth(w);
-    };
-    measure();
-    const ro = (typeof ResizeObserver !== 'undefined') ? new ResizeObserver(measure) : null;
-    if (ro) ro.observe(el);
-    window.addEventListener('resize', measure);
-    window.addEventListener('orientationchange', measure);
-    // شبكة أمان: قياسات متكررة خلال أول ثانيتين لأي متصفح يتأخر باستقرار التخطيط
-    const timers = [100,300,600,1000,1500,2000].map(ms => setTimeout(measure, ms));
-    return () => {
-      if (ro) ro.disconnect();
-      window.removeEventListener('resize', measure);
-      window.removeEventListener('orientationchange', measure);
-      timers.forEach(clearTimeout);
-    };
-  }, []);
-  return [ref, width];
-}
+import useElementWidth from '../hooks/useElementWidth'; // ✅ قياس عرض موحّد للرسوم البيانية
 
 // ── رسم بياني الأكواب السنوي (مكوّن مستقل — يقيس نفسه عند ظهوره فعلياً) ──
 function CupsYearChart({ data, lang, t }) {

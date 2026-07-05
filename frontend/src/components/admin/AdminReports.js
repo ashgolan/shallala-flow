@@ -590,14 +590,14 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
           </button>
         </div>
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-          {activeTab==='main' && <>
+          {!isViewer && activeTab==='main' && <>
             <button className="btn btn-outline" onClick={handleWatchmanExcel}>📋 {ar?'Excel للناطور':'Excel לשומר'}</button>
             <button className="btn btn-outline" onClick={handlePrint}>🖨️ {ar?'طباعة':'הדפסה'}</button>
           </>}
-          {activeTab==='extras' && extrasFiltered.length > 0 && (
+          {!isViewer && activeTab==='extras' && extrasFiltered.length > 0 && (
             <button className="btn btn-outline" onClick={handlePrintExtras}>🖨️ {ar?'طباعة':'הדפסה'}</button>
           )}
-          {activeTab==='audit' && (
+          {!isViewer && activeTab==='audit' && (
             <button className="btn btn-primary" onClick={handleAuditExcel}>
               📥 {ar?'تحميل Excel (كل القراءات)':'הורד Excel (כל הקריאות)'}
             </button>

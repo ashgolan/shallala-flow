@@ -33,7 +33,7 @@ export default function AdminDashboard({ onLogout, adminRole='admin' }) {
   ];
 
   const TABS = adminRole === 'viewer'
-    ? allTabs.filter(t => ['reports','payments','dashboard'].includes(t.key))
+    ? allTabs.filter(t => ['reports','payments','projects','dashboard'].includes(t.key))
     : allTabs;
 
   const current = TABS.find(tb => tb.key === tab);

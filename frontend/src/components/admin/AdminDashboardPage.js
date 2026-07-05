@@ -5,13 +5,112 @@ import { useLang } from '../../contexts/LangContext';
 import { getPrice } from '../../utils/pricing'; // ✅ سعر موحّد شامل الضريبة (מע"מ)
 import { cupsPositive } from '../../utils/cups';     // ✅ فرق أكواب موحّد (مجاميع فقط، بدون قيم سالبة)
 import { getExtrasNet } from '../../utils/extras';   // ✅ إضافات موحّدة (تدعم extras[] + الحقول القديمة)
+import useElementWidth from '../../hooks/useElementWidth'; // ✅ قياس عرض موحّد للرسوم البيانية (يحل مشكلة الرسوم الفارغة)
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell,
+  Tooltip, Legend, PieChart, Pie, Cell,
 } from 'recharts';
 
 
 const COLORS = ['#16a34a','#84cc16','#0ea5e9','#f59e0b','#ef4444','#8b5cf6'];
+
+// ── مكوّنات رسوم بيانية مستقلة: كل واحد يقيس عرض حاويته بنفسه عند ظهوره
+//    فعلياً (بدل الاعتماد على قياس Recharts الداخلي غير الموثوق) ──
+
+function CompChartBox({ data, ar }) {
+  const [ref, width] = useElementWidth();
+  return (
+    <div ref={ref} style={{ width:'100%' }}>
+      {width > 0 && (
+        <BarChart width={width} height={220} data={data} barGap={4}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb"/>
+          <XAxis dataKey="year" tick={{fontFamily:'Tajawal,Heebo',fontSize:12}}/>
+          <YAxis tick={{fontFamily:'Tajawal,Heebo',fontSize:11}} tickFormatter={v=>`₪${(v/1000).toFixed(0)}k`}/>
+          <Tooltip formatter={(v,n)=>[`₪${v.toLocaleString()}`,n]} contentStyle={{fontFamily:'Tajawal,Heebo'}}/>
+          <Legend/>
+          <Bar dataKey={ar?'الإيرادات':'הכנסות'} fill="#16a34a" radius={[4,4,0,0]}/>
+          <Bar dataKey={ar?'المدفوعات':'תשלומים'} fill="#ef4444" radius={[4,4,0,0]}/>
+          <Bar dataKey={ar?'الربح':'רווח'} fill="#0ea5e9" radius={[4,4,0,0]}/>
+        </BarChart>
+      )}
+    </div>
+  );
+}
+
+function CatChartBox({ data }) {
+  const [ref, width] = useElementWidth();
+  return (
+    <div ref={ref} style={{ width:'100%' }}>
+      {width > 0 && (
+        <PieChart width={width} height={220}>
+          <Pie data={data} cx="50%" cy="50%" outerRadius={80} dataKey="value"
+            label={({name,percent})=>`${name} ${(percent*100).toFixed(0)}%`}>
+            {data.map((_,i) => <Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
+          </Pie>
+          <Tooltip formatter={v=>`₪${v.toLocaleString()}`}/>
+        </PieChart>
+      )}
+    </div>
+  );
+}
+
+function CupsPeriodChartBox({ data, ar }) {
+  const [ref, width] = useElementWidth();
+  return (
+    <div ref={ref} style={{ width:'100%' }}>
+      {width > 0 && (
+        <BarChart width={width} height={220} data={data} barGap={4}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb"/>
+          <XAxis dataKey="period" tick={{fontFamily:'Tajawal,Heebo',fontSize:12}}/>
+          <YAxis tick={{fontFamily:'Tajawal,Heebo',fontSize:11}}/>
+          <Tooltip formatter={v=>[v.toLocaleString(), ar?'أكواب':'קובים']} contentStyle={{fontFamily:'Tajawal,Heebo'}}/>
+          <Bar dataKey={ar?'أكواب':'קובים'} radius={[4,4,0,0]}>
+            {data.map((_,i) => <Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
+          </Bar>
+        </BarChart>
+      )}
+    </div>
+  );
+}
+
+function IncomeYearChartBox({ data, ar }) {
+  const [ref, width] = useElementWidth();
+  return (
+    <div ref={ref} style={{ width:'100%' }}>
+      {width > 0 && (
+        <LineChart width={width} height={220} data={data}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb"/>
+          <XAxis dataKey="year" tick={{fontFamily:'Tajawal,Heebo',fontSize:12}}/>
+          <YAxis tick={{fontFamily:'Tajawal,Heebo',fontSize:11}} tickFormatter={v=>`₪${(v/1000).toFixed(0)}k`}/>
+          <Tooltip formatter={v=>[`₪${v.toLocaleString()}`,ar?'الإيرادات':'הכנסות']} contentStyle={{fontFamily:'Tajawal,Heebo'}}/>
+          <Line type="monotone" dataKey="income" stroke="#16a34a" strokeWidth={2.5} dot={{fill:'#16a34a',r:4}}/>
+        </LineChart>
+      )}
+    </div>
+  );
+}
+
+function TopFarmersChartBox({ data, height }) {
+  const [ref, width] = useElementWidth();
+  return (
+    <div ref={ref} style={{ width:'100%' }}>
+      {width > 0 && (
+        <BarChart width={width} height={height} data={data} layout="vertical" margin={{left:10,right:20}}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false}/>
+          <XAxis type="number" tick={{fontFamily:'Tajawal,Heebo',fontSize:11}}/>
+          <YAxis type="category" dataKey="name" width={110} tick={{fontFamily:'Tajawal,Heebo',fontSize:12,fontWeight:700}}/>
+          <Tooltip
+            formatter={(v,n)=>[v.toLocaleString(), n]}
+            labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName || ''}
+            contentStyle={{fontFamily:'Tajawal,Heebo', borderRadius:10}}/>
+          <Bar dataKey={Object.keys(data[0]||{}).find(k=>k!=='name'&&k!=='fullName'&&k!=='peakLabel')} radius={[0,8,8,0]}>
+            {data.map((_,i) => <Cell key={i} fill={i<3?'#0ea5e9':'#93c5fd'}/>)}
+          </Bar>
+        </BarChart>
+      )}
+    </div>
+  );
+}
 
 export default function AdminDashboardPage({ adminRole='admin' }) {
   const { lang } = useLang();
@@ -199,6 +298,43 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
     [ar?'أكواب':'קובים']: Math.round(cupsBreakdown.byPeriod[idx+1] || 0),
   }));
 
+  // ✅ أكثر 10 مزارعين استهلاكاً للمياه + تحديد الفترة الأعلى استهلاكاً لكل واحد
+  const farmerNameOf = id => {
+    const f = (report.farmers||[]).find(x => String(x.id) === String(id));
+    return f?.nameHeb || f?.name || '—';
+  };
+  const topFarmers = (() => {
+    const byFarmer = {}; // farmerId -> { total, peak:{cups,year,period} }
+    (report.readings||[]).forEach(r => {
+      const vals = r.readings || [];
+      if (!byFarmer[r.farmerId]) byFarmer[r.farmerId] = { total: 0, peak: null };
+      vals.slice(1).forEach((_, i) => {
+        const cups = cupsPositive(vals, i);
+        if (!cups) return;
+        byFarmer[r.farmerId].total += cups;
+        if (!byFarmer[r.farmerId].peak || cups > byFarmer[r.farmerId].peak.cups) {
+          byFarmer[r.farmerId].peak = { cups, year: r.year, period: i+1 };
+        }
+      });
+    });
+    return Object.entries(byFarmer)
+      .map(([farmerId, d]) => ({
+        farmerId,
+        name: farmerNameOf(farmerId),
+        total: Math.round(d.total),
+        peak: d.peak,
+      }))
+      .filter(f => f.total > 0)
+      .sort((a,b) => b.total - a.total)
+      .slice(0, 10);
+  })();
+  const topFarmersChartData = topFarmers.map(f => ({
+    name: f.name.length > 14 ? f.name.slice(0,13)+'…' : f.name,
+    fullName: f.name,
+    [ar?'أكواب':'קובים']: f.total,
+    peakLabel: f.peak ? `${f.peak.year} · ${ar?'الفترة':'תקופה'} ${f.peak.period}` : '—',
+  }));
+
   return (
     <div className="dashboard-v2">
 
@@ -265,24 +401,13 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
 
       {/* ── الرسوم البيانية ── */}
       <div className="dv2-section-label">{ar?'التحليلات':'ניתוחים'}</div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(400px,1fr))',gap:16,marginBottom:20}}>
+      <div className="charts-grid" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:16,marginBottom:20}}>
 
         {/* مقارنة الإيرادات والمدفوعات */}
         {compChart.length > 0 && (
           <div className="dv2-panel" style={{'--panel-accent':'#16a34a'}}>
             <div className="dv2-panel-title">📊 {ar?'مقارنة الإيرادات والمدفوعات':'השוואת הכנסות ותשלומים'}</div>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={compChart} barGap={4}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb"/>
-                <XAxis dataKey="year" tick={{fontFamily:'Tajawal,Heebo',fontSize:12}}/>
-                <YAxis tick={{fontFamily:'Tajawal,Heebo',fontSize:11}} tickFormatter={v=>`₪${(v/1000).toFixed(0)}k`}/>
-                <Tooltip formatter={(v,n)=>[`₪${v.toLocaleString()}`,n]} contentStyle={{fontFamily:'Tajawal,Heebo'}}/>
-                <Legend/>
-                <Bar dataKey={ar?'الإيرادات':'הכנסות'} fill="#16a34a" radius={[4,4,0,0]}/>
-                <Bar dataKey={ar?'المدفوعات':'תשלומים'} fill="#ef4444" radius={[4,4,0,0]}/>
-                <Bar dataKey={ar?'الربح':'רווח'} fill="#0ea5e9" radius={[4,4,0,0]}/>
-              </BarChart>
-            </ResponsiveContainer>
+            <CompChartBox data={compChart} ar={ar} />
           </div>
         )}
 
@@ -290,15 +415,7 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
         {catChart.length > 0 && (
           <div className="dv2-panel" style={{'--panel-accent':'#f59e0b'}}>
             <div className="dv2-panel-title">🥧 {ar?'توزيع المدفوعات':'חלוקת תשלומים'}</div>
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie data={catChart} cx="50%" cy="50%" outerRadius={80} dataKey="value"
-                  label={({name,percent})=>`${name} ${(percent*100).toFixed(0)}%`}>
-                  {catChart.map((_,i) => <Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
-                </Pie>
-                <Tooltip formatter={v=>`₪${v.toLocaleString()}`}/>
-              </PieChart>
-            </ResponsiveContainer>
+            <CatChartBox data={catChart} />
           </div>
         )}
 
@@ -306,17 +423,7 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
         {cupsChartData.length > 0 && (
           <div className="dv2-panel" style={{'--panel-accent':'#0ea5e9'}}>
             <div className="dv2-panel-title">🥤 {(ar?'توزيع الأكواب حسب الدورة — ':'חלוקת קובים לפי תקופה — ')}{cupsYear}</div>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={cupsChartData} barGap={4}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb"/>
-                <XAxis dataKey="period" tick={{fontFamily:'Tajawal,Heebo',fontSize:12}}/>
-                <YAxis tick={{fontFamily:'Tajawal,Heebo',fontSize:11}}/>
-                <Tooltip formatter={v=>[v.toLocaleString(), ar?'أكواب':'קובים']} contentStyle={{fontFamily:'Tajawal,Heebo'}}/>
-                <Bar dataKey={ar?'أكواب':'קובים'} radius={[4,4,0,0]}>
-                  {cupsChartData.map((_,i) => <Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            <CupsPeriodChartBox data={cupsChartData} ar={ar} />
           </div>
         )}
 
@@ -324,18 +431,59 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
         {yearlyIncome.length > 0 && (
           <div className="dv2-panel" style={{'--panel-accent':'#16a34a'}}>
             <div className="dv2-panel-title">📈 {ar?'الإيرادات السنوية':'הכנסות שנתיות'}</div>
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={yearlyIncome.map(y=>({year:String(y.year), income:Math.round(y.income)}))}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb"/>
-                <XAxis dataKey="year" tick={{fontFamily:'Tajawal,Heebo',fontSize:12}}/>
-                <YAxis tick={{fontFamily:'Tajawal,Heebo',fontSize:11}} tickFormatter={v=>`₪${(v/1000).toFixed(0)}k`}/>
-                <Tooltip formatter={v=>[`₪${v.toLocaleString()}`,ar?'الإيرادات':'הכנסות']} contentStyle={{fontFamily:'Tajawal,Heebo'}}/>
-                <Line type="monotone" dataKey="income" stroke="#16a34a" strokeWidth={2.5} dot={{fill:'#16a34a',r:4}}/>
-              </LineChart>
-            </ResponsiveContainer>
+            <IncomeYearChartBox data={yearlyIncome.map(y=>({year:String(y.year), income:Math.round(y.income)}))} ar={ar} />
           </div>
         )}
       </div>
+
+      {/* ── أكثر 10 مزارعين استهلاكاً للمياه ── */}
+      {topFarmers.length > 0 && (
+        <>
+          <div className="dv2-section-label">{ar?'الأكثر استهلاكاً للمياه':'הצרכנים המובילים במים'}</div>
+          <div className="charts-grid" style={{display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))', gap:16, marginBottom:20}}>
+
+            {/* رسم بياني أفقي */}
+            <div className="dv2-panel" style={{'--panel-accent':'#0ea5e9'}}>
+              <div className="dv2-panel-title">🥇 {ar?'أعلى 10 مزارعين — إجمالي الأكواب':'10 חקלאים מובילים — סה"כ קובים'}</div>
+              <TopFarmersChartBox data={topFarmersChartData} height={Math.max(220, topFarmersChartData.length*38)} />
+            </div>
+
+            {/* قائمة مرتّبة مع الفترة الأعلى استهلاكاً */}
+            <div className="dv2-panel" style={{'--panel-accent':'#f59e0b'}}>
+              <div className="dv2-panel-title">📋 {ar?'التفاصيل — الفترة الأعلى استهلاكاً لكل مزارع':'פירוט — התקופה הצרכנית ביותר לכל חקלאי'}</div>
+              <div style={{display:'flex', flexDirection:'column', gap:8}}>
+                {topFarmers.map((f, i) => (
+                  <div key={f.farmerId} style={{
+                    display:'flex', alignItems:'center', gap:12, padding:'10px 12px',
+                    borderRadius:10, background: i<3 ? '#eff6ff' : 'var(--surface-2)',
+                    border: i<3 ? '1px solid #bfdbfe' : '1px solid var(--border)',
+                  }}>
+                    <div style={{
+                      width:28, height:28, borderRadius:'50%', flexShrink:0,
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                      fontWeight:900, fontSize:13,
+                      background: i===0?'#fbbf24':i===1?'#cbd5e1':i===2?'#fdba74':'var(--border)',
+                      color: i<3 ? '#78350f' : 'var(--text-muted)',
+                    }}>{i+1}</div>
+                    <div style={{flex:1, minWidth:0}}>
+                      <div style={{fontWeight:800, fontSize:13.5, color:'var(--text-primary)', fontFamily:'Heebo,sans-serif', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{f.name}</div>
+                      {f.peak && (
+                        <div style={{fontSize:11, color:'var(--text-muted)', marginTop:2}}>
+                          {ar?'الأعلى: ':'שיא: '}<strong style={{color:'#c2410c'}}>{f.peak.cups.toLocaleString()}</strong> {ar?'كوب':'קוב'} — {f.peak.year} · {ar?'الفترة':'תקופה'} {f.peak.period}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{textAlign:'left', flexShrink:0}}>
+                      <div style={{fontWeight:900, fontSize:15, color:'#0ea5e9'}}>{f.total.toLocaleString()}</div>
+                      <div style={{fontSize:9.5, color:'var(--text-muted)', fontWeight:700}}>{ar?'كوب':'קוב'}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* ── النسخة الاحتياطية ── */}
       {adminRole !== 'viewer' && <>
