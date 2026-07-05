@@ -142,28 +142,6 @@ function IncomeYearChartBox({ data, ar }) {
   );
 }
 
-function TopFarmersChartBox({ data, height }) {
-  const [ref, width] = useElementWidth();
-  return (
-    <div ref={ref} style={{ width:'100%' }}>
-      {width > 0 && (
-        <BarChart width={width} height={height} data={data} layout="vertical" margin={{left:10,right:20}}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false}/>
-          <XAxis type="number" tick={{fontFamily:'Tajawal,Heebo',fontSize:11}}/>
-          <YAxis type="category" dataKey="name" width={110} tick={{fontFamily:'Tajawal,Heebo',fontSize:12,fontWeight:700}}/>
-          <Tooltip
-            formatter={(v,n)=>[v.toLocaleString(), n]}
-            labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName || ''}
-            contentStyle={{fontFamily:'Tajawal,Heebo', borderRadius:10}}/>
-          <Bar dataKey={Object.keys(data[0]||{}).find(k=>k!=='name'&&k!=='fullName'&&k!=='peakLabel')} radius={[0,8,8,0]}>
-            {data.map((_,i) => <Cell key={i} fill={i<3?'#0ea5e9':'#93c5fd'}/>)}
-          </Bar>
-        </BarChart>
-      )}
-    </div>
-  );
-}
-
 export default function AdminDashboardPage({ adminRole='admin' }) {
   const { lang } = useLang();
   const ar = lang === 'ar';
@@ -174,19 +152,21 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [report, paymentsRes, prices] = await Promise.allSettled([
+      const [report, paymentsRes, prices, regionsRes] = await Promise.allSettled([
         adminAPI.getReport(),
         paymentsAPI.getAll(),
         adminAPI.getPrices(),
+        adminAPI.getRegions(),
       ]);
       setData({
         report:   report.status==='fulfilled'   ? report.value   : { readings:[], farmers:[], lands:[] },
         payments: paymentsRes.status==='fulfilled' ? (paymentsRes.value.payments||[]) : [],
         prices:   prices.status==='fulfilled'   ? prices.value   : {},
+        regions:  regionsRes.status==='fulfilled' ? (regionsRes.value.regions||[]) : [],
       });
     } catch(e) {
       console.error('Dashboard load error:', e);
-      setData({ report:{ readings:[], farmers:[], lands:[] }, payments:[], prices:{} });
+      setData({ report:{ readings:[], farmers:[], lands:[] }, payments:[], prices:{}, regions:[] });
     } finally {
       setLoading(false);
     }
@@ -384,12 +364,44 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
       .sort((a,b) => b.total - a.total)
       .slice(0, 10);
   })();
-  const topFarmersChartData = topFarmers.map(f => ({
-    name: f.name.length > 14 ? f.name.slice(0,13)+'…' : f.name,
-    fullName: f.name,
-    [ar?'أكواب':'קובים']: f.total,
-    peakLabel: f.peak ? `${f.peak.year} · ${ar?'الفترة':'תקופה'} ${f.peak.period}` : '—',
-  }));
+
+  // ✅ أكثر 10 مناطق استهلاكاً للمياه (بنفس منطق استنتاج المنطقة المستخدم بباقي التطبيق)
+  const regionOf = land => {
+    const regions = data.regions || [];
+    if (land?.regionId) {
+      const reg = regions.find(r => String(r.id) === String(land.regionId));
+      if (reg) return reg;
+    }
+    const code = land?.stationNumber?.match(/^([A-Za-z]+)/)?.[1]?.toUpperCase();
+    if (code) {
+      const reg = regions.find(r => r.name?.toUpperCase() === code);
+      if (reg) return reg;
+    }
+    return null;
+  };
+  const topRegions = (() => {
+    const byRegion = {}; // key -> { code, label, total }
+    (report.readings||[]).forEach(r => {
+      const land = (report.lands||[]).find(l => String(l.id) === String(r.landId));
+      const reg  = regionOf(land);
+      const code = reg?.name || land?.stationNumber?.match(/^([A-Za-z]+)/)?.[1]?.toUpperCase() || '—';
+      const key  = reg ? (reg.id || reg.name) : code;
+      if (!byRegion[key]) {
+        const label = reg ? ((reg.nameHeb && reg.nameHeb !== reg.name) ? reg.nameHeb : (reg.name||'')) : (ar?'غير مصنّف':'לא מסווג');
+        byRegion[key] = { code, label, total: 0 };
+      }
+      const vals = r.readings || [];
+      vals.slice(1).forEach((_, i) => {
+        const cups = cupsPositive(vals, i);
+        if (cups) byRegion[key].total += cups;
+      });
+    });
+    return Object.values(byRegion)
+      .map(d => ({ ...d, total: Math.round(d.total) }))
+      .filter(d => d.total > 0)
+      .sort((a,b) => b.total - a.total)
+      .slice(0, 10);
+  })();
 
   return (
     <div className="dashboard-v2">
@@ -492,51 +504,79 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
         )}
       </div>
 
-      {/* ── أكثر 10 مزارعين استهلاكاً للمياه ── */}
-      {topFarmers.length > 0 && (
+      {/* ── أكثر استهلاكاً: مزارعين + مناطق (قائمتين جنب بعض) ── */}
+      {(topFarmers.length > 0 || topRegions.length > 0) && (
         <>
           <div className="dv2-section-label">{ar?'الأكثر استهلاكاً للمياه':'הצרכנים המובילים במים'}</div>
           <div className="charts-grid" style={{display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))', gap:16, marginBottom:20}}>
 
-            {/* رسم بياني أفقي */}
-            <div className="dv2-panel" style={{'--panel-accent':'#0ea5e9'}}>
-              <div className="dv2-panel-title">🥇 {ar?'أعلى 10 مزارعين — إجمالي الأكواب':'10 חקלאים מובילים — סה"כ קובים'}</div>
-              <TopFarmersChartBox data={topFarmersChartData} height={Math.max(220, topFarmersChartData.length*38)} />
-            </div>
-
-            {/* قائمة مرتّبة مع الفترة الأعلى استهلاكاً */}
-            <div className="dv2-panel" style={{'--panel-accent':'#f59e0b'}}>
-              <div className="dv2-panel-title">📋 {ar?'التفاصيل — الفترة الأعلى استهلاكاً لكل مزارع':'פירוט — התקופה הצרכנית ביותר לכל חקלאי'}</div>
-              <div style={{display:'flex', flexDirection:'column', gap:8}}>
-                {topFarmers.map((f, i) => (
-                  <div key={f.farmerId} style={{
-                    display:'flex', alignItems:'center', gap:12, padding:'10px 12px',
-                    borderRadius:10, background: i<3 ? '#eff6ff' : 'var(--surface-2)',
-                    border: i<3 ? '1px solid #bfdbfe' : '1px solid var(--border)',
-                  }}>
-                    <div style={{
-                      width:28, height:28, borderRadius:'50%', flexShrink:0,
-                      display:'flex', alignItems:'center', justifyContent:'center',
-                      fontWeight:900, fontSize:13,
-                      background: i===0?'#fbbf24':i===1?'#cbd5e1':i===2?'#fdba74':'var(--border)',
-                      color: i<3 ? '#78350f' : 'var(--text-muted)',
-                    }}>{i+1}</div>
-                    <div style={{flex:1, minWidth:0}}>
-                      <div style={{fontWeight:800, fontSize:13.5, color:'var(--text-primary)', fontFamily:'Heebo,sans-serif', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{f.name}</div>
-                      {f.peak && (
-                        <div style={{fontSize:11, color:'var(--text-muted)', marginTop:2}}>
-                          {ar?'الأعلى: ':'שיא: '}<strong style={{color:'#c2410c'}}>{f.peak.cups.toLocaleString()}</strong> {ar?'كوب':'קוב'} — {f.peak.year} · {ar?'الفترة':'תקופה'} {f.peak.period}
-                        </div>
-                      )}
+            {/* قائمة المزارعين */}
+            {topFarmers.length > 0 && (
+              <div className="dv2-panel" style={{'--panel-accent':'#f59e0b'}}>
+                <div className="dv2-panel-title">👨‍🌾 {ar?'أعلى 10 مزارعين — إجمالي الأكواب':'10 חקלאים מובילים — סה"כ קובים'}</div>
+                <div style={{display:'flex', flexDirection:'column', gap:8}}>
+                  {topFarmers.map((f, i) => (
+                    <div key={f.farmerId} style={{
+                      display:'flex', alignItems:'center', gap:12, padding:'10px 12px',
+                      borderRadius:10, background: i<3 ? '#eff6ff' : 'var(--surface-2)',
+                      border: i<3 ? '1px solid #bfdbfe' : '1px solid var(--border)',
+                    }}>
+                      <div style={{
+                        width:28, height:28, borderRadius:'50%', flexShrink:0,
+                        display:'flex', alignItems:'center', justifyContent:'center',
+                        fontWeight:900, fontSize:13,
+                        background: i===0?'#fbbf24':i===1?'#cbd5e1':i===2?'#fdba74':'var(--border)',
+                        color: i<3 ? '#78350f' : 'var(--text-muted)',
+                      }}>{i+1}</div>
+                      <div style={{flex:1, minWidth:0}}>
+                        <div style={{fontWeight:800, fontSize:13.5, color:'var(--text-primary)', fontFamily:'Heebo,sans-serif', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{f.name}</div>
+                        {f.peak && (
+                          <div style={{fontSize:11, color:'var(--text-muted)', marginTop:2}}>
+                            {ar?'الأعلى: ':'שיא: '}<strong style={{color:'#c2410c'}}>{f.peak.cups.toLocaleString()}</strong> {ar?'كوب':'קוב'} — {f.peak.year} · {ar?'الفترة':'תקופה'} {f.peak.period}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{textAlign:'left', flexShrink:0}}>
+                        <div style={{fontWeight:900, fontSize:15, color:'#0ea5e9'}}>{f.total.toLocaleString()}</div>
+                        <div style={{fontSize:9.5, color:'var(--text-muted)', fontWeight:700}}>{ar?'كوب':'קוב'}</div>
+                      </div>
                     </div>
-                    <div style={{textAlign:'left', flexShrink:0}}>
-                      <div style={{fontWeight:900, fontSize:15, color:'#0ea5e9'}}>{f.total.toLocaleString()}</div>
-                      <div style={{fontSize:9.5, color:'var(--text-muted)', fontWeight:700}}>{ar?'كوب':'קוב'}</div>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* قائمة المناطق */}
+            {topRegions.length > 0 && (
+              <div className="dv2-panel" style={{'--panel-accent':'#0ea5e9'}}>
+                <div className="dv2-panel-title">🗺️ {ar?'أعلى 10 مناطق — إجمالي الأكواب':'10 אזורים מובילים — סה"כ קובים'}</div>
+                <div style={{display:'flex', flexDirection:'column', gap:8}}>
+                  {topRegions.map((rgn, i) => (
+                    <div key={rgn.code+i} style={{
+                      display:'flex', alignItems:'center', gap:12, padding:'10px 12px',
+                      borderRadius:10, background: i<3 ? '#eff6ff' : 'var(--surface-2)',
+                      border: i<3 ? '1px solid #bfdbfe' : '1px solid var(--border)',
+                    }}>
+                      <div style={{
+                        width:28, height:28, borderRadius:'50%', flexShrink:0,
+                        display:'flex', alignItems:'center', justifyContent:'center',
+                        fontWeight:900, fontSize:13,
+                        background: i===0?'#fbbf24':i===1?'#cbd5e1':i===2?'#fdba74':'var(--border)',
+                        color: i<3 ? '#78350f' : 'var(--text-muted)',
+                      }}>{i+1}</div>
+                      <div style={{flex:1, minWidth:0, display:'flex', alignItems:'center', gap:8}}>
+                        <code style={{background:'#f0fdf4', border:'1px solid #bbf7d0', padding:'2px 9px', borderRadius:6, fontWeight:900, fontSize:12.5, flexShrink:0}}>{rgn.code}</code>
+                        <div style={{fontWeight:800, fontSize:13.5, color:'var(--text-primary)', fontFamily:'Heebo,sans-serif', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{rgn.label}</div>
+                      </div>
+                      <div style={{textAlign:'left', flexShrink:0}}>
+                        <div style={{fontWeight:900, fontSize:15, color:'#0ea5e9'}}>{rgn.total.toLocaleString()}</div>
+                        <div style={{fontSize:9.5, color:'var(--text-muted)', fontWeight:700}}>{ar?'كوب':'קוב'}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </>
       )}
