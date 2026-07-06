@@ -51,6 +51,9 @@ export default function AdminProjects({ adminRole='admin' }) {
   const [selFarmerId,     setSelFarmerId]     = useState('');
   const [selAmount,       setSelAmount]       = useState('');
   const [addingMember,    setAddingMember]    = useState(false);
+  // بحث عن المزارع بالكتابة (بدل القائمة العادية)
+  const [memberSearch,    setMemberSearch]    = useState('');
+  const [showMemberList,  setShowMemberList]  = useState(false);
 
   // إضافة دفعة
   const [payModal,    setPayModal]    = useState(null); // { projectId, memberId, farmerName }
@@ -169,6 +172,24 @@ export default function AdminProjects({ adminRole='admin' }) {
     load();
   };
 
+  // فتح مودال إضافة مشترك (مع تصفير حقل البحث)
+  const openAddMember = (proj) => {
+    setOpenProj(proj);
+    setSelFarmerId('');
+    setSelAmount('');
+    setMemberSearch('');
+    setShowMemberList(false);
+    setAddMemberModal(true);
+  };
+
+  const closeAddMember = () => {
+    setAddMemberModal(false);
+    setSelFarmerId('');
+    setSelAmount('');
+    setMemberSearch('');
+    setShowMemberList(false);
+  };
+
   // إضافة مشترك
   const submitAddMember = async () => {
     if (!selFarmerId) return;
@@ -179,8 +200,7 @@ export default function AdminProjects({ adminRole='admin' }) {
       setProjects(updated.projects||[]);
       const proj = (updated.projects||[]).find(p => p.id === openProj.id);
       if (proj) setOpenProj(proj);
-      setAddMemberModal(false);
-      setSelFarmerId(''); setSelAmount('');
+      closeAddMember();
     } catch(e) { alert(e.message); }
     finally { setAddingMember(false); }
   };
@@ -227,6 +247,25 @@ export default function AdminProjects({ adminRole='admin' }) {
     const f = farmers.find(f => f.id === fid);
     return f ? `${f.lastName||''} ${f.firstName||''}`.trim() : fid;
   };
+
+  // المزارعون المتاحون للإضافة (غير مشتركين بالفعل بهذا المشروع)
+  const availableMembers = openProj
+    ? farmers.filter(f => !openProj.members.find(m => m.farmerId === f.id))
+    : [];
+
+  // نتيجة البحث الحالية داخل مودال إضافة مشترك
+  const memberSearchResults = (() => {
+    const q = memberSearch.trim().toLowerCase();
+    const list = !q
+      ? availableMembers
+      : availableMembers.filter(f => {
+          const full = `${f.lastName||''} ${f.firstName||''} ${f.nameHeb||f.name||''} ${f.idNumber||''}`.toLowerCase();
+          return full.includes(q);
+        });
+    return [...list].sort((a,b) => (a.lastName||'').localeCompare(b.lastName||'', 'ar'));
+  })();
+
+  const selectedMemberFarmer = selFarmerId ? farmers.find(f => f.id === selFarmerId) : null;
 
   // ── MapModal ──
   const MapModal = () => {
@@ -398,20 +437,66 @@ export default function AdminProjects({ adminRole='admin' }) {
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
           <div style={{background:'#fff',borderRadius:18,padding:28,maxWidth:400,width:'100%',boxShadow:'0 12px 50px rgba(0,0,0,0.25)'}}>
             <h3 style={{margin:'0 0 16px',color:'var(--primary)'}}>👤 {ar?'إضافة مشترك':'הוסף משתתף'}</h3>
-            <div className="form-group">
+
+            {/* ── حقل بحث المزارع (بدل القائمة العادية) ── */}
+            <div className="form-group" style={{position:'relative'}}>
               <label>{ar?'اختر مزارع':'בחר חקלאי'}</label>
-              <select value={selFarmerId} onChange={e=>setSelFarmerId(e.target.value)} style={{fontFamily:'Heebo,sans-serif'}}>
-                <option value="">{ar?'— اختر —':'— בחר —'}</option>
-                {farmers
-                  .filter(f => !openProj.members.find(m => m.farmerId === f.id))
-                  .sort((a,b)=>((a.lastName||'')).localeCompare(b.lastName||'','ar'))
-                  .map(f=>(
-                    <option key={f.id} value={f.id}>
-                      {f.lastName} {f.firstName}
-                    </option>
-                  ))}
-              </select>
+              <input
+                value={memberSearch}
+                onChange={e=>{
+                  setMemberSearch(e.target.value);
+                  setShowMemberList(true);
+                  if (selFarmerId) setSelFarmerId('');
+                }}
+                onFocus={()=>setShowMemberList(true)}
+                onBlur={()=>setTimeout(()=>setShowMemberList(false),150)}
+                placeholder={ar?'🔍 ابحث باسم المزارع...':'🔍 חפש חקלאי...'}
+                autoComplete="off"
+                style={{width:'100%',fontFamily:'Heebo,sans-serif'}}
+              />
+              {showMemberList && (
+                <div style={{
+                  position:'absolute', top:'100%', right:0, left:0, zIndex:20,
+                  background:'#fff', border:'1.5px solid var(--border)', borderRadius:10,
+                  maxHeight:220, overflowY:'auto', boxShadow:'0 8px 24px rgba(0,0,0,0.15)', marginTop:4,
+                }}>
+                  {memberSearchResults.length === 0 ? (
+                    <div style={{padding:'10px 12px',fontSize:13,color:'var(--text-muted)',textAlign:'center'}}>
+                      {ar?'لا توجد نتائج':'אין תוצאות'}
+                    </div>
+                  ) : (
+                    memberSearchResults.map(f => (
+                      <div key={f.id}
+                        onMouseDown={e=>e.preventDefault()}
+                        onClick={()=>{
+                          setSelFarmerId(f.id);
+                          setMemberSearch(`${f.lastName||''} ${f.firstName||''}`.trim());
+                          setShowMemberList(false);
+                        }}
+                        style={{
+                          padding:'8px 12px', cursor:'pointer', fontSize:14,
+                          fontFamily:'Heebo,sans-serif', fontWeight: selFarmerId===f.id?800:500,
+                          background: selFarmerId===f.id ? '#f0fdf4' : '#fff',
+                        }}
+                        onMouseEnter={e=>e.currentTarget.style.background='#f0fdf4'}
+                        onMouseLeave={e=>e.currentTarget.style.background=selFarmerId===f.id?'#f0fdf4':'#fff'}>
+                        {f.lastName} {f.firstName}{f.idNumber?` — ${f.idNumber}`:''}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
+
+            {selectedMemberFarmer && (
+              <div style={{background:'#f0fdf4',border:'1.5px solid #bbf7d0',borderRadius:10,padding:'8px 12px',marginBottom:14,fontSize:13,display:'flex',alignItems:'center',gap:8}}>
+                <span style={{fontSize:16}}>✅</span>
+                <span style={{fontFamily:'Heebo,sans-serif',fontWeight:700}}>
+                  {selectedMemberFarmer.lastName} {selectedMemberFarmer.firstName}
+                </span>
+              </div>
+            )}
+
             <div className="form-group">
               <label>{ar?'المبلغ المطلوب (₪)':'סכום נדרש (₪)'}</label>
               <input type="number" value={selAmount} onChange={e=>setSelAmount(e.target.value)}
@@ -421,7 +506,7 @@ export default function AdminProjects({ adminRole='admin' }) {
               <button className="btn btn-primary" onClick={submitAddMember} disabled={!selFarmerId||addingMember}>
                 {addingMember?'⏳':`✅ ${ar?'إضافة':'הוסף'}`}
               </button>
-              <button className="btn btn-outline" onClick={()=>{setAddMemberModal(false);setSelFarmerId('');setSelAmount('');}}>
+              <button className="btn btn-outline" onClick={closeAddMember}>
                 {ar?'إلغاء':'ביטול'}
               </button>
             </div>
@@ -554,7 +639,7 @@ export default function AdminProjects({ adminRole='admin' }) {
                         👥 {ar?'المشتركون':'משתתפים'} ({proj.members.length})
                       </strong>
                       {!isViewer && (
-                        <button className="btn btn-outline btn-sm" onClick={()=>{setOpenProj(proj);setAddMemberModal(true);}}>
+                        <button className="btn btn-outline btn-sm" onClick={()=>openAddMember(proj)}>
                           + {ar?'إضافة مشترك':'הוסף משתתף'}
                         </button>
                       )}
