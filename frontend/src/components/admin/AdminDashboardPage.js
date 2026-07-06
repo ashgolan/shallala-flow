@@ -142,6 +142,67 @@ function IncomeYearChartBox({ data, ar }) {
   );
 }
 
+// ✅ رسم بياني للمشاريع: مطلوب/مدفوع/متبقي لكل مشروع (نفس أسلوب مقارنة الإيرادات والمدفوعات)
+function ProjectsChartBox({ data, ar }) {
+  const [ref, width] = useElementWidth();
+  return (
+    <div ref={ref} style={{ width:'100%' }}>
+      {width > 0 && (
+        <div style={{ display:'flex', flexWrap:'wrap', gap:20, justifyContent:'center' }}>
+          {data.map((p,i) => {
+            const slices = [
+              { name: ar?'مدفوع':'שולם', value: Math.max(p.paid,0), color:'#16a34a' },
+              { name: ar?'متبقي':'נותר', value: Math.max(p.remaining,0), color:'#dc2626' },
+            ].filter(s=>s.value>0);
+            return (
+              <div key={p.id||i} style={{ display:'flex', flexDirection:'column', alignItems:'center', minWidth:150, maxWidth:170 }}>
+                {/* ✅ اسم المشروع فوق الدائرة كعنوان واضح (بدل حشره داخلها) — يسمح بسطرين كاملين بدون تراكب مع الرقم */}
+                <div style={{
+                  fontSize:12.5, fontWeight:800, color:'var(--text-primary)', textAlign:'center',
+                  marginBottom:8, minHeight:32, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical',
+                  overflow:'hidden', lineHeight:1.3, maxWidth:160,
+                }} title={p.name}>
+                  {p.name}
+                </div>
+                <div style={{ position:'relative', width:150, height:150 }}>
+                  <PieChart width={150} height={150}>
+                    <Pie data={slices.length?slices:[{name:'-',value:1,color:'#e5e7eb'}]}
+                      cx="50%" cy="50%" innerRadius={45} outerRadius={70} dataKey="value" paddingAngle={3}>
+                      {(slices.length?slices:[{color:'#e5e7eb'}]).map((s,idx) => <Cell key={idx} fill={s.color}/>)}
+                    </Pie>
+                    <Tooltip formatter={v=>`₪${v.toLocaleString()}`}/>
+                  </PieChart>
+                  <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', pointerEvents:'none' }}>
+                    <div style={{ fontSize:9.5, color:'var(--text-muted)', fontWeight:700 }}>{ar?'الإجمالي':'סה"כ'}</div>
+                    <div style={{ fontSize:16, fontWeight:900, color:'var(--primary)' }}>₪{Math.round(p.required/1000)}k</div>
+                  </div>
+                </div>
+                {p.unspecifiedCount > 0 && (
+                  <span style={{marginTop:6, background:'#fef3c7', color:'#92400e', padding:'2px 8px', borderRadius:6, fontSize:10, fontWeight:700}}>
+                    ⏳ {p.unspecifiedCount} {ar?'بدون مبلغ':'ללא סכום'}
+                  </span>
+                )}
+                <div style={{ display:'flex', flexDirection:'column', gap:4, marginTop:10, fontSize:12 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                    <div style={{ width:9, height:9, borderRadius:'50%', background:'#16a34a' }}/>
+                    <span style={{ color:'var(--text-muted)' }}>{ar?'مدفوع':'שולם'}:</span>
+                    <strong>₪{Math.round(p.paid).toLocaleString()}</strong>
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                    <div style={{ width:9, height:9, borderRadius:'50%', background:'#dc2626' }}/>
+                    <span style={{ color:'var(--text-muted)' }}>{ar?'متبقي':'נותר'}:</span>
+                    <strong style={{color: p.remaining>0?'#dc2626':'inherit'}}>₪{Math.round(p.remaining).toLocaleString()}</strong>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminDashboardPage({ adminRole='admin' }) {
   const { lang } = useLang();
   const ar = lang === 'ar';
@@ -152,21 +213,23 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [report, paymentsRes, prices, regionsRes] = await Promise.allSettled([
+      const [report, paymentsRes, prices, regionsRes, projectsRes] = await Promise.allSettled([
         adminAPI.getReport(),
         paymentsAPI.getAll(),
         adminAPI.getPrices(),
         adminAPI.getRegions(),
+        adminAPI.getProjects(),
       ]);
       setData({
         report:   report.status==='fulfilled'   ? report.value   : { readings:[], farmers:[], lands:[] },
         payments: paymentsRes.status==='fulfilled' ? (paymentsRes.value.payments||[]) : [],
         prices:   prices.status==='fulfilled'   ? prices.value   : {},
         regions:  regionsRes.status==='fulfilled' ? (regionsRes.value.regions||[]) : [],
+        projects: projectsRes.status==='fulfilled' ? (projectsRes.value.projects||[]) : [],
       });
     } catch(e) {
       console.error('Dashboard load error:', e);
-      setData({ report:{ readings:[], farmers:[], lands:[] }, payments:[], prices:{}, regions:[] });
+      setData({ report:{ readings:[], farmers:[], lands:[] }, payments:[], prices:{}, regions:[], projects:[] });
     } finally {
       setLoading(false);
     }
@@ -403,6 +466,39 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
       .slice(0, 10);
   })();
 
+  // ✅ ملخص المشاريع: التكلفة الإجمالية / المدفوع / المتبقي — ولائحة المشاريع الناقصة الدفع
+  const projectsSummary = (() => {
+    const projects = data.projects || [];
+    const list = projects.map(p => {
+      const members = p.members || [];
+      const required = members.reduce((s,m) => s + (m.amount||0), 0);
+      const paid = members.reduce(
+        (s,m) => s + (m.payments||[]).reduce((ss,pay) => ss + (parseFloat(pay.amount)||0), 0), 0
+      );
+      // ✅ مزارعون بدون مبلغ محدد بعد (amount = null) — المشروع لا يُعتبر مكتمل الدفع طالما هم موجودون
+      const unspecifiedCount = members.filter(m => m.amount === null || m.amount === undefined).length;
+      const remaining = required - paid;
+      return {
+        id: p.id, name: p.name, status: p.status,
+        required, paid, remaining, unspecifiedCount,
+        complete: remaining <= 0.01 && unspecifiedCount === 0,
+      };
+    });
+    const totalRequired  = list.reduce((s,p)=>s+p.required,0);
+    const totalPaid      = list.reduce((s,p)=>s+p.paid,0);
+    return { list, totalRequired, totalPaid, totalRemaining: totalRequired - totalPaid };
+  })();
+
+  // ✅ غير مكتمل الدفع = فيه متبقي فعلي، أو فيه مزارعون بمبلغ غير محدد بعد (حتى لو المتبقي المحسوب = 0)
+  const unpaidProjects = projectsSummary.list
+    .filter(p => !p.complete)
+    .sort((a,b) => {
+      if (!!a.unspecifiedCount !== !!b.unspecifiedCount) return b.unspecifiedCount - a.unspecifiedCount;
+      return b.remaining - a.remaining;
+    });
+
+  const projectsChartData = projectsSummary.list.filter(p => p.required > 0);
+
   return (
     <div className="dashboard-v2">
 
@@ -574,6 +670,91 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ── المشاريع: التكلفة الإجمالية والمدفوع والمتبقي + المشاريع الناقصة الدفع ── */}
+      {projectsSummary.list.length > 0 && (
+        <>
+          <div className="dv2-section-label">{ar?'المشاريع':'פרויקטים'}</div>
+
+          {/* مؤشرات صغيرة: المطلوب / المدفوع / المتبقي */}
+          <div className="dv2-kpi-sec-grid" style={{marginBottom:16}}>
+            {[
+              { label:ar?'تكلفة المشاريع':'עלות פרויקטים', value:`₪${Math.round(projectsSummary.totalRequired).toLocaleString()}`, icon:'🏗️', bg:'#ede9fe', color:'#6d28d9' },
+              { label:ar?'مدفوع':'שולם', value:`₪${Math.round(projectsSummary.totalPaid).toLocaleString()}`, icon:'✅', bg:'#dcfce7', color:'#15803d' },
+              { label:ar?'متبقي':'נותר', value:`₪${Math.round(projectsSummary.totalRemaining).toLocaleString()}`, icon:'⏳', bg:'#fee2e2', color:'#b91c1c' },
+            ].map((s,i) => (
+              <div key={i} className="dv2-kpi-sm">
+                <div className="ico" style={{background:s.bg, color:s.color}}>{s.icon}</div>
+                <div>
+                  <div className="v">{s.value}</div>
+                  <div className="l">{s.label}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="charts-grid" style={{display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))', gap:16, marginBottom:20}}>
+
+            {/* رسم بياني: مطلوب/مدفوع/متبقي لكل مشروع */}
+            {projectsChartData.length > 0 && (
+              <div className="dv2-panel" style={{'--panel-accent':'#8b5cf6'}}>
+                <div className="dv2-panel-title">🏗️ {ar?'تكلفة المشاريع: مدفوع مقابل متبقي':'עלות פרויקטים: שולם מול נותר'}</div>
+                <ProjectsChartBox data={projectsChartData} ar={ar} />
+              </div>
+            )}
+
+            {/* قائمة المشاريع الناقصة الدفع */}
+            {unpaidProjects.length > 0 && (
+              <div className="dv2-panel" style={{'--panel-accent':'#dc2626'}}>
+                <div className="dv2-panel-title">
+                  ⚠️ {ar?`مشاريع لم يكتمل دفعها (${unpaidProjects.length})`:`פרויקטים שלא שולמו במלואם (${unpaidProjects.length})`}
+                </div>
+                <div style={{display:'flex', flexDirection:'column', gap:8}}>
+                  {unpaidProjects.map((p, i) => {
+                    const pct = p.required > 0 ? Math.round((p.paid/p.required)*100) : 0;
+                    return (
+                      <div key={p.id} style={{
+                        display:'flex', alignItems:'center', gap:12, padding:'10px 12px',
+                        borderRadius:10, background: i<3 ? '#fef2f2' : 'var(--surface-2)',
+                        border: i<3 ? '1px solid #fecaca' : '1px solid var(--border)',
+                      }}>
+                        <div style={{flex:1, minWidth:0}}>
+                          <div style={{fontWeight:800, fontSize:13.5, color:'var(--text-primary)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>
+                            {p.name}
+                          </div>
+                          <div style={{display:'flex', alignItems:'center', gap:6, marginTop:4}}>
+                            <div style={{flex:1, height:5, borderRadius:3, background:'#e5e7eb', overflow:'hidden', maxWidth:110}}>
+                              <div style={{height:'100%', borderRadius:3, background:pct>=100?'#16a34a':'#f59e0b', width:`${Math.min(pct,100)}%`}}/>
+                            </div>
+                            <span style={{fontSize:10.5, color:'var(--text-muted)', fontWeight:700}}>{pct}%</span>
+                          </div>
+                          {p.unspecifiedCount > 0 && (
+                            <div style={{marginTop:5}}>
+                              <span style={{background:'#fef3c7', color:'#92400e', padding:'2px 8px', borderRadius:6, fontSize:10.5, fontWeight:700, display:'inline-block'}}>
+                                ⏳ {p.unspecifiedCount} {ar
+                                  ? (p.unspecifiedCount===1 ? 'مزارع بدون مبلغ محدد' : 'مزارعين بدون مبلغ محدد')
+                                  : 'ללא סכום שנקבע'}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <div style={{textAlign:'left', flexShrink:0}}>
+                          {p.remaining > 0.01 ? (
+                            <div style={{fontWeight:900, fontSize:14, color:'#dc2626'}}>₪{Math.round(p.remaining).toLocaleString()}</div>
+                          ) : (
+                            <div style={{fontWeight:900, fontSize:14, color:'#92400e'}}>—</div>
+                          )}
+                          <div style={{fontSize:9.5, color:'var(--text-muted)', fontWeight:700}}>{ar?'متبقي':'נותר'}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

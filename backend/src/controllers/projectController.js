@@ -14,6 +14,13 @@ const plain = p => {
   return o;
 };
 
+// ✅ يحوّل المدخل إلى رقم، أو null إذا كان فارغاً/غير معروف (بدل فرضه صفر)
+const parseAmountOrNull = (v) => {
+  if (v === undefined || v === null || v === '') return null;
+  const f = parseFloat(v);
+  return isNaN(f) ? null : f;
+};
+
 // GET /admin/projects
 const getProjects = async (req, res) => {
   try {
@@ -41,7 +48,7 @@ const createProject = async (req, res) => {
       date: date ? new Date(date) : new Date(),
       lat: lat||null, lng: lng||null, locationNote: locationNote||'',
       members: (members||[]).map(m => ({
-        farmerId: m.farmerId, amount: parseFloat(m.amount)||0,
+        farmerId: m.farmerId, amount: parseAmountOrNull(m.amount),
         invoiced: !!m.invoiced, payments: [],
       })),
       status: status||'active',
@@ -81,7 +88,8 @@ const addMember = async (req, res) => {
     if (!project) return res.status(404).json({ error: 'المشروع غير موجود' });
     const exists = project.members.find(m => m.farmerId.toString() === farmerId);
     if (exists) return res.status(409).json({ error: 'المزارع موجود مسبقاً في المشروع' });
-    project.members.push({ farmerId, amount: parseFloat(amount)||0, invoiced: false, payments: [] });
+    // ✅ إذا لم يُرسل مبلغ (أو أُرسل فارغاً) يبقى المبلغ "غير محدد" (null) بدل فرضه صفر
+    project.members.push({ farmerId, amount: parseAmountOrNull(amount), invoiced: false, payments: [] });
     await project.save();
     return res.json({ success: true });
   } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
@@ -95,7 +103,8 @@ const updateMember = async (req, res) => {
     if (!project) return res.status(404).json({ error: 'غير موجود' });
     const member = project.members.id(req.params.memberId);
     if (!member) return res.status(404).json({ error: 'المشترك غير موجود' });
-    if (amount   !== undefined) member.amount   = parseFloat(amount)||0;
+    // ✅ amount === null صراحةً تعني "أعِد الحالة إلى غير محدد"؛ amount === undefined تعني "لا تغيير"
+    if (amount !== undefined) member.amount = parseAmountOrNull(amount);
     if (invoiced !== undefined) member.invoiced = !!invoiced;
     await project.save();
     return res.json({ success: true });

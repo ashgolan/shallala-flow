@@ -55,6 +55,10 @@ export default function AdminProjects({ adminRole='admin' }) {
   const [memberSearch,    setMemberSearch]    = useState('');
   const [showMemberList,  setShowMemberList]  = useState(false);
 
+  // تعديل المبلغ المطلوب لمشترك موجود (بالضغط على الرقم بالجدول)
+  const [editAmountId,    setEditAmountId]    = useState(null); // memberId الجاري تعديله
+  const [editAmountVal,   setEditAmountVal]   = useState('');
+
   // إضافة دفعة
   const [payModal,    setPayModal]    = useState(null); // { projectId, memberId, farmerName }
   const [payForm,     setPayForm]     = useState(EMPTY_PAYMENT);
@@ -190,12 +194,13 @@ export default function AdminProjects({ adminRole='admin' }) {
     setShowMemberList(false);
   };
 
-  // إضافة مشترك
+  // إضافة مشترك (المبلغ اختياري — لو ترك فارغ يبقى "غير محدد" لحد ما يتحدد لاحقاً)
   const submitAddMember = async () => {
     if (!selFarmerId) return;
     setAddingMember(true);
     try {
-      await adminAPI.addProjectMember(openProj.id, { farmerId: selFarmerId, amount: parseFloat(selAmount)||0 });
+      const amountToSend = selAmount.trim() === '' ? null : parseFloat(selAmount);
+      await adminAPI.addProjectMember(openProj.id, { farmerId: selFarmerId, amount: amountToSend });
       const updated = await adminAPI.getProjects();
       setProjects(updated.projects||[]);
       const proj = (updated.projects||[]).find(p => p.id === openProj.id);
@@ -211,6 +216,30 @@ export default function AdminProjects({ adminRole='admin' }) {
     const updated = await adminAPI.getProjects();
     setProjects(updated.projects||[]);
     setOpenProj((updated.projects||[]).find(p=>p.id===openProj.id)||null);
+  };
+
+  // تعديل مبلغ مشترك (تحديد المبلغ لأول مرة، أو تغييره لاحقاً)
+  const startEditAmount = (m) => {
+    if (isViewer) return;
+    setEditAmountId(m.id);
+    setEditAmountVal(m.amount === null || m.amount === undefined ? '' : String(m.amount));
+  };
+
+  const cancelEditAmount = () => {
+    setEditAmountId(null);
+    setEditAmountVal('');
+  };
+
+  const saveEditAmount = async (memberId) => {
+    const trimmed = editAmountVal.trim();
+    const payload = trimmed === '' ? null : parseFloat(trimmed);
+    try {
+      await adminAPI.updateProjectMember(openProj.id, memberId, { amount: payload });
+      const updated = await adminAPI.getProjects();
+      setProjects(updated.projects||[]);
+      setOpenProj((updated.projects||[]).find(p=>p.id===openProj.id)||null);
+    } catch(e) { alert(e.message); }
+    finally { cancelEditAmount(); }
   };
 
   const toggleInvoiced = async (memberId, current) => {
@@ -247,6 +276,9 @@ export default function AdminProjects({ adminRole='admin' }) {
     const f = farmers.find(f => f.id === fid);
     return f ? `${f.lastName||''} ${f.firstName||''}`.trim() : fid;
   };
+
+  // هل تم تحديد مبلغ لهذا المشترك؟ (null/undefined = غير محدد بعد)
+  const hasAmount = (m) => m.amount !== null && m.amount !== undefined;
 
   // المزارعون المتاحون للإضافة (غير مشتركين بالفعل بهذا المشروع)
   const availableMembers = openProj
@@ -500,7 +532,12 @@ export default function AdminProjects({ adminRole='admin' }) {
             <div className="form-group">
               <label>{ar?'المبلغ المطلوب (₪)':'סכום נדרש (₪)'}</label>
               <input type="number" value={selAmount} onChange={e=>setSelAmount(e.target.value)}
-                placeholder="0" min="0" style={{fontSize:18,fontWeight:700,textAlign:'center'}}/>
+                placeholder={ar?'اتركه فارغاً إن لم تعرفه بعد':'השאר ריק אם עדיין לא ידוע'} min="0"
+                style={{fontSize:18,fontWeight:700,textAlign:'center'}}/>
+              <div style={{fontSize:11,color:'var(--text-muted)',marginTop:4}}>
+                {ar?'💡 ما بتعرف المبلغ لسا؟ اتركه فارغاً — رح يظهر "غير محدد" وتقدر تحدده لاحقاً بالضغط عليه بالجدول.'
+                   :'💡 עדיין לא יודע את הסכום? השאר ריק — יוצג "לא ידוע" ותוכל לקבוע אותו מאוחר יותר בלחיצה בטבלה.'}
+              </div>
             </div>
             <div className="flex-gap gap-12">
               <button className="btn btn-primary" onClick={submitAddMember} disabled={!selFarmerId||addingMember}>
@@ -665,7 +702,7 @@ export default function AdminProjects({ adminRole='admin' }) {
                         <tbody>
                           {proj.members.map((m, mi) => {
                             const { paid, remaining: rem } = calcMember(m);
-                            const fullPaid = rem <= 0;
+                            const fullPaid = hasAmount(m) && rem <= 0;
                             return (
                               <React.Fragment key={m.id}>
                                 <tr style={{borderBottom:'1px solid #e5e7eb',background:mi%2===0?'#fff':'#f9fafb'}}>
@@ -673,15 +710,45 @@ export default function AdminProjects({ adminRole='admin' }) {
                                     {farmerName(m.farmerId)}
                                   </td>
                                   <td style={{padding:'10px 12px',textAlign:'center',fontWeight:700}}>
-                                    ₪{(m.amount||0).toLocaleString()}
+                                    {editAmountId === m.id ? (
+                                      <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
+                                        <input
+                                          type="number" autoFocus value={editAmountVal}
+                                          onChange={e=>setEditAmountVal(e.target.value)}
+                                          onKeyDown={e=>{ if(e.key==='Enter') saveEditAmount(m.id); if(e.key==='Escape') cancelEditAmount(); }}
+                                          placeholder={ar?'غير محدد':'לא ידוע'}
+                                          style={{width:72,textAlign:'center',fontWeight:700,padding:'3px 4px',fontSize:13}}
+                                        />
+                                        <button onClick={()=>saveEditAmount(m.id)} title={ar?'حفظ':'שמור'}
+                                          style={{background:'none',border:'none',color:'#16a34a',cursor:'pointer',fontSize:16,padding:0}}>✓</button>
+                                        <button onClick={cancelEditAmount} title={ar?'إلغاء':'ביטול'}
+                                          style={{background:'none',border:'none',color:'#dc2626',cursor:'pointer',fontSize:14,padding:0}}>✕</button>
+                                      </div>
+                                    ) : hasAmount(m) ? (
+                                      <span onClick={()=>startEditAmount(m)}
+                                        style={{cursor:isViewer?'default':'pointer'}}
+                                        title={!isViewer?(ar?'اضغط للتعديل':'לחץ לעריכה'):''}>
+                                        ₪{(m.amount||0).toLocaleString()}
+                                      </span>
+                                    ) : (
+                                      <span onClick={()=>startEditAmount(m)}
+                                        style={{cursor:isViewer?'default':'pointer',background:'#fef3c7',color:'#92400e',padding:'3px 10px',borderRadius:8,fontSize:12,fontWeight:700,display:'inline-block'}}
+                                        title={!isViewer?(ar?'اضغط لتحديد المبلغ':'לחץ לקביעת סכום'):''}>
+                                        ⏳ {ar?'غير محدد':'לא ידוע'}
+                                      </span>
+                                    )}
                                   </td>
                                   <td style={{padding:'10px 12px',textAlign:'center',fontWeight:700,color:'#16a34a'}}>
                                     ₪{paid.toLocaleString()}
                                   </td>
                                   <td style={{padding:'10px 12px',textAlign:'center',fontWeight:700}}>
-                                    <span style={{color:fullPaid?'#16a34a':'#dc2626',fontWeight:800}}>
-                                      {fullPaid ? '✓' : `₪${rem.toLocaleString()}`}
-                                    </span>
+                                    {!hasAmount(m) ? (
+                                      <span style={{color:'var(--text-muted)'}}>—</span>
+                                    ) : (
+                                      <span style={{color:fullPaid?'#16a34a':'#dc2626',fontWeight:800}}>
+                                        {fullPaid ? '✓' : `₪${rem.toLocaleString()}`}
+                                      </span>
+                                    )}
                                   </td>
                                   <td style={{padding:'10px 12px',textAlign:'center'}}>
                                     {isViewer ? (

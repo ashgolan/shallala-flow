@@ -8,7 +8,7 @@ const paymentSchema = new mongoose.Schema({
 
 const memberSchema = new mongoose.Schema({
   farmerId:  { type: mongoose.Schema.Types.ObjectId, ref: 'Farmer', required: true },
-  amount:    { type: Number, default: 0 },   // المبلغ المطلوب
+  amount:    { type: Number, default: null },   // المبلغ المطلوب — null = غير محدد بعد
   invoiced:  { type: Boolean, default: false }, // صدرت فاتورة
   payments:  { type: [paymentSchema], default: [] },
 }, { _id: true });

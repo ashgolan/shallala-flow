@@ -153,7 +153,7 @@ export default function AdminPayments({ adminRole='admin' }) {
                   placeholder="123456" style={{fontFamily:'monospace'}} />
               </div>
               <div className="form-group">
-                <label style={{fontFamily:'Heebo,sans-serif'}}>{ar?'رقم החשבונית':'מספר חשבונית'}</label>
+                <label style={{fontFamily:'Heebo,sans-serif'}}>{ar?'رقم החשבونית':'מספר חשבונית'}</label>
                 <input value={form.invoiceNumber} onChange={e=>setForm({...form,invoiceNumber:e.target.value})}
                   placeholder="INV-001" style={{fontFamily:'monospace'}} />
               </div>
@@ -189,9 +189,11 @@ export default function AdminPayments({ adminRole='admin' }) {
       {/* Summary cards */}
       {filtered.length > 0 && (
         <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:10, marginBottom:16}}>
-          <div className="stat-card accent" style={{padding:'12px 16px'}}>
-            <div style={{fontSize:11,opacity:0.8,marginBottom:4}}>{ar?'إجمالي المدفوعات':'סה"כ תשלומים'}</div>
-            <div style={{fontSize:'1.4rem',fontWeight:900}}>₪{grandTotal.toLocaleString()}</div>
+          {/* ✅ بطاقة "إجمالي المدفوعات" — نفس بنية وارتفاع باقي البطاقات بالضبط (سطر تسمية + سطر رقم)،
+              وتميّزها فقط عبر حد جانبي أخضر + أيقونة 💰 داخل نص التسمية نفسه (بدون سطر إضافي يكبّر ارتفاع البطاقة) */}
+          <div className="stat-card" style={{padding:'12px 16px', borderRight:'3px solid var(--primary)'}}>
+            <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:4}}>💰 {ar?'إجمالي المدفوعات':'סה"כ תשלומים'}</div>
+            <div style={{fontSize:'1.4rem',fontWeight:900,color:'var(--primary)'}}>₪{grandTotal.toLocaleString()}</div>
           </div>
           <div className="stat-card" style={{padding:'12px 16px'}}>
             <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:4}}>{ar?'عدد الدفعات':'מספר תשלומים'}</div>
@@ -227,7 +229,7 @@ export default function AdminPayments({ adminRole='admin' }) {
                   <STh col="description" style={{minWidth:160}}>{ar?'طبيعة العمل':'תיאור'}</STh>
                   <STh col="category"    style={{minWidth:90}}>{ar?'التصنيف':'קטגוריה'}</STh>
                   <th style={{minWidth:100, fontFamily:'monospace'}}>{ar?'رقم الشيك':'צ\'ק'}</th>
-                  <th style={{minWidth:100, fontFamily:'monospace', fontFamily:'Heebo,sans-serif'}}>{ar?'رقم החשبונية':'חשבונית'}</th>
+                  <th style={{minWidth:100, fontFamily:'monospace', fontFamily:'Heebo,sans-serif'}}>{ar?'رقم החשبونية':'חשבונית'}</th>
                   <STh col="amount"      style={{minWidth:100, textAlign:'center', background:'#fef9c3', color:'#854d0e'}}>💰 {ar?'المبلغ':'סכום'}</STh>
                   <th style={{minWidth:70}}></th>
                 </tr>
