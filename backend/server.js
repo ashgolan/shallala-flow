@@ -11,6 +11,7 @@ const { startBackupScheduler } = require('./src/services/backupScheduler');
 
 const app  = express();
 const PORT = process.env.PORT || 5000;
+app.set('trust proxy', 1);
 
 // ─── Connect MongoDB ───────────────────────────────────────────
 connectDB().then(() => { startBackupScheduler(); }).catch(err => console.error('DB Error:', err.message));
