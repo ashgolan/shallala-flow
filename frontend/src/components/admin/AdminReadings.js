@@ -109,6 +109,416 @@ function ExtraRow({ idx, extra, onChange, onRemove, suggestions, ar }) {
   );
 }
 
+// ✅ شباك الإضافة الجماعية على مجموعة كبيرة من المزارعين/الأراضي دفعة واحدة
+function BulkExtraModal({ farmers, lands, regions, readings, onClose, onApplied, ar }) {
+  const [step,      setStep]      = useState(1);
+  const [title,     setTitle]     = useState('');
+  const [amount,    setAmount]    = useState('');
+  const [paidFully, setPaidFully] = useState(true);
+  const [search,    setSearch]    = useState('');
+  const [selected,  setSelected]  = useState({}); // key: farmerId_landId -> true
+  const [excluded,  setExcluded]  = useState({}); // key -> true (أُزيل يدوياً من المعاينة)
+  const [applying,  setApplying]  = useState(false);
+  const [progress,  setProgress]  = useState(0);
+  const [result,    setResult]    = useState(null); // {success, fail}
+
+  const currentYear = new Date().getFullYear();
+
+  // ✅ checkbox ثابت الحجم صراحة — حتى لا يتأثر بستايل input العام بالمشروع
+  const cbStyle = { width:16, height:16, minWidth:16, flexShrink:0, accentColor:'#7c3aed', cursor:'pointer' };
+
+  const farmerName = id => farmers.find(f=>String(f.id)===String(id))?.nameHeb
+                        || farmers.find(f=>String(f.id)===String(id))?.name || '—';
+
+  // ✅ اسم الأرض/المنطقة المعروض بجانب رقم المحطة
+  const landLabel = (land) => {
+    if (!land) return '—';
+    if (land.regionId) {
+      const reg = regions.find(r => String(r.id) === String(land.regionId));
+      if (reg?.nameHeb && reg.nameHeb !== reg.name) return reg.nameHeb;
+      if (reg?.name) return reg.name;
+    }
+    return land.description || '—';
+  };
+
+  // ✅ إجمالي الأكواب المصروفة لهذه الأرض بالسنة الحالية (بيساعد باتخاذ القرار)
+  const cupsThisYear = (farmerId, landId) => {
+    const r = readings.find(x => String(x.farmerId)===String(farmerId) && String(x.landId)===String(landId) && x.year===currentYear);
+    if (!r) return null;
+    const vals = r.readings || [];
+    let total = 0;
+    vals.slice(1).forEach((_, i) => { total += cupsPositive(vals, i); });
+    return total;
+  };
+
+  const farmersWithLands = farmers
+    .map(f => ({ farmer: f, farmerLands: lands.filter(l => String(l.farmerId) === String(f.id)) }))
+    .filter(x => x.farmerLands.length > 0)
+    .sort((a,b) => (a.farmer.nameHeb||a.farmer.name||'').localeCompare(b.farmer.nameHeb||b.farmer.name||'','ar'));
+
+  const filteredFarmers = farmersWithLands.filter(x => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (x.farmer.nameHeb||x.farmer.name||'').toLowerCase().includes(q);
+  });
+
+  const selectedCount = Object.values(selected).filter(Boolean).length;
+
+  const toggleLand = (key) => setSelected(prev => ({ ...prev, [key]: !prev[key] }));
+
+  const toggleFarmerAll = (farmerLands, checked) => {
+    setSelected(prev => {
+      const next = { ...prev };
+      farmerLands.forEach(l => { next[`${l.farmerId}_${l.id}`] = checked; });
+      return next;
+    });
+  };
+
+  const selectAllVisible = () => {
+    setSelected(prev => {
+      const next = { ...prev };
+      filteredFarmers.forEach(({ farmerLands }) => {
+        farmerLands.forEach(l => { next[`${l.farmerId}_${l.id}`] = true; });
+      });
+      return next;
+    });
+  };
+
+  const clearAll = () => setSelected({});
+
+  // ✅ آخر قراءة مسجّلة لمزارع+أرض معينين (لإلحاق الإضافة بها)
+  const latestReadingFor = (farmerId, landId) => {
+    const matches = readings.filter(r => String(r.farmerId)===String(farmerId) && String(r.landId)===String(landId));
+    if (matches.length === 0) return null;
+    return matches.reduce((best,r) => (r.year > best.year ? r : best), matches[0]);
+  };
+
+  const previewRows = Object.keys(selected).filter(k => selected[k]).map(key => {
+    const [farmerId, landId] = key.split('_');
+    const land    = lands.find(l => String(l.id) === String(landId));
+    const reading = latestReadingFor(farmerId, landId);
+    return { key, farmerId, landId, land, reading };
+  });
+
+  // ✅ صفوف جاهزة للتطبيق (لها قراءة) — بعد استبعاد ما أزاله المستخدم يدوياً
+  const applyRows   = previewRows.filter(r => r.reading && !excluded[r.key]);
+  // ✅ صفوف تحذيرية (بدون أي قراءة مسجّلة) — لن تُطبَّق عليها الإضافة أبداً
+  const warningRows = previewRows.filter(r => !r.reading && !excluded[r.key]);
+
+  const applyBulk = async () => {
+    if (applyRows.length === 0 || !title.trim() || !amount) return;
+    if (!window.confirm(
+      ar
+        ? `تطبيق "${title.trim()}" (₪${amount}) على ${applyRows.length} أرض؟`
+        : `להחיל "${title.trim()}" (₪${amount}) על ${applyRows.length} קרקעות?`
+    )) return;
+    setApplying(true); setProgress(0);
+    let success = 0, fail = 0;
+    for (const row of applyRows) {
+      try {
+        const r = row.reading;
+        const newExtras = [
+          ...(r.extras||[]),
+          { note: title.trim(), amount: parseFloat(amount)||0, paid: paidFully ? (parseFloat(amount)||0) : 0 },
+        ];
+        await adminAPI.updateReading(r.id, {
+          farmerId: r.farmerId, landId: r.landId, year: r.year,
+          readings: r.readings, note: r.note||'',
+          extras: newExtras,
+          extra: r.extra||0, extraPaid: r.extraPaid||0, extraNote: r.extraNote||'',
+        });
+        success++;
+      } catch(e) { console.error(e); fail++; }
+      setProgress(p => p + 1);
+    }
+    setApplying(false);
+    setResult({ success, fail });
+    onApplied();
+  };
+
+  return (
+    <div onClick={() => !applying && onClose()}
+      style={{ position:'fixed', inset:0, zIndex:9999, background:'rgba(0,0,0,0.6)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:720, maxHeight:'90vh', display:'flex', flexDirection:'column', overflow:'hidden', boxShadow:'0 20px 60px rgba(0,0,0,0.4)' }}>
+
+        {/* الرأس */}
+        <div style={{ padding:'14px 20px', background:'#4c1d95', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <span style={{ fontSize:18 }}>👥</span>
+            <span style={{ color:'#fff', fontWeight:800, fontSize:15 }}>
+              {ar ? 'إضافة جماعية على مزارعين' : 'הוספה קבוצתית לחקלאים'}
+            </span>
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <span style={{ color:'#ddd6fe', fontSize:12 }}>{ar?`الخطوة ${step} من 3`:`שלב ${step} מתוך 3`}</span>
+            {!applying && (
+              <button onClick={onClose} style={{ background:'rgba(255,255,255,0.15)', border:'none', color:'#fff', width:26, height:26, borderRadius:'50%', cursor:'pointer' }}>✕</button>
+            )}
+          </div>
+        </div>
+
+        {/* شريط التقدّم */}
+        <div style={{ display:'flex', gap:4, padding:'10px 20px 0' }}>
+          {[1,2,3].map(n => (
+            <div key={n} style={{ height:4, flex:1, borderRadius:4, background: n<=step ? '#7c3aed' : '#e5e7eb' }} />
+          ))}
+        </div>
+
+        <div style={{ padding:20, overflowY:'auto', flex:1 }}>
+
+          {/* ── خطوة 1: بيانات الإضافة ── */}
+          {step === 1 && (
+            <div>
+              <div className="form-group">
+                <label>{ar?'عنوان الإضافة *':'כותרת התוספת *'}</label>
+                <input value={title} onChange={e=>setTitle(e.target.value)}
+                  placeholder={ar?'مثال: اشتراك خط مياه جديد':'לדוג׳: מנוי קו מים חדש'} style={{width:'100%'}} />
+              </div>
+              <div className="form-group">
+                <label>₪ {ar?'المبلغ *':'סכום *'}</label>
+                <input type="number" min="0" value={amount} onChange={e=>setAmount(e.target.value)}
+                  placeholder="400" style={{width:'100%',fontWeight:700}} />
+              </div>
+              <div className="form-group">
+                <label>{ar?'حالة الدفع':'סטטוס תשלום'}</label>
+                <div style={{display:'flex',gap:8}}>
+                  <button type="button" onClick={()=>setPaidFully(true)}
+                    style={{flex:1,padding:'8px 0',borderRadius:8,fontWeight:700,cursor:'pointer',
+                      border:`2px solid ${paidFully?'#16a34a':'#d1d5db'}`,
+                      background:paidFully?'#f0fdf4':'#fff', color:paidFully?'#16a34a':'var(--text-muted)'}}>
+                    ✓ {ar?'تم الدفع':'שולם'}
+                  </button>
+                  <button type="button" onClick={()=>setPaidFully(false)}
+                    style={{flex:1,padding:'8px 0',borderRadius:8,fontWeight:700,cursor:'pointer',
+                      border:`2px solid ${!paidFully?'#dc2626':'#d1d5db'}`,
+                      background:!paidFully?'#fff1f2':'#fff', color:!paidFully?'#dc2626':'var(--text-muted)'}}>
+                    ✕ {ar?'لم يُدفع بعد':'טרם שולם'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── خطوة 2: اختيار المزارعين والأراضي ── */}
+          {step === 2 && (
+            <div>
+              <div style={{display:'flex',gap:8,marginBottom:10,alignItems:'center'}}>
+                <input value={search} onChange={e=>setSearch(e.target.value)}
+                  placeholder={ar?'🔍 بحث عن مزارع...':'🔍 חיפוש חקלאי...'} style={{flex:1}} />
+                <button type="button" className="btn btn-outline btn-sm" onClick={selectAllVisible}>
+                  {ar?'تحديد الكل':'בחר הכל'}
+                </button>
+                <button type="button" className="btn btn-outline btn-sm" onClick={clearAll}>
+                  {ar?'إلغاء التحديد':'נקה בחירה'}
+                </button>
+              </div>
+
+              <div style={{border:'1.5px solid var(--border)',borderRadius:10,maxHeight:380,overflowY:'auto'}}>
+                {/* رأس الجدول */}
+                <div style={{
+                  display:'grid', gridTemplateColumns:'26px 90px 1fr 100px',
+                  gap:8, padding:'7px 12px', background:'#f5f3ff',
+                  fontSize:11, fontWeight:800, color:'#5b21b6',
+                  position:'sticky', top:0, zIndex:1, borderBottom:'1px solid #ddd6fe',
+                }}>
+                  <span></span>
+                  <span style={{textAlign:'center'}}>{ar?'المحطة':'עמדה'}</span>
+                  <span>{ar?'الأرض / المنطقة':'קרקע / אזור'}</span>
+                  <span style={{textAlign:'center'}}>{ar?`كوب ${currentYear}`:`קוב ${currentYear}`}</span>
+                </div>
+
+                {filteredFarmers.length === 0 && (
+                  <div style={{padding:20,textAlign:'center',color:'var(--text-muted)',fontSize:13}}>
+                    {ar?'لا توجد نتائج':'אין תוצאות'}
+                  </div>
+                )}
+
+                {filteredFarmers.map(({ farmer, farmerLands }) => {
+                  const allChecked  = farmerLands.every(l => selected[`${l.farmerId}_${l.id}`]);
+                  const someChecked = farmerLands.some(l => selected[`${l.farmerId}_${l.id}`]);
+                  return (
+                    <div key={farmer.id} style={{borderBottom:'1px solid #f3f4f6'}}>
+                      {/* رأس المزارع — تحديد كل أراضيه دفعة واحدة */}
+                      <div style={{
+                        display:'flex', alignItems:'center', gap:8,
+                        padding:'9px 12px', background: someChecked ? '#f5f3ff' : '#fafafa',
+                      }}>
+                        <input type="checkbox" checked={allChecked}
+                          ref={el => { if (el) el.indeterminate = someChecked && !allChecked; }}
+                          onChange={e => toggleFarmerAll(farmerLands, e.target.checked)}
+                          style={cbStyle} />
+                        <span style={{fontWeight:800,fontSize:13,fontFamily:'Heebo,sans-serif',flex:1}}>
+                          {farmer.nameHeb||farmer.name}
+                        </span>
+                        <span style={{fontSize:11,color:'var(--text-muted)'}}>
+                          {farmerLands.length} {ar?'أرض':'קרקעות'}
+                        </span>
+                      </div>
+
+                      {/* أراضي المزارع — كل أرض بصف مستقل */}
+                      {farmerLands.map(l => {
+                        const key = `${l.farmerId}_${l.id}`;
+                        const checked = !!selected[key];
+                        const cups = cupsThisYear(l.farmerId, l.id);
+                        return (
+                          <label key={l.id} onClick={()=>toggleLand(key)} style={{
+                            display:'grid', gridTemplateColumns:'26px 90px 1fr 100px',
+                            gap:8, alignItems:'center',
+                            padding:'7px 12px 7px 30px', cursor:'pointer',
+                            background: checked ? '#f5f3ff' : '#fff',
+                            borderTop:'1px solid #f8f8f8',
+                          }}>
+                            <input type="checkbox" checked={checked} readOnly style={cbStyle} />
+                            <code style={{
+                              background:'#f0fdf4', border:'1px solid #bbf7d0', padding:'2px 6px',
+                              borderRadius:5, fontWeight:900, fontSize:12, textAlign:'center',
+                            }}>{l.stationNumber||'—'}</code>
+                            <span style={{fontSize:12,color:'var(--text-secondary)',fontFamily:'Heebo,sans-serif'}}>
+                              {landLabel(l)}
+                            </span>
+                            <span style={{
+                              fontSize:11, fontWeight:700, textAlign:'center',
+                              color: cups!=null ? '#16a34a' : 'var(--border)',
+                            }}>
+                              {cups!=null ? `🪣 ${Math.round(cups).toLocaleString()}` : '—'}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div style={{marginTop:10,fontSize:13,fontWeight:700,color:'#5b21b6'}}>
+                {selectedCount} {ar?'أرض محددة':'קרקעות נבחרו'}
+              </div>
+            </div>
+          )}
+
+          {/* ── خطوة 3: معاينة قبل التطبيق ── */}
+          {step === 3 && (
+            <div>
+              {result ? (
+                <div style={{textAlign:'center',padding:'20px 0'}}>
+                  <div style={{fontSize:40,marginBottom:10}}>{result.fail===0?'✅':'⚠️'}</div>
+                  <div style={{fontWeight:800,fontSize:16,marginBottom:6}}>
+                    {ar
+                      ? `تم تطبيق الإضافة على ${result.success} أرض بنجاح`
+                      : `התוספת הוחלה על ${result.success} קרקעות בהצלחה`}
+                  </div>
+                  {result.fail > 0 && (
+                    <div style={{color:'#dc2626',fontSize:13,fontWeight:700}}>
+                      {ar?`فشل تطبيقها على ${result.fail} أرض`:`נכשל עבור ${result.fail} קרקעות`}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div style={{fontSize:13,color:'var(--text-muted)',marginBottom:10}}>
+                    {ar?`سيتم تطبيق "${title.trim()}" (₪${amount}) — `:`תוחל "${title.trim()}" (₪${amount}) — `}
+                    <strong style={{color:'#5b21b6'}}>{applyRows.length}</strong> {ar?'سطر':'שורות'}
+                  </div>
+
+                  {/* الصفوف الجاهزة للتطبيق */}
+                  <div style={{border:'1.5px solid var(--border)',borderRadius:10,maxHeight:220,overflowY:'auto',marginBottom:14}}>
+                    {applyRows.length === 0 && (
+                      <div style={{padding:16,textAlign:'center',color:'var(--text-muted)',fontSize:13}}>
+                        {ar?'لا توجد أسطر جاهزة للتطبيق':'אין שורות מוכנות להחלה'}
+                      </div>
+                    )}
+                    {applyRows.map(row => (
+                      <div key={row.key} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 12px',borderBottom:'1px solid #f3f4f6'}}>
+                        <div style={{fontSize:13}}>
+                          <span style={{fontWeight:700,fontFamily:'Heebo,sans-serif'}}>{farmerName(row.farmerId)}</span>
+                          <span style={{color:'var(--text-muted)'}}> — {row.land?.stationNumber||'—'}</span>
+                        </div>
+                        <div style={{display:'flex',alignItems:'center',gap:8}}>
+                          <span style={{
+                            fontSize:11, padding:'2px 8px', borderRadius:6, color:'var(--text-muted)',
+                            background:'var(--surface-2)',
+                            textDecoration: paidFully ? 'line-through' : 'none',
+                          }}>
+                            {title.trim()} — ₪{amount}
+                          </span>
+                          <span style={{fontSize:11,color:'var(--text-muted)'}}>
+                            {paidFully ? (ar?'مدفوع':'שולם') : (ar?'لم يُدفع':'לא שולם')}
+                          </span>
+                          <button type="button" onClick={()=>setExcluded(prev=>({...prev,[row.key]:true}))}
+                            style={{width:22,height:22,borderRadius:6,border:'1.5px solid #fca5a5',background:'#fff1f2',color:'#dc2626',cursor:'pointer',fontSize:11}}>✕</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* تحذير: أراضٍ بدون أي قراءة مسجّلة */}
+                  {warningRows.length > 0 && (
+                    <div style={{border:'1.5px solid #fde68a',borderRadius:10,overflow:'hidden'}}>
+                      <div style={{background:'#fffbeb',padding:'8px 12px',fontSize:12,fontWeight:800,color:'#92400e'}}>
+                        ⚠️ {ar
+                          ? `${warningRows.length} أرض بدون أي قراءة — لن تُطبَّق عليها الإضافة`
+                          : `${warningRows.length} קרקעות ללא קריאה — התוספת לא תוחל עליהן`}
+                      </div>
+                      <div style={{maxHeight:140,overflowY:'auto'}}>
+                        {warningRows.map(row => (
+                          <div key={row.key} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'6px 12px',borderTop:'1px solid #fef3c7'}}>
+                            <div style={{fontSize:12}}>
+                              <span style={{fontWeight:700,fontFamily:'Heebo,sans-serif'}}>{farmerName(row.farmerId)}</span>
+                              <span style={{color:'var(--text-muted)'}}> — {row.land?.stationNumber||'—'}</span>
+                            </div>
+                            <button type="button" onClick={()=>setExcluded(prev=>({...prev,[row.key]:true}))}
+                              style={{width:20,height:20,borderRadius:6,border:'1.5px solid #fde68a',background:'#fff',color:'#92400e',cursor:'pointer',fontSize:10}}>✕</button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {applying && (
+                    <div style={{marginTop:14}}>
+                      <div style={{height:6,borderRadius:3,background:'#ede9fe',overflow:'hidden'}}>
+                        <div style={{height:'100%',background:'#7c3aed',width:`${Math.round(progress/Math.max(1,applyRows.length)*100)}%`,transition:'width 0.2s'}}/>
+                      </div>
+                      <div style={{fontSize:12,color:'var(--text-muted)',marginTop:4,textAlign:'center'}}>
+                        {progress} / {applyRows.length}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* الفوتر */}
+        <div style={{ padding:'14px 20px', borderTop:'1px solid var(--border)', display:'flex', justifyContent:'space-between' }}>
+          <button type="button" className="btn btn-outline" disabled={step===1||applying}
+            onClick={()=>setStep(s=>Math.max(1,s-1))} style={{visibility: step===1?'hidden':'visible'}}>
+            {ar?'رجوع':'חזור'}
+          </button>
+          {result ? (
+            <button type="button" className="btn btn-primary" onClick={onClose}>
+              {ar?'إغلاق':'סגור'}
+            </button>
+          ) : step < 3 ? (
+            <button type="button" className="btn btn-primary"
+              disabled={(step===1 && (!title.trim()||!amount)) || (step===2 && selectedCount===0)}
+              onClick={()=>setStep(s=>Math.min(3,s+1))}>
+              {ar?'التالي':'הבא'}
+            </button>
+          ) : (
+            <button type="button" className="btn btn-primary" disabled={applying||applyRows.length===0}
+              onClick={applyBulk} style={{background:'#7c3aed',borderColor:'#7c3aed'}}>
+              {applying ? `⏳ ${ar?'جاري التطبيق...':'מחיל...'}` : `✓ ${ar?'تطبيق نهائي':'החלה סופית'} (${applyRows.length})`}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminReadings({ adminRole='admin' }) {
   const isViewer = adminRole === 'viewer';
   const { lang } = useLang();
@@ -138,6 +548,9 @@ export default function AdminReadings({ adminRole='admin' }) {
   const [showFormFarmerList, setShowFormFarmerList] = useState(false);
   const [error,          setError]          = useState('');
   const [saving,         setSaving]         = useState(false);
+
+  // ✅ شباك الإضافة الجماعية
+  const [showBulkModal, setShowBulkModal] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -321,6 +734,19 @@ export default function AdminReadings({ adminRole='admin' }) {
 
   return (
     <div>
+      {/* ══ شباك الإضافة الجماعية ══ */}
+      {showBulkModal && (
+        <BulkExtraModal
+          farmers={farmers}
+          lands={lands}
+          regions={regions}
+          readings={readings}
+          ar={ar}
+          onClose={() => setShowBulkModal(false)}
+          onApplied={() => { load(); }}
+        />
+      )}
+
       {/* ── ملخّص الحساب: قبل وبعد الضريبة (מע"מ) ── */}
       <div className="flex-gap gap-12 mb-16" style={{ flexWrap:'wrap' }}>
         <div style={{ flex:'1 1 200px', background:'var(--surface-2)', border:'1.5px solid var(--border)', borderRadius:10, padding:'10px 16px' }}>
@@ -434,6 +860,12 @@ export default function AdminReadings({ adminRole='admin' }) {
         </div>
         <div className="flex-gap gap-8">
           <button className="btn btn-outline btn-sm" onClick={() => window.print()}>🖨️</button>
+          {!isViewer && (
+            <button className="btn" style={{background:'#4c1d95',color:'#fff',border:'1.5px solid #4c1d95'}}
+              onClick={() => setShowBulkModal(true)}>
+              👥 {ar ? 'إضافة جماعية' : 'הוספה קבוצתית'}
+            </button>
+          )}
           {!isViewer && <button className="btn btn-primary" onClick={openAddR}>+ {ar ? 'إضافة قراءة' : 'הוסף קריאה'}</button>}
         </div>
       </div>
