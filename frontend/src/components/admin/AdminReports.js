@@ -118,6 +118,32 @@ export function AdminReports({ adminRole='admin' }) {
     return { negatives, resets, total: negatives.length + resets.length };
   })();
 
+  // ✅ قراءات لم تُؤخذ بعد (טרם נלקחה) — نفس منطق ReadingsTable بالضبط:
+  // أي قيمة null أو '' داخل r.readings بغض النظر عن موقعها (أولى / ثانية / ثالثة...)
+  const missingReadings = (() => {
+    const rows = [];
+    readings.forEach(r => {
+      const vals = r.readings || [];
+      const missingIndexes = [];
+      vals.forEach((v, i) => {
+        if (v == null || v === '') missingIndexes.push(i);
+      });
+      if (missingIndexes.length === 0) return;
+      const lastKnown = [...vals].reverse().find(v => v != null && v !== '');
+      rows.push({
+        readingId: r.id,
+        farmerId: r.farmerId,
+        landId: r.landId,
+        year: r.year,
+        missingIndexes, // مصفوفة أرقام الفترات الناقصة (0-indexed)
+        lastKnown,
+      });
+    });
+    return rows;
+  })();
+
+  const auditTotal = dataAnomalies.total + missingReadings.length;
+
   // ✅ جمع كل extraNotes الفريدة الموجودة في النظام
   // ✅ جمع كل أسماء الإضافات من extras[] الجديدة + الحقول القديمة
   const allExtraNotes = [...new Set([
@@ -577,7 +603,7 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
               position:'relative',
             }}>
             🧪 {ar?'تدقيق البيانات':'ביקורת נתונים'}
-            {dataAnomalies.total > 0 && (
+            {auditTotal > 0 && (
               <span style={{
                 position:'absolute', top:-6, left:-6,
                 background:'#dc2626', color:'#fff',
@@ -585,7 +611,7 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
                 fontSize:11, fontWeight:900,
                 display:'flex', alignItems:'center', justifyContent:'center',
                 border:'2px solid #fff',
-              }}>{dataAnomalies.total}</span>
+              }}>{auditTotal}</span>
             )}
           </button>
         </div>
@@ -1068,12 +1094,12 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
             </h3>
             <p style={{ color:'var(--text-muted)', fontSize:13 }}>
               {ar
-                ? 'فحص تلقائي لكل القراءات المسجّلة في النظام (بدون فلاتر) للكشف عن أي فرق سالب بين قراءتين متتاليتين — عادة يعني خطأ إدخال (رقم أُدخل أصغر من السابق بالغلط). هذه هي القراءات المستثناة من كل الإجماليات في النظام.'
-                : 'סריקה אוטומטית של כל הקריאות במערכת (ללא סינון) לאיתור הפרש שלילי בין שתי קריאות רצופות — לרוב טעות הזנה. אלו הקריאות המוחרגות מכל הסיכומים במערכת.'}
+                ? 'فحص تلقائي لكل القراءات المسجّلة في النظام (بدون فلاتر) للكشف عن أي فرق سالب بين قراءتين متتاليتين، إعادة تصفير عداد، أو أرقام لم تؤخذ بعد.'
+                : 'סריקה אוטומטית של כל הקריאות במערכת (ללא סינון) לאיתור הפרש שלילי בין שתי קריאות רצופות, איפוס מונה, או ספרות שטרם נלקחו.'}
             </p>
           </div>
 
-          {dataAnomalies.total === 0 ? (
+          {auditTotal === 0 ? (
             <div className="card" style={{ textAlign:'center', padding:32, color:'#16a34a' }}>
               <div style={{ fontSize:40, marginBottom:8 }}>✅</div>
               <div style={{ fontWeight:700, fontSize:15 }}>
@@ -1082,6 +1108,66 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
             </div>
           ) : (
             <>
+              {/* ── قراءات لم تُؤخذ بعد (טרם נלקחה) ── */}
+              {missingReadings.length > 0 && (
+                <div className="card mb-16" style={{ padding:0 }}>
+                  <div style={{ background:'#0369a1', color:'#fff', padding:'10px 16px', fontWeight:800, fontSize:14 }}>
+                    ⏳ {ar?`عدادات فيها أرقام لم تُؤخذ بعد (${missingReadings.length})`:`מונים עם ספרות שטרם נלקחו (${missingReadings.length})`}
+                  </div>
+                  <p style={{ padding:'8px 16px', fontSize:12, color:'var(--text-muted)', margin:0, background:'#f0f9ff' }}>
+                    {ar
+                      ? 'قراءات ناقصة داخل تسلسل القراءة (مو بالضرورة القراءة الأخيرة) — تحتاج متابعة مع الناطور/المزارع لأخذها.'
+                      : 'קריאות חסרות בתוך רצף הקריאה (לא בהכרח האחרונה) — דורש מעקב עם השומר/החקלאי לקבלתן.'}
+                  </p>
+                  <div className="tbl-wrap">
+                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+                    <thead>
+                      <tr style={{ background:'#f0f9ff' }}>
+                        <th style={{ padding:'8px 12px', textAlign:'right' }}>{ar?'المزارع':'חקלאי'}</th>
+                        <th style={{ padding:'8px 12px', textAlign:'center' }}>{ar?'المحطة':'עמדה'}</th>
+                        <th style={{ padding:'8px 12px', textAlign:'center' }}>{ar?'السنة':'שנה'}</th>
+                        <th style={{ padding:'8px 12px', textAlign:'right' }}>{ar?'الأرقام الناقصة':'ספרות חסרות'}</th>
+                        <th style={{ padding:'8px 12px', textAlign:'center' }}>{ar?'آخر قراءة معروفة':'קריאה אחרונה ידועה'}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {missingReadings
+                        .sort((a,b) => farmerName(a.farmerId).localeCompare(farmerName(b.farmerId),'ar'))
+                        .map((row, i) => {
+                          const land = lands.find(l => String(l.id) === String(row.landId));
+                          return (
+                            <tr key={i} style={{ borderBottom:'1px solid #f3f4f6', background:i%2===0?'#fff':'#f0f9ff' }}>
+                              <td style={{ padding:'8px 12px', fontFamily:'Heebo,sans-serif', fontWeight:700 }}>{farmerName(row.farmerId)}</td>
+                              <td style={{ padding:'8px 12px', textAlign:'center' }}>
+                                {land?.stationNumber
+                                  ? <code style={{ background:'#f0f9ff', border:'1px solid #7dd3fc', padding:'2px 8px', borderRadius:5, fontWeight:900 }}>{land.stationNumber}</code>
+                                  : '—'}
+                              </td>
+                              <td style={{ padding:'8px 12px', textAlign:'center', color:'var(--text-muted)' }}>{row.year}</td>
+                              <td style={{ padding:'8px 12px' }}>
+                                <div style={{ display:'flex', flexWrap:'wrap', gap:5, justifyContent:'flex-end' }}>
+                                  {row.missingIndexes.map(idx => (
+                                    <span key={idx} style={{
+                                      background:'#fef3c7', border:'1px solid #fde047', color:'#78350f',
+                                      borderRadius:6, padding:'2px 8px', fontSize:11, fontWeight:700,
+                                    }}>
+                                      ⏳ {ar?`ق${idx+1}`:`ק${idx+1}`}
+                                    </span>
+                                  ))}
+                                </div>
+                              </td>
+                              <td style={{ padding:'8px 12px', textAlign:'center', fontWeight:700 }}>
+                                {row.lastKnown != null ? parseFloat(row.lastKnown).toLocaleString() : '—'}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                  </div>
+                </div>
+              )}
+
               {/* ── فروق سالبة (خطأ إدخال محتمل) ── */}
               {dataAnomalies.negatives.length > 0 && (
                 <div className="card mb-16" style={{ padding:0 }}>
