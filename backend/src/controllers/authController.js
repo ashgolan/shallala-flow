@@ -21,6 +21,21 @@ const farmerResponse = f => ({
   notes:     f.notes  || '',
 });
 
+// ✅ helper — يشيل الأصفار الزايدة من بداية رقم الهوية للمقارنة
+// مثال: "039444682" → "39444682"  |  "39444682" → "39444682"
+const normalizeId = v => (v || '').toString().trim().replace(/^0+(?=\d)/, '');
+
+// ✅ helper — يبني regex يطابق رقم الهوية بأي عدد من الأصفار بالبداية
+// مثال: normalizeId = "39444682" → يطابق "39444682" و"039444682" و"0039444682" إلخ
+const idRegex = idNumber => new RegExp(`^0*${normalizeId(idNumber)}$`);
+
+// ✅ helper — يجيب مزارع بمطابقة رقم الهوية (متجاهل الأصفار بالبداية) + الكود
+const findFarmerByIdAndCode = (idNumber, code) =>
+  Farmer.findOne({
+    idNumber: idRegex(idNumber),
+    code:     code.toString().trim(),
+  });
+
 // ─── Step 1 ────────────────────────────────────────────────────
 const checkIdentity = async (req, res) => {
   try {
@@ -28,10 +43,7 @@ const checkIdentity = async (req, res) => {
     if (!idNumber || !code)
       return res.status(400).json({ error: 'رقم الهوية والكود مطلوبان' });
 
-    const farmer = await Farmer.findOne({
-      idNumber: idNumber.toString().trim(),
-      code:     code.toString().trim(),
-    });
+    const farmer = await findFarmerByIdAndCode(idNumber, code);
 
     if (!farmer) {
       await new Promise(r => setTimeout(r, 1000));
@@ -52,7 +64,7 @@ const checkIdentity = async (req, res) => {
 
     const privilegedDoc  = await Privileged.findOne({ key: 'privileged' });
     const privilegedUser = privilegedDoc?.users?.find(
-      u => u.idNumber.trim() === idNumber.toString().trim()
+      u => normalizeId(u.idNumber) === normalizeId(idNumber)
     );
 
     if (privilegedUser) {
@@ -81,10 +93,7 @@ const checkIdentity = async (req, res) => {
 const farmerLogin = async (req, res) => {
   try {
     const { idNumber, code } = req.body;
-    const farmer = await Farmer.findOne({
-      idNumber: idNumber.toString().trim(),
-      code:     code.toString().trim(),
-    });
+    const farmer = await findFarmerByIdAndCode(idNumber, code);
     if (!farmer) return res.status(401).json({ error: 'بيانات غير صحيحة' });
 
     recordSuccess(req);
@@ -107,7 +116,7 @@ const adminLogin = async (req, res) => {
 
     const privilegedDoc  = await Privileged.findOne({ key: 'privileged' });
     const privilegedUser = privilegedDoc?.users?.find(
-      u => u.idNumber.trim() === idNumber?.toString().trim()
+      u => normalizeId(u.idNumber) === normalizeId(idNumber)
     );
 
     if (!privilegedUser) return res.status(403).json({ error: 'غير مخول' });
@@ -142,10 +151,7 @@ const adminLogin = async (req, res) => {
       });
     }
 
-    const farmer = await Farmer.findOne({
-      idNumber: idNumber?.toString().trim(),
-      code:     code?.toString().trim(),
-    });
+    const farmer = await findFarmerByIdAndCode(idNumber, code);
     if (!farmer) return res.status(401).json({ error: 'بيانات غير صحيحة' });
 
     recordSuccess(req);
