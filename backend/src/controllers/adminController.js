@@ -244,7 +244,6 @@ const createReading = async (req, res) => {
         if (r === '' || r === null || r === undefined) return null;
         const f = parseFloat(r);
         if (isNaN(f)) return null;
-        if (i > 0 && f === 0) return null;
         return f;
       }),
       stationNumber: land?.stationNumber || '',
@@ -273,7 +272,6 @@ const updateReading = async (req, res) => {
         if (r === '' || r === null || r === undefined) return null;
         const f = parseFloat(r);
         if (isNaN(f)) return null;
-        if (i > 0 && f === 0) return null;
         return f;
       }),
       stationNumber: land?.stationNumber || '',

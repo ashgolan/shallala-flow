@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { togglePaid, updateNote } from '../../api';
 import { getPrice } from '../../utils/pricing'; // ✅ سعر موحّد شامل الضريبة (מע"מ)
 import { cupsDiff, cupsPositive } from '../../utils/cups'; // ✅ فرق أكواب موحّد
@@ -36,6 +36,9 @@ export default function ReadingsTable({
   const [sortDir,    setSortDir]    = useState('asc');
   const [mapModal,   setMapModal]   = useState(null);
   const ar = lang === 'ar';
+
+  // ✅ لتفادي إغلاق نافذة الخريطة عند السحب (تحديد نص) من الداخل للخارج
+  const mapBackdropMouseDown = useRef(false);
 
   const handleSort = key => {
     if (sortKey === key) setSortDir(d => d==='asc' ? 'desc' : 'asc');
@@ -102,7 +105,13 @@ export default function ReadingsTable({
     const esriUrl  = `https://maps.google.com/maps?q=${lat},${lng}&z=18&t=k&output=embed&markers=${lat},${lng}`;
     const earthUrl = `https://earth.google.com/web/@${lat},${lng},400a,800d,30y,0h,0t,0r/data=CgRCAggBMikKJwolCiExS0M0V193eFlWeTQ2UFR6RW81VkFtVVlvMDNHemUtUHQgAToDCgEwQgIIAEoICIXm6fQFEAE?hl=ar`;
     return (
-      <div onClick={() => setMapModal(null)} style={{ position:'fixed', inset:0, zIndex:9999, background:'rgba(0,0,0,0.65)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+      <div
+        onMouseDown={(e) => { mapBackdropMouseDown.current = (e.target === e.currentTarget); }}
+        onClick={(e) => {
+          if (mapBackdropMouseDown.current && e.target === e.currentTarget) setMapModal(null);
+          mapBackdropMouseDown.current = false;
+        }}
+        style={{ position:'fixed', inset:0, zIndex:9999, background:'rgba(0,0,0,0.65)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
         <div onClick={e => e.stopPropagation()} style={{ background:'#fff', borderRadius:16, overflow:'hidden', width:'100%', maxWidth:600, boxShadow:'0 20px 60px rgba(0,0,0,0.4)' }}>
           <div style={{ padding:'14px 18px', background:'var(--primary-dark)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
             <div style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -243,7 +252,7 @@ export default function ReadingsTable({
                         <td key={i} style={{textAlign:'center', background:cupsBg}}>
                           {cups !== null
                             ? <span style={{fontWeight:700,fontSize:13,color:cups<0?'#dc2626':'inherit'}}>{cups.toLocaleString()}</span>
-                            : rawB != null && rawB !== '' && parseFloat(rawB) !== 0
+                            : rawB != null && rawB !== ''
                               ? <span style={{fontWeight:700,fontSize:13}}>{parseFloat(rawB).toLocaleString()}</span>
                               : <span style={{color:'#d1d5db',fontSize:11}}>—</span>}
                         </td>
@@ -251,7 +260,7 @@ export default function ReadingsTable({
                     })}
 
                     <td style={{textAlign:'center', background:totalBg}}>
-                      {cupsPerPeriod.some(c => c === null && vals.slice(1).some(v => v === null || v === 0 || v === ''))
+                      {cupsPerPeriod.some(c => c === null && vals.slice(1).some(v => v === null || v === ''))
                         ? <span style={{fontSize:13,color:'#9ca3af',fontWeight:600}}>
                             {totalCups > 0 && <span style={{color:'var(--primary-dark)',fontWeight:700,marginLeft:4}}>{totalCups.toLocaleString()} </span>}
                             ⏳

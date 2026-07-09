@@ -122,6 +122,9 @@ function BulkExtraModal({ farmers, lands, regions, readings, onClose, onApplied,
   const [progress,  setProgress]  = useState(0);
   const [result,    setResult]    = useState(null); // {success, fail}
 
+  // ✅ لتفادي إغلاق النافذة عند السحب (تحديد نص) من الداخل للخارج
+  const backdropMouseDown = useRef(false);
+
   const currentYear = new Date().getFullYear();
 
   // ✅ checkbox ثابت الحجم صراحة — حتى لا يتأثر بستايل input العام بالمشروع
@@ -237,7 +240,12 @@ function BulkExtraModal({ farmers, lands, regions, readings, onClose, onApplied,
   };
 
   return (
-    <div onClick={() => !applying && onClose()}
+    <div
+      onMouseDown={(e) => { backdropMouseDown.current = (e.target === e.currentTarget); }}
+      onClick={(e) => {
+        if (backdropMouseDown.current && e.target === e.currentTarget && !applying) onClose();
+        backdropMouseDown.current = false;
+      }}
       style={{ position:'fixed', inset:0, zIndex:9999, background:'rgba(0,0,0,0.6)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
       <div onClick={e => e.stopPropagation()}
         style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:720, maxHeight:'90vh', display:'flex', flexDirection:'column', overflow:'hidden', boxShadow:'0 20px 60px rgba(0,0,0,0.4)' }}>
