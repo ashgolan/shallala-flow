@@ -26,6 +26,7 @@ const IconBtn = ({ onClick, title, bg, hoverBg, color, hoverColor, border, child
 export default function ReadingsTable({
   readings, setReadings, farmerName, landName, landRegion,
   onEdit, onDelete, lang, prices, isViewer=false, lands=[], regions=[],
+  unpaidProjectsByFarmer={}, // ✅ farmerId -> [{ projectName, remaining }] — مشاريع لم يُكمل المزارع دفعها
 }) {
   const [expandedId, setExpandedId] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
@@ -181,7 +182,7 @@ export default function ReadingsTable({
           <thead>
             <tr>
               <STh col="paid"    style={{...thBase, minWidth:50, textAlign:'center'}}>{ar?'دفع':'תשלום'}</STh>
-              <STh col="farmer"  style={{...thBase, minWidth:110}}>{ar?'المزارع':'חקלאי'}</STh>
+              <STh col="farmer"  style={{...thBase, minWidth:130}}>{ar?'المزارع':'חקלאי'}</STh>
               <STh col="land"    style={{...thBase, minWidth:100}}>{ar?'المنطقة':'אזור'}</STh>
               <STh col="year"    style={{...thBase, minWidth:60, textAlign:'center'}}>{ar?'السنة':'שנה'}</STh>
               <STh col="station" style={{...thBase, minWidth:65, textAlign:'center', fontFamily:'monospace'}}>{ar?'المحطة':'עמדה'}</STh>
@@ -192,7 +193,7 @@ export default function ReadingsTable({
               <th style={{ ...thBase, minWidth:90, background:'#fff3e0', color:'#e65100', textAlign:'center' }}>➕ {ar?'إضافات':'תוספות'}</th>
               <STh col="amount" style={{...thAmount, minWidth:100}}>💰 {ar?'الإجمالي':'סה"כ'}</STh>
               <th style={{...thBase, minWidth:90, textAlign:'center'}}>💬</th>
-              <th style={{...thBase, minWidth:70, textAlign:'center'}}></th>
+              <th style={{...thBase, minWidth:70, textAlign:'center', position:'sticky', left:0, background:'var(--surface-2)', zIndex:2, boxShadow:'2px 0 4px rgba(0,0,0,0.06)'}}></th>
             </tr>
           </thead>
           <tbody>
@@ -212,6 +213,9 @@ export default function ReadingsTable({
               const rowExtras = getExtras(r);
               const rowExtrasTotal = rowExtras.reduce((s,e)=>(s+(parseFloat(e.amount)||0)-(parseFloat(e.paid)||0)),0);
 
+              // ✅ مشاريع لم يُكمل هذا المزارع دفعها (تحذير ⚠️ جنب اسمه)
+              const farmerUnpaidProjects = unpaidProjectsByFarmer[r.farmerId] || [];
+
               return (
                 <React.Fragment key={r.id}>
                   <tr onClick={()=>setExpandedId(p=>p===r.id?null:r.id)}
@@ -223,7 +227,19 @@ export default function ReadingsTable({
                       {isViewer ? <span style={{fontSize:16}}>{isPaid?'✓':'○'}</span>
                         : <PaidBtn paid={isPaid} loading={togglingId===r.id} onClick={e=>handlePaid(e,r)}/>}
                     </td>
-                    <td><strong style={{fontFamily:'Heebo,sans-serif',fontSize:14}}>{farmerName(r.farmerId)}</strong></td>
+                    <td style={{whiteSpace:'nowrap'}}>
+                      <div style={{display:'flex',alignItems:'center',gap:5}}>
+                        <strong style={{fontFamily:'Heebo,sans-serif',fontSize:14,whiteSpace:'nowrap'}}>{farmerName(r.farmerId)}</strong>
+                        {farmerUnpaidProjects.length > 0 && (
+                          <span
+                            onClick={e=>e.stopPropagation()}
+                            title={farmerUnpaidProjects
+                              .map(p => `${p.projectName}: ₪${Math.round(p.remaining).toLocaleString()} ${ar?'متبقي':'נותר'}`)
+                              .join('\n')}
+                            style={{fontSize:13,cursor:'help',flexShrink:0}}>⚠️</span>
+                        )}
+                      </div>
+                    </td>
                     <td style={{fontFamily:'Heebo,sans-serif',fontSize:13}}>{landName(r.landId)}</td>
                     <td style={{textAlign:'center'}}><span className="badge badge-blue">{r.year}</span></td>
 
@@ -337,7 +353,7 @@ export default function ReadingsTable({
                       )}
                     </td>
 
-                    <td style={{textAlign:'center'}} onClick={e=>e.stopPropagation()}>
+                    <td style={{textAlign:'center', position:'sticky', left:0, background: isPaid?'#f0fdf4':'#fff5f5', zIndex:1, boxShadow:'2px 0 4px rgba(0,0,0,0.06)'}} onClick={e=>e.stopPropagation()}>
                       {!isViewer && (
                         <div className="flex-gap gap-4">
                           <IconBtn onClick={e=>{e.stopPropagation();onEdit(r)}} title={ar?'تعديل':'עריכה'} bg="var(--surface-2)" hoverBg="var(--primary)" color="var(--primary)" hoverColor="#fff" border="1.5px solid var(--border)">✏</IconBtn>
@@ -414,6 +430,21 @@ export default function ReadingsTable({
                             </div>
                           )}
                         </div>
+
+                        {/* ✅ مشاريع لم يُكمل المزارع دفعها — تفصيل كامل داخل الصف الموسَّع */}
+                        {farmerUnpaidProjects.length > 0 && (
+                          <div style={{marginTop:10}}>
+                            <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:6,fontWeight:700}}>⚠️ {ar?'مشاريع لم يُكمل دفعها:':'פרויקטים שטרם שולמו במלואם:'}</div>
+                            <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+                              {farmerUnpaidProjects.map((p,pi) => (
+                                <div key={pi} style={{background:'#fff1f2',border:'1.5px solid #fca5a5',borderRadius:8,padding:'6px 12px',fontSize:12}}>
+                                  <span style={{fontWeight:700,color:'#991b1b'}}>{p.projectName}</span>
+                                  <span style={{color:'#dc2626',fontWeight:800,marginRight:6}}> — ₪{Math.round(p.remaining).toLocaleString()} {ar?'متبقي':'נותר'}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
                         <div style={{display:'flex',flexWrap:'wrap',gap:8,alignItems:'center',marginTop:8}}>
                           {isPaid && r.paidAt && <span style={{fontSize:11,color:'#16a34a',fontWeight:700}}>✓ {ar?'دُفع في':'שולם ב-'} {new Date(r.paidAt).toLocaleDateString(ar?'ar-SA':'he-IL')}</span>}

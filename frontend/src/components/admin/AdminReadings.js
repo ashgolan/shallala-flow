@@ -537,6 +537,8 @@ export default function AdminReadings({ adminRole='admin' }) {
   const [regions,  setRegions]  = useState([]);
   const [readings, setReadings] = useState([]);
   const [prices,   setPrices]   = useState({ globalPrice:0, yearPrices:{}, landPrices:{} });
+  // ✅ مشاريع اللجنة — تُستخدم فقط لحساب المزارعين المتأخرين بالدفع (تحذير ⚠️ بجدول القراءات)
+  const [projects, setProjects] = useState([]);
   const [loading,  setLoading]  = useState(true);
 
   const [showRForm, setShowRForm] = useState(false);
@@ -563,18 +565,20 @@ export default function AdminReadings({ adminRole='admin' }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [fd, ld, rd, rg, pr] = await Promise.all([
+      const [fd, ld, rd, rg, pr, pd] = await Promise.all([
         adminAPI.getFarmers(),
         adminAPI.getLands(),
         adminAPI.getReadings(),
         regionsAPI.getRegions(),
         adminAPI.getPrices(),
+        adminAPI.getProjects(),
       ]);
       setFarmers(fd.farmers || []);
       setLands(ld.lands || []);
       setReadings(rd.readings || []);
       setRegions(rg.regions || []);
       setPrices(pr || { globalPrice:0, yearPrices:{}, landPrices:{} });
+      setProjects(pd.projects || []);
     } catch(e) { setError(e.message); }
     finally { setLoading(false); }
   }, []);
@@ -616,6 +620,25 @@ export default function AdminReadings({ adminRole='admin' }) {
   };
   const years = [...new Set(readings.map(r => r.year))].sort((a,b) => b-a);
   const farmerLands = rForm.farmerId ? lands.filter(l => String(l.farmerId) === String(rForm.farmerId)) : lands;
+
+  // ✅ مزارعون لم يكملوا دفعهم لمشروع/مشاريع معينة — Map: farmerId -> [{ projectName, remaining }]
+  // نفس منطق calcMember في AdminProjects.js: المبلغ المطلوب لهذا المشترك تحديداً ناقص مجموع دفعاته.
+  // لا يشمل مشتركين بدون مبلغ محدد بعد (amount = null) — لأنه ما في شي "لم يُكمل" طالما ما تحدد أصلاً.
+  const unpaidProjectsByFarmer = (() => {
+    const map = {};
+    projects.forEach(p => {
+      (p.members || []).forEach(m => {
+        if (m.amount === null || m.amount === undefined) return;
+        const paid = (m.payments || []).reduce((s, pay) => s + (parseFloat(pay.amount) || 0), 0);
+        const remaining = m.amount - paid;
+        if (remaining > 0.01) {
+          if (!map[m.farmerId]) map[m.farmerId] = [];
+          map[m.farmerId].push({ projectName: p.name, remaining });
+        }
+      });
+    });
+    return map;
+  })();
 
   // ✅ يمرر الصفحة تلقائياً لأعلى نموذج القراءة (مهم عند التعديل من أسفل جدول طويل)
   const scrollToRForm = () => {
@@ -1081,6 +1104,7 @@ export default function AdminReadings({ adminRole='admin' }) {
           isViewer={isViewer}
           lands={lands}
           regions={regions}
+          unpaidProjectsByFarmer={unpaidProjectsByFarmer}
         />
       )}
     </div>
