@@ -196,6 +196,31 @@ const parseExtras = (extrasRaw) => {
     }));
 };
 
+// ✅ ينظّف مصفوفة القراءات (تحويل نصوص فارغة لـ null، أرقام لأرقام فعلية)
+const cleanReadingsArray = (readings) => (readings || []).map((r) => {
+  if (r === '' || r === null || r === undefined) return null;
+  const f = parseFloat(r);
+  return isNaN(f) ? null : f;
+});
+
+// ✅ يبني/يحدّث مصفوفة حالة الدفع لكل فترة، بنفس طول عدد الفترات الفعلي
+// ويحافظ على القيم القديمة بحسب الفهرس عند تعديل قراءة موجودة (لا يصفّرها)
+const buildPaidPeriods = (existing = [], periodsCount) => {
+  const arr = [];
+  for (let i = 0; i < periodsCount; i++) arr.push(!!existing[i]);
+  return arr;
+};
+
+// ✅ يشتق قيمة paid القديمة (للتوافق) من paidPeriods:
+// true فقط إذا كل الفترات "النشطة" (التي بدأت فعلاً بقراءة أولى) مدفوعة بالكامل
+const deriveLegacyPaid = (cleanReadings, paidPeriods) => {
+  const activeIdx = [];
+  for (let i = 0; i < cleanReadings.length - 1; i++) {
+    if (cleanReadings[i] != null) activeIdx.push(i);
+  }
+  return activeIdx.length > 0 && activeIdx.every(i => paidPeriods[i]);
+};
+
 // ✅ دالة مساعدة لتوحيد بيانات القراءة في الاستجابة
 const serializeReading = (r) => ({
   ...r,
@@ -217,6 +242,8 @@ const serializeReading = (r) => ({
   extraPaid: r.extraPaid || 0,
   extraNote: r.extraNote || '',
   note:      r.note      || '',
+  // ✅ حالة دفع كل فترة لحالها
+  paidPeriods: r.paidPeriods || [],
   paid:      r.paid      || false,
   paidAt:    r.paidAt    || null,
 });
@@ -237,15 +264,15 @@ const createReading = async (req, res) => {
     if (!farmerId || !landId || !year || !readings?.length) return res.status(400).json({ error: 'جميع الحقول مطلوبة' });
     if (readings[0] === '' || readings[0] === null || readings[0] === undefined)
       return res.status(400).json({ error: 'القراءة الأولى (البداية) مطلوبة' });
+
     const land = await Land.findById(landId).lean();
+    const cleanReadings = cleanReadingsArray(readings);
+    const periodsCount  = Math.max(0, cleanReadings.length - 1);
+    const paidPeriods   = buildPaidPeriods([], periodsCount); // ✅ الكل غير مدفوع افتراضياً
+
     const reading = await Reading.create({
       farmerId, landId, year: parseInt(year),
-      readings: readings.map((r, i) => {
-        if (r === '' || r === null || r === undefined) return null;
-        const f = parseFloat(r);
-        if (isNaN(f)) return null;
-        return f;
-      }),
+      readings: cleanReadings,
       stationNumber: land?.stationNumber || '',
       stationLat:    land?.stationLat    || null,
       stationLng:    land?.stationLng    || null,
@@ -254,6 +281,9 @@ const createReading = async (req, res) => {
       extraPaid: parseFloat(extraPaid) || 0,
       extraNote: extraNote || '',
       note:      note      || '',
+      paidPeriods,
+      paid:      false,
+      paidAt:    null,
     });
     return res.status(201).json({ success: true, id: reading._id.toString() });
   } catch (err) {
@@ -265,15 +295,21 @@ const createReading = async (req, res) => {
 const updateReading = async (req, res) => {
   try {
     const { farmerId, landId, year, readings, note, extra, extraPaid, extraNote } = req.body;
-    const land = await Land.findById(landId).lean();
+
+    const [land, existing] = await Promise.all([
+      Land.findById(landId).lean(),
+      Reading.findById(req.params.readingId).lean(),
+    ]);
+
+    const cleanReadings = cleanReadingsArray(readings);
+    const periodsCount  = Math.max(0, cleanReadings.length - 1);
+    // ✅ نحافظ على حالة دفع كل فترة موجودة مسبقاً بحسب فهرسها، ونضيف false للفترات الجديدة فقط
+    const paidPeriods   = buildPaidPeriods(existing?.paidPeriods || [], periodsCount);
+    const derivedPaid   = deriveLegacyPaid(cleanReadings, paidPeriods);
+
     const updateData = {
       farmerId, landId, year: parseInt(year),
-      readings: readings.map((r, i) => {
-        if (r === '' || r === null || r === undefined) return null;
-        const f = parseFloat(r);
-        if (isNaN(f)) return null;
-        return f;
-      }),
+      readings: cleanReadings,
       stationNumber: land?.stationNumber || '',
       stationLat:    land?.stationLat    || null,
       stationLng:    land?.stationLng    || null,
@@ -282,6 +318,9 @@ const updateReading = async (req, res) => {
       extraPaid: parseFloat(extraPaid) || 0,
       extraNote: extraNote || '',
       note:      note      || '',
+      paidPeriods,
+      paid:      derivedPaid,
+      paidAt:    derivedPaid ? (existing?.paidAt || new Date()) : null,
     };
     await Reading.findByIdAndUpdate(req.params.readingId, { $set: updateData }, { new: true });
     return res.json({ success: true });
@@ -393,7 +432,9 @@ const getReport = async (req, res) => {
         stationNumber: r.stationNumber || '',
         extras: (r.extras || []).map(e => ({ id: e._id?.toString(), note: e.note||'', amount: e.amount||0, paid: e.paid||0 })),
         extra: r.extra || 0, extraPaid: r.extraPaid || 0,
-        extraNote: r.extraNote || '', paid: r.paid || false, paidAt: r.paidAt || null,
+        extraNote: r.extraNote || '',
+        paidPeriods: r.paidPeriods || [],
+        paid: r.paid || false, paidAt: r.paidAt || null,
       })),
       prices,
     });
@@ -532,12 +573,19 @@ const applyReadingsImport = async (req, res) => {
           while (merged.length < 2) merged.push(null);
           existing.readings = merged;
           existing.markModified('readings');
+
+          // ✅ نحافظ على طول paidPeriods متوافق مع عدد الفترات الجديد بعد الاستيراد
+          const periodsCount = Math.max(0, merged.length - 1);
+          existing.paidPeriods = buildPaidPeriods(existing.paidPeriods || [], periodsCount);
+          existing.markModified('paidPeriods');
+
           await existing.save();
           applied++;
         } else {
           const land = await Land.findById(landId).lean();
           const newReadings = [...incomingReadings];
           while (newReadings.length < 2) newReadings.push(null);
+          const periodsCount = Math.max(0, newReadings.length - 1);
           await Reading.create({
             farmerId, landId,
             year: parseInt(year),
@@ -546,6 +594,7 @@ const applyReadingsImport = async (req, res) => {
             stationLat:    land?.stationLat    || null,
             stationLng:    land?.stationLng    || null,
             extras: [], extra: 0, extraPaid: 0, extraNote: '', note: '',
+            paidPeriods: buildPaidPeriods([], periodsCount),
           });
           created++;
         }

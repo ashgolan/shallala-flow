@@ -4,13 +4,13 @@ import { getPrice } from '../../utils/pricing'; // ✅ سعر موحّد شام�
 import { cupsDiff, cupsPositive } from '../../utils/cups'; // ✅ فرق أكواب موحّد
 import { getExtrasList as getExtras, getExtrasNet } from '../../utils/extras'; // ✅ إضافات موحّدة
 
-const PaidBtn = ({ paid, loading, onClick }) => (
+const PaidBtn = ({ paid, loading, onClick, size = 17 }) => (
   <button onClick={onClick} disabled={loading}
     title={paid ? 'שולם ✓' : 'לא שולם'}
-    style={{ width:18, height:18, borderRadius:'50%', border: paid ? '2px solid #4ade80' : '2px solid #f87171', background: 'transparent', cursor: loading ? 'wait' : 'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', transition:'all 0.25s', opacity: loading ? 0.5 : 1, flexShrink:0, position:'relative', animation: !paid && !loading ? 'pulse-red 2.5s ease-in-out infinite' : 'none' }}
+    style={{ width:size, height:size, borderRadius:'50%', border: paid ? '2px solid #4ade80' : '2px solid #f87171', background: 'transparent', cursor: loading ? 'wait' : 'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', transition:'all 0.25s', opacity: loading ? 0.5 : 1, flexShrink:0, position:'relative', animation: !paid && !loading ? 'pulse-red 2.5s ease-in-out infinite' : 'none' }}
     onMouseEnter={e => { if(!loading) e.currentTarget.style.transform='scale(1.15)'; }}
     onMouseLeave={e => { e.currentTarget.style.transform='scale(1)'; }}>
-    <span style={{ width: paid ? 7 : 6, height: paid ? 7 : 6, borderRadius:'50%', background: paid ? '#4ade80' : '#f87171', display:'block', transition:'all 0.25s' }}/>
+    <span style={{ width: paid ? size*0.4 : size*0.35, height: paid ? size*0.4 : size*0.35, borderRadius:'50%', background: paid ? '#4ade80' : '#f87171', display:'block', transition:'all 0.25s' }}/>
     <style>{`@keyframes pulse-red{0%{box-shadow:0 0 0 0 rgba(248,113,113,0.3);}60%{box-shadow:0 0 0 5px rgba(248,113,113,0);}100%{box-shadow:0 0 0 0 rgba(248,113,113,0);}}`}</style>
   </button>
 );
@@ -23,13 +23,35 @@ const IconBtn = ({ onClick, title, bg, hoverBg, color, hoverColor, border, child
   >{children}</button>
 );
 
+// ✅ يحدد الفترات "النشطة" لقراءة معينة (أي فترة بدأت فعلاً بقراءة أولى — vals[i] موجودة)
+// وحالة الدفع الإجمالية للسطر: full (الكل مدفوع) / partial (دفع جزئي) / unpaid (ولا شي مدفوع)
+const getPayStatus = (r) => {
+  const vals = r.readings || [];
+  const periodsCount = Math.max(0, vals.length - 1);
+  const active = [];
+  for (let i = 0; i < periodsCount; i++) {
+    if (vals[i] != null && vals[i] !== '') active.push(i);
+  }
+  if (active.length === 0) return 'unpaid';
+  const pp = r.paidPeriods || [];
+  const paidCount = active.filter(i => pp[i]).length;
+  if (paidCount === active.length) return 'full';
+  if (paidCount === 0) return 'unpaid';
+  return 'partial';
+};
+
+const payRank = (r) => {
+  const s = getPayStatus(r);
+  return s === 'full' ? 2 : s === 'partial' ? 1 : 0;
+};
+
 export default function ReadingsTable({
   readings, setReadings, farmerName, landName, landRegion,
   onEdit, onDelete, lang, prices, isViewer=false, lands=[], regions=[],
   unpaidProjectsByFarmer={}, // ✅ farmerId -> [{ projectName, remaining }] — مشاريع لم يُكمل المزارع دفعها
 }) {
   const [expandedId, setExpandedId] = useState(null);
-  const [togglingId, setTogglingId] = useState(null);
+  const [togglingId, setTogglingId] = useState(null); // ✅ الآن مفتاحه `${readingId}_${periodIndex}`
   const [editNoteId, setEditNoteId] = useState(null);
   const [noteText,   setNoteText]   = useState('');
   const [savingNote, setSavingNote] = useState(false);
@@ -56,7 +78,7 @@ export default function ReadingsTable({
     else if (sortKey==='station') { va=a.stationNumber||'';    vb=b.stationNumber||''; }
     else if (sortKey==='total')   { va=(a.readings||[]).slice(1).reduce((s,_,i)=>s+cupsPositive(a.readings,i),0); vb=(b.readings||[]).slice(1).reduce((s,_,i)=>s+cupsPositive(b.readings,i),0); }
     else if (sortKey==='amount')  { va=(a.readings||[]).slice(1).reduce((s,_,i)=>s+cupsPositive(a.readings,i)*getPrice(prices,a.year,a.landId,i+1),0); vb=(b.readings||[]).slice(1).reduce((s,_,i)=>s+cupsPositive(b.readings,i)*getPrice(prices,b.year,b.landId,i+1),0); }
-    else if (sortKey==='paid')    { va=a.paid?1:0; vb=b.paid?1:0; }
+    else if (sortKey==='paid')    { va=payRank(a); vb=payRank(b); }
     if (typeof va==='string') return sortDir==='asc' ? va.localeCompare(vb,'he') : vb.localeCompare(va,'he');
     return sortDir==='asc' ? va-vb : vb-va;
   });
@@ -69,13 +91,17 @@ export default function ReadingsTable({
     </th>
   );
 
-  const handlePaid = async (e,r) => {
+  // ✅ تبديل حالة دفع فترة محددة (periodIndex) داخل قراءة معينة
+  const handlePaid = async (e, r, periodIndex) => {
     e.stopPropagation();
+    const key = `${r.id}_${periodIndex}`;
     if (togglingId) return;
-    setTogglingId(r.id);
+    setTogglingId(key);
     try {
-      const res = await togglePaid(r.id);
-      setReadings(prev => prev.map(x => x.id===r.id ? {...x,paid:res.paid,paidAt:res.paidAt} : x));
+      const res = await togglePaid(r.id, periodIndex);
+      setReadings(prev => prev.map(x => x.id===r.id
+        ? { ...x, paidPeriods: res.paidPeriods, paid: res.paid, paidAt: res.paidAt }
+        : x));
     } catch(err) { alert(ar?'خطأ':'שגיאה'); }
     finally { setTogglingId(null); }
   };
@@ -95,7 +121,11 @@ export default function ReadingsTable({
   const cupsCols    = maxReadings - 1;
   const grandCups   = sorted.reduce((s,r)=>s+(r.readings||[]).slice(1).reduce((ss,_,i)=>ss+cupsPositive(r.readings,i),0),0);
   const grandAmount = sorted.reduce((s,r)=>s+(r.readings||[]).slice(1).reduce((ss,_,i)=>ss+cupsPositive(r.readings,i)*getPrice(prices,r.year,r.landId,i+1),0),0);
-  const paidCount   = readings.filter(r=>r.paid).length;
+
+  // ✅ عدّاد ملخّص الدفع بـ 3 حالات بدل حالتين
+  const fullPaidCount    = readings.filter(r=>getPayStatus(r)==='full').length;
+  const partialPaidCount = readings.filter(r=>getPayStatus(r)==='partial').length;
+  const unpaidCount      = readings.length - fullPaidCount - partialPaidCount;
 
   // ✅ إجمالي الإضافات
   const grandExtrasRem = sorted.reduce((s,r) => s + getExtrasNet(r), 0);
@@ -171,10 +201,13 @@ export default function ReadingsTable({
       <div className="flex-between mb-12" style={{flexWrap:'wrap',gap:8}}>
         <div className="flex-gap gap-12">
           <span style={{color:'var(--text-muted)',fontSize:13}}>{readings.length} {ar?'قراءة':'קריאות'}</span>
-          <span style={{color:'#16a34a',fontWeight:700,fontSize:13}}>✓ {paidCount} {ar?'مدفوع':'שולם'}</span>
-          <span style={{color:'#dc2626',fontWeight:700,fontSize:13}}>✕ {readings.length-paidCount} {ar?'غير مدفوع':'לא שולם'}</span>
+          <span style={{color:'#16a34a',fontWeight:700,fontSize:13}}>✓ {fullPaidCount} {ar?'مدفوع بالكامل':'שולם במלואו'}</span>
+          {partialPaidCount > 0 && (
+            <span style={{color:'#d97706',fontWeight:700,fontSize:13}}>⚠️ {partialPaidCount} {ar?'دفع جزئي':'שולם חלקית'}</span>
+          )}
+          <span style={{color:'#dc2626',fontWeight:700,fontSize:13}}>✕ {unpaidCount} {ar?'غير مدفوع':'לא שולם'}</span>
         </div>
-        <span style={{fontSize:12,color:'var(--text-muted)'}}>💡 {ar?'اضغط على الصف لأرقام الساعات':'לחץ על שורה לקריאות'}</span>
+        <span style={{fontSize:12,color:'var(--text-muted)'}}>💡 {ar?'اضغط على الصف لأرقام الساعات — الدائرة داخل كل عمود كوب تدفع تلك الفترة تحديداً':'לחץ על שורה לקריאות'}</span>
       </div>
 
       <div className="tbl-wrap">
@@ -203,11 +236,15 @@ export default function ReadingsTable({
               const cupsPerPeriod = Array.from({length:cupsCols}).map((_,i)=>cupsDiff(vals,i));
               const totalCups     = cupsPerPeriod.reduce((s,c)=>s+(c && c>0 ? c : 0),0);
               const rowAmount     = cupsPerPeriod.reduce((s,c,i)=>s+(c && c>0 ? c : 0)*getPrice(prices,r.year,r.landId,i+1),0);
-              const isPaid        = !!r.paid;
-              const rowBg   = isPaid ? 'rgba(220,252,231,0.5)' : 'rgba(254,226,226,0.35)';
-              const cupsBg  = isPaid ? '#d1fae5' : '#fee2e2';
-              const totalBg = isPaid ? '#a7f3d0' : '#fecaca';
-              const amtBg   = isPaid ? '#fef9c3' : '#fef3c7';
+
+              // ✅ حالة الدفع الإجمالية للسطر بناءً على كل فترة لحالها
+              const payStatus = getPayStatus(r);
+              const rowBg   = payStatus==='full' ? 'rgba(220,252,231,0.5)' : payStatus==='partial' ? 'rgba(254,243,199,0.55)' : 'rgba(254,226,226,0.35)';
+              const borderColor = payStatus==='full' ? '#16a34a' : payStatus==='partial' ? '#f59e0b' : '#ef4444';
+              const cupsBg  = payStatus==='full' ? '#d1fae5' : payStatus==='partial' ? '#fef3c7' : '#fee2e2';
+              const totalBg = payStatus==='full' ? '#a7f3d0' : payStatus==='partial' ? '#fde68a' : '#fecaca';
+              const amtBg   = payStatus==='full' ? '#fef9c3' : '#fef3c7';
+              const stickyBg = payStatus==='full' ? '#f0fdf4' : payStatus==='partial' ? '#fffbeb' : '#fff5f5';
 
               // ✅ إجمالي الإضافات للصف
               const rowExtras = getExtras(r);
@@ -216,16 +253,25 @@ export default function ReadingsTable({
               // ✅ مشاريع لم يُكمل هذا المزارع دفعها (تحذير ⚠️ جنب اسمه)
               const farmerUnpaidProjects = unpaidProjectsByFarmer[r.farmerId] || [];
 
+              // ✅ نص التلميح (tooltip) لأيقونة الدفع الملخّصة
+              const paidTooltip = cupsPerPeriod
+                .map((_, i) => (vals[i] != null && vals[i] !== '')
+                  ? `${ar?`ف${i+1}`:`ת${i+1}`}: ${r.paidPeriods?.[i] ? (ar?'مدفوع':'שולם') : (ar?'غير مدفوع':'לא שולם')}`
+                  : null)
+                .filter(Boolean)
+                .join('\n');
+
               return (
                 <React.Fragment key={r.id}>
                   <tr onClick={()=>setExpandedId(p=>p===r.id?null:r.id)}
-                    style={{cursor:'pointer', background:rowBg, borderRight:`3px solid ${isPaid?'#16a34a':'#ef4444'}`, transition:'filter 0.15s'}}
+                    style={{cursor:'pointer', background:rowBg, borderRight:`3px solid ${borderColor}`, transition:'filter 0.15s'}}
                     onMouseEnter={e=>e.currentTarget.style.filter='brightness(0.96)'}
                     onMouseLeave={e=>e.currentTarget.style.filter=''}>
 
-                    <td style={{textAlign:'center'}} onClick={e=>e.stopPropagation()}>
-                      {isViewer ? <span style={{fontSize:16}}>{isPaid?'✓':'○'}</span>
-                        : <PaidBtn paid={isPaid} loading={togglingId===r.id} onClick={e=>handlePaid(e,r)}/>}
+                    <td style={{textAlign:'center'}} onClick={e=>e.stopPropagation()} title={paidTooltip}>
+                      <span style={{fontSize:16}}>
+                        {payStatus==='full' ? '✅' : payStatus==='partial' ? '⚠️' : '❌'}
+                      </span>
                     </td>
                     <td style={{whiteSpace:'nowrap'}}>
                       <div style={{display:'flex',alignItems:'center',gap:5}}>
@@ -264,13 +310,25 @@ export default function ReadingsTable({
 
                     {cupsPerPeriod.map((cups,i) => {
                       const rawB = vals[i+1];
+                      const periodActive = vals[i] != null && vals[i] !== ''; // ✅ الفترة بدأت (قراءة بداية موجودة)
+                      const periodPaid = !!(r.paidPeriods && r.paidPeriods[i]);
                       return (
-                        <td key={i} style={{textAlign:'center', background:cupsBg}}>
-                          {cups !== null
-                            ? <span style={{fontWeight:700,fontSize:13,color:cups<0?'#dc2626':'inherit'}}>{cups.toLocaleString()}</span>
-                            : rawB != null && rawB !== ''
-                              ? <span style={{fontWeight:700,fontSize:13}}>{parseFloat(rawB).toLocaleString()}</span>
-                              : <span style={{color:'#d1d5db',fontSize:11}}>—</span>}
+                        <td key={i} style={{textAlign:'center', background:cupsBg}} onClick={e=>e.stopPropagation()}>
+                          <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:5}}>
+                            {cups !== null
+                              ? <span style={{fontWeight:700,fontSize:13,color:cups<0?'#dc2626':'inherit'}}>{cups.toLocaleString()}</span>
+                              : rawB != null && rawB !== ''
+                                ? <span style={{fontWeight:700,fontSize:13}}>{parseFloat(rawB).toLocaleString()}</span>
+                                : periodActive
+                                  ? <span style={{color:'#d1d5db',fontSize:11}}>—</span>
+                                  : <span style={{color:'#e5e7eb',fontSize:11}}>·</span>}
+                            {periodActive && (
+                              isViewer
+                                ? <span style={{fontSize:11}}>{periodPaid?'✓':'○'}</span>
+                                : <PaidBtn paid={periodPaid} loading={togglingId===`${r.id}_${i}`}
+                                    onClick={e=>handlePaid(e,r,i)} size={15}/>
+                            )}
+                          </div>
                         </td>
                       );
                     })}
@@ -353,7 +411,7 @@ export default function ReadingsTable({
                       )}
                     </td>
 
-                    <td style={{textAlign:'center', position:'sticky', left:0, background: isPaid?'#f0fdf4':'#fff5f5', zIndex:1, boxShadow:'2px 0 4px rgba(0,0,0,0.06)'}} onClick={e=>e.stopPropagation()}>
+                    <td style={{textAlign:'center', position:'sticky', left:0, background: stickyBg, zIndex:1, boxShadow:'2px 0 4px rgba(0,0,0,0.06)'}} onClick={e=>e.stopPropagation()}>
                       {!isViewer && (
                         <div className="flex-gap gap-4">
                           <IconBtn onClick={e=>{e.stopPropagation();onEdit(r)}} title={ar?'تعديل':'עריכה'} bg="var(--surface-2)" hoverBg="var(--primary)" color="var(--primary)" hoverColor="#fff" border="1.5px solid var(--border)">✏</IconBtn>
@@ -364,7 +422,7 @@ export default function ReadingsTable({
                   </tr>
 
                   {expanded && (
-                    <tr style={{background: isPaid?'#f0fdf4':'#fff5f5'}}>
+                    <tr style={{background: stickyBg}}>
                       <td colSpan={99} style={{padding:'10px 18px'}}>
                         <div style={{display:'flex',flexWrap:'wrap',gap:16,alignItems:'flex-start'}}>
 
@@ -399,6 +457,23 @@ export default function ReadingsTable({
                               </div>
                             </div>
                           )}
+
+                          {/* ✅ حالة الدفع لكل فترة نشطة */}
+                          <div>
+                            <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:4,fontWeight:700}}>💳 {ar?'حالة الدفع لكل فترة:':'סטטוס תשלום לכל תקופה:'}</div>
+                            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                              {cupsPerPeriod.map((_,i) => {
+                                const active = vals[i] != null && vals[i] !== '';
+                                if (!active) return null;
+                                const periodPaid = !!(r.paidPeriods && r.paidPeriods[i]);
+                                return (
+                                  <span key={i} style={{background:periodPaid?'#f0fdf4':'#fff1f2', border:`1px solid ${periodPaid?'#bbf7d0':'#fca5a5'}`, borderRadius:6, padding:'3px 10px', fontSize:12, fontWeight:700, color:periodPaid?'#16a34a':'#dc2626'}}>
+                                    {ar?`ف${i+1}`:`ת${i+1}`}: {periodPaid ? `✅ ${ar?'مدفوع':'שולם'}` : `❌ ${ar?'غير مدفوع':'לא שולם'}`}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
 
                           {/* ✅ الإضافات في الصف الموسَّع */}
                           {rowExtras.length > 0 && (
@@ -447,7 +522,7 @@ export default function ReadingsTable({
                         )}
 
                         <div style={{display:'flex',flexWrap:'wrap',gap:8,alignItems:'center',marginTop:8}}>
-                          {isPaid && r.paidAt && <span style={{fontSize:11,color:'#16a34a',fontWeight:700}}>✓ {ar?'دُفع في':'שולם ב-'} {new Date(r.paidAt).toLocaleDateString(ar?'ar-SA':'he-IL')}</span>}
+                          {payStatus==='full' && r.paidAt && <span style={{fontSize:11,color:'#16a34a',fontWeight:700}}>✓ {ar?'اكتمل الدفع في':'שולם ב-'} {new Date(r.paidAt).toLocaleDateString(ar?'ar-SA':'he-IL')}</span>}
                           {(() => { const land=lands.find(l=>String(l.id)===String(r.landId)); return land?.description?(<span style={{fontSize:12,background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:8,padding:'4px 10px',color:'#1e40af',fontWeight:600}}>🏡 {land.description}</span>):null; })()}
                           {r.note && <span style={{fontSize:12,background:'#fef9c3',border:'1px solid #fde047',borderRadius:8,padding:'4px 10px',color:'#78350f',fontWeight:600}}>💬 {r.note}</span>}
                         </div>

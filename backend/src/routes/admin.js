@@ -81,7 +81,6 @@ router.post('/upload-image', uploadLimiter, async (req, res) => {
       const fileRef  = bucket.file(fileName);
       const stream   = fileRef.createWriteStream({ metadata: { contentType: mimeType }, public: true });
       file.pipe(stream);
-      // ✅ الرد يُرسَل فقط بعد اكتمال الرفع الفعلي لغوغل كلاود (مو بعد استقبال البيانات فقط)
       stream.on('finish', () => {
         if (res.headersSent) return;
         const uploadedUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
@@ -210,15 +209,36 @@ router.post('/readings/:readingId/note', async (req, res) => {
   } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 });
 
-router.post('/readings/:readingId/paid', async (req, res) => {
+// ✅ تبديل حالة الدفع لفترة (دورة) محددة داخل القراءة، بدل السطر كامل
+router.post('/readings/:readingId/paid/:periodIndex', async (req, res) => {
   try {
     const Reading = require('../models/Reading');
     const r = await Reading.findById(req.params.readingId);
     if (!r) return res.status(404).json({ error: 'غير موجود' });
-    r.paid   = !r.paid;
-    r.paidAt = r.paid ? new Date() : null;
+
+    const idx = parseInt(req.params.periodIndex, 10);
+    const periodsCount = Math.max(0, (r.readings?.length || 1) - 1);
+    if (isNaN(idx) || idx < 0 || idx >= periodsCount) {
+      return res.status(400).json({ error: 'فهرس فترة غير صالح' });
+    }
+
+    const pp = [...(r.paidPeriods || [])];
+    while (pp.length < periodsCount) pp.push(false);
+    pp[idx] = !pp[idx];
+    r.paidPeriods = pp;
+    r.markModified('paidPeriods');
+
+    // ✅ تحديث paid القديم للتوافق: true فقط إذا كل الفترات النشطة (بدأت فعلاً بقراءة) مدفوعة بالكامل
+    const activeIdx = [];
+    for (let i = 0; i < periodsCount; i++) {
+      if (r.readings[i] != null) activeIdx.push(i);
+    }
+    const derivedPaid = activeIdx.length > 0 && activeIdx.every(i => pp[i]);
+    r.paid   = derivedPaid;
+    r.paidAt = derivedPaid ? new Date() : null;
+
     await r.save();
-    return res.json({ success: true, paid: r.paid, paidAt: r.paidAt });
+    return res.json({ success: true, paidPeriods: r.paidPeriods, paid: r.paid, paidAt: r.paidAt });
   } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 });
 

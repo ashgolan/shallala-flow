@@ -125,7 +125,8 @@ export const regionsAPI = {
 };
 
 // ── Reading actions ────────────────────────────────────────────
-export const togglePaid = id => req(`/admin/readings/${id}/paid`, { method: 'POST' });
+// ✅ الآن يأخذ periodIndex — تبديل حالة الدفع لفترة محددة، مو للسطر كامل
+export const togglePaid = (id, periodIndex) => req(`/admin/readings/${id}/paid/${periodIndex}`, { method: 'POST' });
 export const toggleExtraStatus = id => req(`/admin/readings/${id}/extra-status`, { method: 'POST' });
 export const updateNote = (id, note) => req(`/admin/readings/${id}/note`, { method: 'POST', body: JSON.stringify({ note }) });
 

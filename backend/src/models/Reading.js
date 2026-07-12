@@ -14,13 +14,18 @@ const readingSchema = new mongoose.Schema({
   stationNumber: { type: String,  default: '' },
   stationLat:    { type: Number,  default: null },
   stationLng:    { type: Number,  default: null },
-  // ✅ مصفوفة الإضافات الجديدة
+  // ✅ مصفوفة الإضافات
   extras:        { type: [extraSchema], default: [] },
   // ✅ الحقول القديمة للتوافق مع البيانات الموجودة
   extra:         { type: Number,  default: 0 },
   extraPaid:     { type: Number,  default: 0 },
   extraNote:     { type: String,  default: '' },
   note:          { type: String,  default: '' },
+  // ✅ جديد: حالة دفع كل فترة (دورة) على حدة
+  // paidPeriods[i] = هل الفترة بين readings[i] و readings[i+1] مدفوعة؟
+  paidPeriods:   { type: [Boolean], default: [] },
+  // ✅ الحقول القديمة — تبقى للتوافق فقط، وتُشتق تلقائياً من paidPeriods
+  // (true فقط إذا كل الفترات النشطة/التي بدأت فعلاً مدفوعة بالكامل)
   paid:          { type: Boolean, default: false },
   paidAt:        { type: Date,    default: null },
 }, {
