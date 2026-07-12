@@ -72,7 +72,6 @@ function LandCupsChart({ data, color, lang, t }) {
 // ── ألوان الرسوم البيانية ──
 const CHART_COLORS = ['#ea580c','#7c3aed','#0891b2','#15803d','#db2777','#d97706'];
 
-
 const calcConsumption = (reading, prices) => {
   if (!reading?.readings || reading.readings.length < 2) return [];
   return reading.readings.slice(1).map((curr, i) => {
@@ -83,6 +82,63 @@ const calcConsumption = (reading, prices) => {
     return { idx: i + 1, cups, cupsForTotal, price, amount: cupsForTotal * price, from: prev, to: curr };
   });
 };
+
+// ✅ إعدادات شارة كل حالة دفع (لون/أيقونة/نص) — مصدر واحد يُستخدم بكل الشارات
+const payStatusConfig = (status, ar) => ({
+  full:    { bg:'#f0fdf4', color:'#15803d', border:'#bbf7d0', icon:'✅', label: ar?'مدفوع بالكامل':'שולם במלואו' },
+  partial: { bg:'#fffbeb', color:'#b45309', border:'#fde68a', icon:'⚠️', label: ar?'دفع جزئي':'שולם חלקית' },
+  unpaid:  { bg:'#fff1f2', color:'#dc2626', border:'#fecaca', icon:'❌', label: ar?'غير مدفوع':'לא שולם' },
+}[status]);
+
+// ✅ حالة الدفع الإجمالية لقراءة واحدة، بنفس منطق لوحة الإدارة:
+// full = كل الفترات النشطة (اللي بدأت بقراءة أولى) مدفوعة، partial = دفع جزئي، unpaid = ولا شي مدفوع
+const getPayStatus = (r) => {
+  const vals = r?.readings || [];
+  const periodsCount = Math.max(0, vals.length - 1);
+  const active = [];
+  for (let i = 0; i < periodsCount; i++) {
+    if (vals[i] != null && vals[i] !== '') active.push(i);
+  }
+  if (active.length === 0) return 'unpaid';
+  const pp = r?.paidPeriods || [];
+  const paidCount = active.filter(i => pp[i]).length;
+  if (paidCount === active.length) return 'full';
+  if (paidCount === 0) return 'unpaid';
+  return 'partial';
+};
+
+// ✅ حالة الدفع الإجمالية عبر كل قراءات المزارع مجتمعة (لبطاقة "إجمالي المبلغ" بنظرة عامة)
+const getOverallPayStatus = (readingsArr) => {
+  let totalActive = 0, totalPaid = 0;
+  (readingsArr || []).forEach(r => {
+    const vals = r.readings || [];
+    const periodsCount = Math.max(0, vals.length - 1);
+    const pp = r.paidPeriods || [];
+    for (let i = 0; i < periodsCount; i++) {
+      if (vals[i] != null && vals[i] !== '') {
+        totalActive++;
+        if (pp[i]) totalPaid++;
+      }
+    }
+  });
+  if (totalActive === 0) return 'unpaid';
+  if (totalPaid === totalActive) return 'full';
+  if (totalPaid === 0) return 'unpaid';
+  return 'partial';
+};
+
+// ✅ شارة صغيرة لحالة الدفع (تُستخدم جنب اسم الأرض، ببطاقة KPI، وبأعلى بطاقة السنة)
+const StatusBadge = ({ status, ar }) => {
+  const cfg = payStatusConfig(status, ar);
+  return (
+    <span style={{ display:'inline-flex', alignItems:'center', gap:4, background:cfg.bg, color:cfg.color, border:`1px solid ${cfg.border}`, borderRadius:8, padding:'3px 9px', fontSize:11, fontWeight:800 }}>
+      {cfg.icon} {cfg.label}
+    </span>
+  );
+};
+
+// شارة مرتبطة مباشرة بقراءة واحدة (اختصار لـ StatusBadge)
+const PayStatusBadge = ({ r, ar }) => <StatusBadge status={getPayStatus(r)} ar={ar}/>;
 
 // ── أيقونة KPI ملونة ──
 const KpiIcon = ({ icon, bg, border }) => (
@@ -95,7 +151,7 @@ const KpiIcon = ({ icon, bg, border }) => (
 );
 
 // ── بطاقة KPI ──
-const KpiCard = ({ icon, bg, border, value, label, footer, footerVal, trend, trendUp, delay }) => (
+const KpiCard = ({ icon, bg, border, value, label, footer, footerVal, trend, trendUp, delay, extra }) => (
   <div style={{
     background: '#fff', borderRadius: 16, border: '1.5px solid #e5e7eb',
     padding: '14px 14px 12px', display: 'flex', flexDirection: 'column', gap: 10,
@@ -115,8 +171,12 @@ const KpiCard = ({ icon, bg, border, value, label, footer, footerVal, trend, tre
       )}
     </div>
     <div>
-      <div style={{ fontSize: 22, fontWeight: 900, color: '#111827', lineHeight: 1 }}>{value}</div>
-      <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', marginTop: 3 }}>{label}</div>
+      <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+        <div style={{ fontSize: 22, fontWeight: 900, color: '#111827', lineHeight: 1 }}>{value}</div>
+        {/* ✅ شارة حالة الدفع الإضافية (تظهر فقط إذا مُررت) */}
+        {extra}
+      </div>
+      <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', marginTop: 5 }}>{label}</div>
     </div>
     <div style={{ height: 1, background: '#f3f4f6' }}/>
     <div style={{ fontSize: 9, color: '#9ca3af', fontWeight: 600 }}>
@@ -176,6 +236,9 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
   const totalCups   = yearlyData.reduce((s, y) => s + y.cups,   0);
   const totalAmount = yearlyData.reduce((s, y) => s + y.amount, 0);
   const maxCups     = Math.max(...yearlyData.map(y => y.cups), 1);
+
+  // ✅ حالة الدفع الإجمالية عبر كل القراءات — لبطاقة "إجمالي المبلغ"
+  const overallPayStatus = getOverallPayStatus(readings);
 
   // ✅ اسم المنطقة (تلقائياً من صفحة المناطق) مع رقم المحطة بين قوسين
   // ملاحظة: نفس قاعدة صفحة التقارير بالإدارة — nameHeb هو الاسم الحقيقي المُدخَل
@@ -334,6 +397,7 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
                 value={`₪${Math.round(totalAmount).toLocaleString()}`} label={t('totalAmount', lang)}
                 footer={ar?'هذا العام':'השנה'} footerVal={`₪${Math.round(byYear[latestYear]?.amount||0).toLocaleString()}`}
                 trend={ar?'↑ نشط':'↑ פעיל'} trendUp={true} delay={0.2}
+                extra={<StatusBadge status={overallPayStatus} ar={ar}/>}
               />
             </div>
 
@@ -454,7 +518,11 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
                         const cons = calcConsumption(r, prices);
                         return (
                           <div key={r.id} style={{ marginBottom:18, paddingBottom:18, borderBottom:'1px solid #f3f4f6' }}>
-                            <div style={{ fontWeight:800, color:'#ea580c', marginBottom:10, fontSize:14 }}>🌾 {landName(r.landId)}</div>
+                            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10, flexWrap:'wrap' }}>
+                              <div style={{ fontWeight:800, color:'#ea580c', fontSize:14 }}>🌾 {landName(r.landId)}</div>
+                              {/* ✅ شارة حالة الدفع الإجمالية لهذه القراءة */}
+                              <PayStatusBadge r={r} ar={ar}/>
+                            </div>
                             <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:10 }}>
                               {r.readings.map((v,i) => (
                                 <div key={i} style={{ background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:8, padding:'4px 10px', textAlign:'center', minWidth:60 }}>
@@ -473,18 +541,35 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
                                     <th>{t('cups',lang)}</th>
                                     <th>{t('pricePerCup',lang)}</th>
                                     <th>{t('amount',lang)}</th>
+                                    {/* ✅ عمود حالة الدفع لكل فترة على حدة */}
+                                    <th>{ar?'الدفع':'תשלום'}</th>
                                   </tr></thead>
                                   <tbody>
-                                    {cons.map(c => (
-                                      <tr key={c.idx}>
-                                        <td style={{ fontWeight:700 }}>{t('period',lang)} {c.idx}</td>
-                                        <td>{c.from}</td>
-                                        <td>{c.to}</td>
-                                        <td><strong style={{ color:'#ea580c' }}>{Math.round(c.cups).toLocaleString()}</strong></td>
-                                        <td>₪{c.price.toFixed(2)}</td>
-                                        <td><strong>₪{Math.round(c.amount).toLocaleString()}</strong></td>
-                                      </tr>
-                                    ))}
+                                    {cons.map(c => {
+                                      // ✅ فهرس الفترة بمصفوفة paidPeriods = c.idx - 1
+                                      const periodPaid = !!(r.paidPeriods && r.paidPeriods[c.idx - 1]);
+                                      return (
+                                        <tr key={c.idx}>
+                                          <td style={{ fontWeight:700 }}>{t('period',lang)} {c.idx}</td>
+                                          <td>{c.from}</td>
+                                          <td>{c.to}</td>
+                                          <td><strong style={{ color:'#ea580c' }}>{Math.round(c.cups).toLocaleString()}</strong></td>
+                                          <td>₪{c.price.toFixed(2)}</td>
+                                          <td><strong>₪{Math.round(c.amount).toLocaleString()}</strong></td>
+                                          <td>
+                                            <span style={{
+                                              display:'inline-flex', alignItems:'center', gap:4,
+                                              background: periodPaid ? '#f0fdf4' : '#fff1f2',
+                                              color: periodPaid ? '#15803d' : '#dc2626',
+                                              border: `1px solid ${periodPaid ? '#bbf7d0' : '#fecaca'}`,
+                                              borderRadius:7, padding:'3px 9px', fontSize:11, fontWeight:800,
+                                            }}>
+                                              {periodPaid ? `✅ ${ar?'مدفوع':'שולם'}` : `❌ ${ar?'غير مدفوع':'לא שולם'}`}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
                                   </tbody>
                                 </table>
                               </div>

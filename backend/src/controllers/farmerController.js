@@ -60,6 +60,8 @@ const getMyData = async (req, res) => {
         farmerId:      r.farmerId?.toString() || '',
         landId:        r.landId?.toString()   || '',
         stationNumber: r.stationNumber || '',
+        // ✅ حالة دفع كل فترة على حدة — تُستخدم لعرض شارة الدفع بلوحة المزارع
+        paidPeriods:   r.paidPeriods || [],
         paid:          r.paid || false,
       })),
       prices,
