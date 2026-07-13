@@ -63,6 +63,21 @@ export default function ReadingsTable({
   // ✅ لتفادي إغلاق نافذة الخريطة عند السحب (تحديد نص) من الداخل للخارج
   const mapBackdropMouseDown = useRef(false);
 
+  // ✅ اسم الأرض المعروض داخل التفاصيل الموسّعة فقط: الاسم الخاص (land.name) إن وُجد ويختلف عن رقم المحطة،
+  // وإلا نرجع لاسم المنطقة (بنفس منطق AdminFarmers.js) كبديل.
+  const getLandLabel = (land) => {
+    if (!land) return '';
+    let label = (land.name && land.name !== land.stationNumber) ? land.name : '';
+    if (!label) {
+      const reg = land.regionId ? regions.find(rg => String(rg.id) === String(land.regionId)) : null;
+      const code = land.stationNumber?.match(/^([A-Za-z]+)/)?.[1]?.toUpperCase();
+      const byCode = !reg && code ? regions.find(rg => rg.name?.toUpperCase() === code) : null;
+      const found = reg || byCode;
+      label = found ? ((found.nameHeb && found.nameHeb !== found.name) ? found.nameHeb : (found.name || '')) : '';
+    }
+    return label;
+  };
+
   const handleSort = key => {
     if (sortKey === key) setSortDir(d => d==='asc' ? 'desc' : 'asc');
     else { setSortKey(key); setSortDir('asc'); }
@@ -261,6 +276,10 @@ export default function ReadingsTable({
                 .filter(Boolean)
                 .join('\n');
 
+              // ✅ اسم الأرض الخاص — بيستخدم فقط جوا التفاصيل الموسّعة تحت
+              const rowLand      = lands.find(l => String(l.id) === String(r.landId));
+              const rowLandLabel = getLandLabel(rowLand);
+
               return (
                 <React.Fragment key={r.id}>
                   <tr onClick={()=>setExpandedId(p=>p===r.id?null:r.id)}
@@ -291,7 +310,7 @@ export default function ReadingsTable({
 
                     <td style={{textAlign:'center'}} onClick={e => e.stopPropagation()}>
                       {(() => {
-                        const land = lands.find(l => String(l.id) === String(r.landId));
+                        const land = rowLand;
                         const lat  = land?.stationLat || r.stationLat;
                         const lng  = land?.stationLng || r.stationLng;
                         const num  = land?.stationNumber || r.stationNumber;
@@ -523,7 +542,8 @@ export default function ReadingsTable({
 
                         <div style={{display:'flex',flexWrap:'wrap',gap:8,alignItems:'center',marginTop:8}}>
                           {payStatus==='full' && r.paidAt && <span style={{fontSize:11,color:'#16a34a',fontWeight:700}}>✓ {ar?'اكتمل الدفع في':'שולם ב-'} {new Date(r.paidAt).toLocaleDateString(ar?'ar-SA':'he-IL')}</span>}
-                          {(() => { const land=lands.find(l=>String(l.id)===String(r.landId)); return land?.description?(<span style={{fontSize:12,background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:8,padding:'4px 10px',color:'#1e40af',fontWeight:600}}>🏡 {land.description}</span>):null; })()}
+                          {rowLandLabel && <span style={{fontSize:12,background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:8,padding:'4px 10px',color:'var(--primary)',fontWeight:700}}>🏷️ {rowLandLabel}</span>}
+                          {(() => { const land=rowLand; return land?.description?(<span style={{fontSize:12,background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:8,padding:'4px 10px',color:'#1e40af',fontWeight:600}}>🏡 {land.description}</span>):null; })()}
                           {r.note && <span style={{fontSize:12,background:'#fef9c3',border:'1px solid #fde047',borderRadius:8,padding:'4px 10px',color:'#78350f',fontWeight:600}}>💬 {r.note}</span>}
                         </div>
                       </td>
