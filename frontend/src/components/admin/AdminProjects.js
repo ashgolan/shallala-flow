@@ -22,8 +22,8 @@ const parseGoogleCoords = (raw) => {
   return null;
 };
 
-const EMPTY_PROJECT = { name:'', description:'', date:'', lat:'', lng:'', gpsRaw:'', locationNote:'', status:'active' };
-const EMPTY_PAYMENT = { amount:'', date:new Date().toISOString().slice(0,10), note:'' };
+const EMPTY_PROJECT = { name:'', description:'', date:'', lat:'', lng:'', gpsRaw:'', locationNote:'', status:'active', customMembers:false };
+const EMPTY_PAYMENT = { amount:'', date:new Date().toISOString().slice(0,10), note:'', receiptNumber:'', bookNumber:'' };
 
 export default function AdminProjects({ adminRole='admin' }) {
   const { lang } = useLang();
@@ -51,9 +51,11 @@ export default function AdminProjects({ adminRole='admin' }) {
   const [selFarmerId,     setSelFarmerId]     = useState('');
   const [selAmount,       setSelAmount]       = useState('');
   const [addingMember,    setAddingMember]    = useState(false);
-  // بحث عن المزارع بالكتابة (بدل القائمة العادية)
+  // بحث عن المزارع بالكتابة (بدل القائمة العادية) — للمشاريع العادية فقط
   const [memberSearch,    setMemberSearch]    = useState('');
   const [showMemberList,  setShowMemberList]  = useState(false);
+  // اسم حر للمشترك — للمشاريع customMembers فقط
+  const [customMemberName, setCustomMemberName] = useState('');
 
   // تعديل المبلغ المطلوب لمشترك موجود (بالضغط على الرقم بالجدول)
   const [editAmountId,    setEditAmountId]    = useState(null); // memberId الجاري تعديله
@@ -120,6 +122,7 @@ export default function AdminProjects({ adminRole='admin' }) {
       lat: proj.lat||'', lng: proj.lng||'',
       gpsRaw: (proj.lat&&proj.lng) ? `${proj.lat}, ${proj.lng}` : '',
       locationNote: proj.locationNote||'', status: proj.status||'active',
+      customMembers: !!proj.customMembers,
     });
     setLocMode('manual');
     setSelStation('');
@@ -157,6 +160,7 @@ export default function AdminProjects({ adminRole='admin' }) {
         lng: form.lng ? parseFloat(form.lng) : null,
         locationNote: form.locationNote,
         status: form.status,
+        customMembers: !!form.customMembers,
       };
       if (editProj) {
         await adminAPI.updateProject(editProj.id, payload);
@@ -176,13 +180,14 @@ export default function AdminProjects({ adminRole='admin' }) {
     load();
   };
 
-  // فتح مودال إضافة مشترك (مع تصفير حقل البحث)
+  // فتح مودال إضافة مشترك (مع تصفير الحقول)
   const openAddMember = (proj) => {
     setOpenProj(proj);
     setSelFarmerId('');
     setSelAmount('');
     setMemberSearch('');
     setShowMemberList(false);
+    setCustomMemberName('');
     setAddMemberModal(true);
   };
 
@@ -192,15 +197,24 @@ export default function AdminProjects({ adminRole='admin' }) {
     setSelAmount('');
     setMemberSearch('');
     setShowMemberList(false);
+    setCustomMemberName('');
   };
 
   // إضافة مشترك (المبلغ اختياري — لو ترك فارغ يبقى "غير محدد" لحد ما يتحدد لاحقاً)
   const submitAddMember = async () => {
-    if (!selFarmerId) return;
+    const isCustom = !!openProj?.customMembers;
+    if (isCustom) {
+      if (!customMemberName.trim()) return;
+    } else {
+      if (!selFarmerId) return;
+    }
     setAddingMember(true);
     try {
       const amountToSend = selAmount.trim() === '' ? null : parseFloat(selAmount);
-      await adminAPI.addProjectMember(openProj.id, { farmerId: selFarmerId, amount: amountToSend });
+      const payload = isCustom
+        ? { memberName: customMemberName.trim(), amount: amountToSend }
+        : { farmerId: selFarmerId, amount: amountToSend };
+      await adminAPI.addProjectMember(openProj.id, payload);
       const updated = await adminAPI.getProjects();
       setProjects(updated.projects||[]);
       const proj = (updated.projects||[]).find(p => p.id === openProj.id);
@@ -272,16 +286,19 @@ export default function AdminProjects({ adminRole='admin' }) {
     setOpenProj((updated.projects||[]).find(p=>p.id===openProj.id)||null);
   };
 
-  const farmerName = (fid) => {
+  const farmerNameById = (fid) => {
     const f = farmers.find(f => f.id === fid);
     return f ? `${f.lastName||''} ${f.firstName||''}`.trim() : fid;
   };
 
+  // ✅ اسم المشترك للعرض: من المزارعين إذا فيه farmerId، وإلا من الاسم الحر (memberName)
+  const memberDisplayName = (m) => m.farmerId ? farmerNameById(m.farmerId) : (m.memberName || '—');
+
   // هل تم تحديد مبلغ لهذا المشترك؟ (null/undefined = غير محدد بعد)
   const hasAmount = (m) => m.amount !== null && m.amount !== undefined;
 
-  // المزارعون المتاحون للإضافة (غير مشتركين بالفعل بهذا المشروع)
-  const availableMembers = openProj
+  // المزارعون المتاحون للإضافة (غير مشتركين بالفعل بهذا المشروع) — للمشاريع العادية فقط
+  const availableMembers = openProj && !openProj.customMembers
     ? farmers.filter(f => !openProj.members.find(m => m.farmerId === f.id))
     : [];
 
@@ -388,6 +405,18 @@ export default function AdminProjects({ adminRole='admin' }) {
                 </div>
               </div>
 
+              {/* ── نوع المشتركين ── */}
+              <div style={{background:'#fffbeb',border:'1px solid #fde68a',borderRadius:10,padding:'10px 14px',marginBottom:14,display:'flex',alignItems:'center',gap:10}}>
+                <input type="checkbox" id="customMembersChk" checked={!!form.customMembers}
+                  onChange={e=>setForm({...form,customMembers:e.target.checked})}
+                  style={{width:18,height:18,cursor:'pointer'}}/>
+                <label htmlFor="customMembersChk" style={{cursor:'pointer',fontSize:13,fontWeight:700,color:'#92400e',margin:0}}>
+                  {ar
+                    ? '👤 مشتركون بأسماء حرة (غير مرتبطين بقائمة المزارعين) — تُفعّل حقول رقم الوصل ورقم الدفتر بالدفعات'
+                    : '👤 משתתפים בשמות חופשיים (לא מקושרים לרשימת החקלאים) — יופעלו שדות מספר קבלה ומספר פנקס'}
+                </label>
+              </div>
+
               {/* ── الموقع ── */}
               <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:10,padding:'12px 14px',marginBottom:14}}>
                 <label style={{fontWeight:700,color:'var(--primary)',fontSize:13,display:'block',marginBottom:10}}>
@@ -470,57 +499,71 @@ export default function AdminProjects({ adminRole='admin' }) {
           <div style={{background:'#fff',borderRadius:18,padding:28,maxWidth:400,width:'100%',boxShadow:'0 12px 50px rgba(0,0,0,0.25)'}}>
             <h3 style={{margin:'0 0 16px',color:'var(--primary)'}}>👤 {ar?'إضافة مشترك':'הוסף משתתף'}</h3>
 
-            {/* ── حقل بحث المزارع (بدل القائمة العادية) ── */}
-            <div className="form-group" style={{position:'relative'}}>
-              <label>{ar?'اختر مزارع':'בחר חקלאי'}</label>
-              <input
-                value={memberSearch}
-                onChange={e=>{
-                  setMemberSearch(e.target.value);
-                  setShowMemberList(true);
-                  if (selFarmerId) setSelFarmerId('');
-                }}
-                onFocus={()=>setShowMemberList(true)}
-                onBlur={()=>setTimeout(()=>setShowMemberList(false),150)}
-                placeholder={ar?'🔍 ابحث باسم المزارع...':'🔍 חפש חקלאי...'}
-                autoComplete="off"
-                style={{width:'100%',fontFamily:'Heebo,sans-serif'}}
-              />
-              {showMemberList && (
-                <div style={{
-                  position:'absolute', top:'100%', right:0, left:0, zIndex:20,
-                  background:'#fff', border:'1.5px solid var(--border)', borderRadius:10,
-                  maxHeight:220, overflowY:'auto', boxShadow:'0 8px 24px rgba(0,0,0,0.15)', marginTop:4,
-                }}>
-                  {memberSearchResults.length === 0 ? (
-                    <div style={{padding:'10px 12px',fontSize:13,color:'var(--text-muted)',textAlign:'center'}}>
-                      {ar?'لا توجد نتائج':'אין תוצאות'}
-                    </div>
-                  ) : (
-                    memberSearchResults.map(f => (
-                      <div key={f.id}
-                        onMouseDown={e=>e.preventDefault()}
-                        onClick={()=>{
-                          setSelFarmerId(f.id);
-                          setMemberSearch(`${f.lastName||''} ${f.firstName||''}`.trim());
-                          setShowMemberList(false);
-                        }}
-                        style={{
-                          padding:'8px 12px', cursor:'pointer', fontSize:14,
-                          fontFamily:'Heebo,sans-serif', fontWeight: selFarmerId===f.id?800:500,
-                          background: selFarmerId===f.id ? '#f0fdf4' : '#fff',
-                        }}
-                        onMouseEnter={e=>e.currentTarget.style.background='#f0fdf4'}
-                        onMouseLeave={e=>e.currentTarget.style.background=selFarmerId===f.id?'#f0fdf4':'#fff'}>
-                        {f.lastName} {f.firstName}{f.idNumber?` — ${f.idNumber}`:''}
+            {openProj.customMembers ? (
+              /* ── مشروع بأسماء حرة: حقل نصي بسيط ── */
+              <div className="form-group">
+                <label>{ar?'اسم المشترك':'שם המשתתף'}</label>
+                <input
+                  value={customMemberName}
+                  onChange={e=>setCustomMemberName(e.target.value)}
+                  placeholder={ar?'اكتب اسم المشترك...':'הכנס שם משתתף...'}
+                  autoFocus
+                  style={{width:'100%'}}
+                />
+              </div>
+            ) : (
+              /* ── حقل بحث المزارع (بدل القائمة العادية) ── */
+              <div className="form-group" style={{position:'relative'}}>
+                <label>{ar?'اختر مزارع':'בחר חקלאי'}</label>
+                <input
+                  value={memberSearch}
+                  onChange={e=>{
+                    setMemberSearch(e.target.value);
+                    setShowMemberList(true);
+                    if (selFarmerId) setSelFarmerId('');
+                  }}
+                  onFocus={()=>setShowMemberList(true)}
+                  onBlur={()=>setTimeout(()=>setShowMemberList(false),150)}
+                  placeholder={ar?'🔍 ابحث باسم المزارع...':'🔍 חפש חקלאי...'}
+                  autoComplete="off"
+                  style={{width:'100%',fontFamily:'Heebo,sans-serif'}}
+                />
+                {showMemberList && (
+                  <div style={{
+                    position:'absolute', top:'100%', right:0, left:0, zIndex:20,
+                    background:'#fff', border:'1.5px solid var(--border)', borderRadius:10,
+                    maxHeight:220, overflowY:'auto', boxShadow:'0 8px 24px rgba(0,0,0,0.15)', marginTop:4,
+                  }}>
+                    {memberSearchResults.length === 0 ? (
+                      <div style={{padding:'10px 12px',fontSize:13,color:'var(--text-muted)',textAlign:'center'}}>
+                        {ar?'لا توجد نتائج':'אין תוצאות'}
                       </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
+                    ) : (
+                      memberSearchResults.map(f => (
+                        <div key={f.id}
+                          onMouseDown={e=>e.preventDefault()}
+                          onClick={()=>{
+                            setSelFarmerId(f.id);
+                            setMemberSearch(`${f.lastName||''} ${f.firstName||''}`.trim());
+                            setShowMemberList(false);
+                          }}
+                          style={{
+                            padding:'8px 12px', cursor:'pointer', fontSize:14,
+                            fontFamily:'Heebo,sans-serif', fontWeight: selFarmerId===f.id?800:500,
+                            background: selFarmerId===f.id ? '#f0fdf4' : '#fff',
+                          }}
+                          onMouseEnter={e=>e.currentTarget.style.background='#f0fdf4'}
+                          onMouseLeave={e=>e.currentTarget.style.background=selFarmerId===f.id?'#f0fdf4':'#fff'}>
+                          {f.lastName} {f.firstName}{f.idNumber?` — ${f.idNumber}`:''}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
-            {selectedMemberFarmer && (
+            {!openProj.customMembers && selectedMemberFarmer && (
               <div style={{background:'#f0fdf4',border:'1.5px solid #bbf7d0',borderRadius:10,padding:'8px 12px',marginBottom:14,fontSize:13,display:'flex',alignItems:'center',gap:8}}>
                 <span style={{fontSize:16}}>✅</span>
                 <span style={{fontFamily:'Heebo,sans-serif',fontWeight:700}}>
@@ -540,7 +583,8 @@ export default function AdminProjects({ adminRole='admin' }) {
               </div>
             </div>
             <div className="flex-gap gap-12">
-              <button className="btn btn-primary" onClick={submitAddMember} disabled={!selFarmerId||addingMember}>
+              <button className="btn btn-primary" onClick={submitAddMember}
+                disabled={addingMember || (openProj.customMembers ? !customMemberName.trim() : !selFarmerId)}>
                 {addingMember?'⏳':`✅ ${ar?'إضافة':'הוסף'}`}
               </button>
               <button className="btn btn-outline" onClick={closeAddMember}>
@@ -566,6 +610,23 @@ export default function AdminProjects({ adminRole='admin' }) {
               <label>{ar?'التاريخ':'תאריך'}</label>
               <input type="date" value={payForm.date} onChange={e=>setPayForm({...payForm,date:e.target.value})}/>
             </div>
+
+            {/* ── حقول إضافية: رقم الوصل ورقم الدفتر (فقط لمشاريع customMembers) ── */}
+            {openProj?.customMembers && (
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                <div className="form-group">
+                  <label>{ar?'رقم الوصل':'מספר קבלה'}</label>
+                  <input value={payForm.receiptNumber} onChange={e=>setPayForm({...payForm,receiptNumber:e.target.value})}
+                    placeholder={ar?'مثال: 1024':'לדוג׳: 1024'}/>
+                </div>
+                <div className="form-group">
+                  <label>{ar?'رقم الدفتر':'מספר פנקס'}</label>
+                  <input value={payForm.bookNumber} onChange={e=>setPayForm({...payForm,bookNumber:e.target.value})}
+                    placeholder={ar?'مثال: 3':'לדוג׳: 3'}/>
+                </div>
+              </div>
+            )}
+
             <div className="form-group">
               <label>{ar?'ملاحظة':'הערה'}</label>
               <input value={payForm.note} onChange={e=>setPayForm({...payForm,note:e.target.value})}
@@ -707,7 +768,7 @@ export default function AdminProjects({ adminRole='admin' }) {
                               <React.Fragment key={m.id}>
                                 <tr style={{borderBottom:'1px solid #e5e7eb',background:mi%2===0?'#fff':'#f9fafb'}}>
                                   <td style={{padding:'10px 12px',fontFamily:'Heebo,sans-serif',fontWeight:700,fontSize:14}}>
-                                    {farmerName(m.farmerId)}
+                                    {memberDisplayName(m)}
                                   </td>
                                   <td style={{padding:'10px 12px',textAlign:'center',fontWeight:700}}>
                                     {editAmountId === m.id ? (
@@ -767,7 +828,7 @@ export default function AdminProjects({ adminRole='admin' }) {
                                         {m.payments.length} {ar?'دفعة':'תשלומים'}
                                       </span>
                                       {!isViewer && (
-                                        <button onClick={()=>{setOpenProj(proj);setPayModal({projectId:proj.id,memberId:m.id,farmerName:farmerName(m.farmerId)});}}
+                                        <button onClick={()=>{setOpenProj(proj);setPayModal({projectId:proj.id,memberId:m.id,farmerName:memberDisplayName(m)});}}
                                           style={{width:24,height:24,borderRadius:6,border:'1.5px solid #bbf7d0',background:'#f0fdf4',color:'var(--primary)',cursor:'pointer',fontSize:13,display:'inline-flex',alignItems:'center',justifyContent:'center',fontWeight:900}}>
                                           +
                                         </button>
@@ -792,6 +853,13 @@ export default function AdminProjects({ adminRole='admin' }) {
                                           <div key={pay.id} style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:8,padding:'4px 10px',fontSize:12,display:'flex',alignItems:'center',gap:6}}>
                                             <span style={{fontWeight:700,color:'#16a34a'}}>₪{pay.amount.toLocaleString()}</span>
                                             <span style={{color:'var(--text-muted)'}}>{pay.date?new Date(pay.date).toLocaleDateString(ar?'ar-SA':'he-IL'):''}</span>
+                                            {(pay.receiptNumber || pay.bookNumber) && (
+                                              <span style={{color:'#0369a1',fontWeight:700}}>
+                                                {pay.receiptNumber && `📄${pay.receiptNumber}`}
+                                                {pay.receiptNumber && pay.bookNumber && ' · '}
+                                                {pay.bookNumber && `📘${pay.bookNumber}`}
+                                              </span>
+                                            )}
                                             {pay.note && <span style={{color:'#64748b'}}>· {pay.note}</span>}
                                             {!isViewer && (
                                               <button onClick={()=>deletePayment(m.id,pay.id)}

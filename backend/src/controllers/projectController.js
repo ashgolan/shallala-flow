@@ -41,17 +41,20 @@ const getProjects = async (req, res) => {
 // POST /admin/projects
 const createProject = async (req, res) => {
   try {
-    const { name, description, date, lat, lng, locationNote, members, status } = req.body;
+    const { name, description, date, lat, lng, locationNote, members, status, customMembers } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'اسم المشروع مطلوب' });
     const project = await Project.create({
       name: name.trim(), description: description||'',
       date: date ? new Date(date) : new Date(),
       lat: lat||null, lng: lng||null, locationNote: locationNote||'',
       members: (members||[]).map(m => ({
-        farmerId: m.farmerId, amount: parseAmountOrNull(m.amount),
+        farmerId: m.farmerId || undefined,
+        memberName: m.memberName || '',
+        amount: parseAmountOrNull(m.amount),
         invoiced: !!m.invoiced, payments: [],
       })),
       status: status||'active',
+      customMembers: !!customMembers,
     });
     return res.status(201).json({ success: true, id: project._id.toString() });
   } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم: ' + err.message }); }
@@ -60,13 +63,16 @@ const createProject = async (req, res) => {
 // PUT /admin/projects/:projectId
 const updateProject = async (req, res) => {
   try {
-    const { name, description, date, lat, lng, locationNote, status } = req.body;
-    await Project.findByIdAndUpdate(req.params.projectId, {
+    const { name, description, date, lat, lng, locationNote, status, customMembers } = req.body;
+    const update = {
       name: name?.trim(), description: description||'',
       date: date ? new Date(date) : undefined,
       lat: lat||null, lng: lng||null, locationNote: locationNote||'',
       status: status||'active',
-    });
+    };
+    // ✅ نحدّث customMembers فقط إذا أُرسلت صراحةً، حتى لا نصفّرها بالخطأ بتعديلات لا تشملها
+    if (customMembers !== undefined) update.customMembers = !!customMembers;
+    await Project.findByIdAndUpdate(req.params.projectId, update);
     return res.json({ success: true });
   } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
@@ -82,14 +88,22 @@ const deleteProject = async (req, res) => {
 // POST /admin/projects/:projectId/members — إضافة مشترك
 const addMember = async (req, res) => {
   try {
-    const { farmerId, amount } = req.body;
-    if (!farmerId) return res.status(400).json({ error: 'farmerId مطلوب' });
+    const { farmerId, memberName, amount } = req.body;
     const project = await Project.findById(req.params.projectId);
     if (!project) return res.status(404).json({ error: 'المشروع غير موجود' });
-    const exists = project.members.find(m => m.farmerId.toString() === farmerId);
-    if (exists) return res.status(409).json({ error: 'المزارع موجود مسبقاً في المشروع' });
-    // ✅ إذا لم يُرسل مبلغ (أو أُرسل فارغاً) يبقى المبلغ "غير محدد" (null) بدل فرضه صفر
-    project.members.push({ farmerId, amount: parseAmountOrNull(amount), invoiced: false, payments: [] });
+
+    if (project.customMembers) {
+      // مشروع بأسماء حرة — لا يوجد ربط بقائمة المزارعين
+      if (!memberName?.trim()) return res.status(400).json({ error: 'اسم المشترك مطلوب' });
+      const dup = project.members.find(m => (m.memberName||'').trim().toLowerCase() === memberName.trim().toLowerCase());
+      if (dup) return res.status(409).json({ error: 'المشترك موجود مسبقاً في المشروع' });
+      project.members.push({ memberName: memberName.trim(), amount: parseAmountOrNull(amount), invoiced: false, payments: [] });
+    } else {
+      if (!farmerId) return res.status(400).json({ error: 'farmerId مطلوب' });
+      const exists = project.members.find(m => m.farmerId?.toString() === farmerId);
+      if (exists) return res.status(409).json({ error: 'المزارع موجود مسبقاً في المشروع' });
+      project.members.push({ farmerId, amount: parseAmountOrNull(amount), invoiced: false, payments: [] });
+    }
     await project.save();
     return res.json({ success: true });
   } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
@@ -98,7 +112,7 @@ const addMember = async (req, res) => {
 // PUT /admin/projects/:projectId/members/:memberId
 const updateMember = async (req, res) => {
   try {
-    const { amount, invoiced } = req.body;
+    const { amount, invoiced, memberName } = req.body;
     const project = await Project.findById(req.params.projectId);
     if (!project) return res.status(404).json({ error: 'غير موجود' });
     const member = project.members.id(req.params.memberId);
@@ -106,6 +120,7 @@ const updateMember = async (req, res) => {
     // ✅ amount === null صراحةً تعني "أعِد الحالة إلى غير محدد"؛ amount === undefined تعني "لا تغيير"
     if (amount !== undefined) member.amount = parseAmountOrNull(amount);
     if (invoiced !== undefined) member.invoiced = !!invoiced;
+    if (memberName !== undefined) member.memberName = (memberName||'').trim();
     await project.save();
     return res.json({ success: true });
   } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
@@ -125,13 +140,19 @@ const deleteMember = async (req, res) => {
 // POST /admin/projects/:projectId/members/:memberId/payments
 const addPayment = async (req, res) => {
   try {
-    const { amount, date, note } = req.body;
+    const { amount, date, note, receiptNumber, bookNumber } = req.body;
     if (!amount || parseFloat(amount) <= 0) return res.status(400).json({ error: 'المبلغ مطلوب' });
     const project = await Project.findById(req.params.projectId);
     if (!project) return res.status(404).json({ error: 'غير موجود' });
     const member = project.members.id(req.params.memberId);
     if (!member) return res.status(404).json({ error: 'المشترك غير موجود' });
-    member.payments.push({ amount: parseFloat(amount), date: date ? new Date(date) : new Date(), note: note||'' });
+    member.payments.push({
+      amount: parseFloat(amount),
+      date: date ? new Date(date) : new Date(),
+      note: note||'',
+      receiptNumber: receiptNumber||'',
+      bookNumber: bookNumber||'',
+    });
     await project.save();
     return res.json({ success: true });
   } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
