@@ -60,7 +60,8 @@ export default function LoginPage({ onFarmerLogin, onAdminLogin }) {
     try {
       const res = await authAPI.adminLogin(idNumber, code, password);
       if (res.token) {
-        onAdminLogin(res.token, res.role || 'admin');
+        // ✅ نمرر أيضاً قائمة المشاريع المسموح للمراقب بإدارتها بالكامل (فارغة للمدير الرئيسي)
+        onAdminLogin(res.token, res.role || 'admin', res.allowedProjectIds || []);
       } else {
         setError(ar ? 'خطأ في الدخول' : 'שגיאה בכניסה');
       }

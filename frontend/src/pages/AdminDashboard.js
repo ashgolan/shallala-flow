@@ -11,13 +11,16 @@ import AdminDashboardPage from '../components/admin/AdminDashboardPage';
 import LangToggle         from '../components/shared/LangToggle';
 import AnnouncementBanner from '../components/shared/AnnouncementBanner';
 
-export default function AdminDashboard({ onLogout, adminRole='admin' }) {
+export default function AdminDashboard({ onLogout, adminRole='admin', allowedProjectIds=[] }) {
   const { lang }        = useLang();
   const ar              = lang === 'ar';
   const [tab, setTab]   = useState('farmers');
   const [sideOpen, setSideOpen] = useState(false);
 
   const handleLogout = () => { onLogout && onLogout(); onLogout(); };
+
+  // ✅ مراقب له صلاحية خاصة على مشروع واحد على الأقل يستطيع رؤية تبويب المشاريع حتى لو كان viewer عادي
+  const hasProjectAccess = adminRole === 'admin' || (allowedProjectIds && allowedProjectIds.length > 0);
 
   const allTabs = [
     { key:'farmers',   icon:'👨‍🌾', label: t('farmers', lang) },
@@ -32,6 +35,8 @@ export default function AdminDashboard({ onLogout, adminRole='admin' }) {
     ...(adminRole === 'admin' ? [{ key:'settings', icon:'⚙️', label: t('settingsTab', lang) }] : []),
   ];
 
+  // ✅ التبويبات المتاحة للمراقب العادي كما هي؛ تبويب المشاريع دايماً ظاهر (بما إن المراقب
+  // العادي أصلاً يشوفه بوضع قراءة فقط، والمراقب المُصرّح له بمشروع يشوفه بصلاحيات كاملة عليه)
   const TABS = adminRole === 'viewer'
     ? allTabs.filter(t => ['reports','payments','projects','dashboard'].includes(t.key))
     : allTabs;
@@ -131,7 +136,7 @@ export default function AdminDashboard({ onLogout, adminRole='admin' }) {
           {tab === 'reports'   && <AdminReports   adminRole={adminRole} />}
           {tab === 'gallery'   && <AdminGallery   adminRole={adminRole} />}
           {tab === 'payments'  && <AdminPayments  adminRole={adminRole} />}
-          {tab === 'projects'  && <AdminProjects  adminRole={adminRole} />}
+          {tab === 'projects'  && <AdminProjects  adminRole={adminRole} allowedProjectIds={allowedProjectIds} />}
           {tab === 'dashboard' && <AdminDashboardPage adminRole={adminRole} />}
           {tab === 'settings'  && adminRole === 'admin' && <AdminSettings />}
         </div>

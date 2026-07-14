@@ -578,11 +578,15 @@ function VatSettings({ ar, lang }) {
 function PrivilegedUsers({ lang, ar }) {
   const [users, setUsers]     = useState([]);
   const [farmers, setFarmers] = useState([]);
-  const [form, setForm]       = useState({ idNumber:'', role:'admin', label:'', password:'' });
+  // ✅ قائمة المشاريع (لاختيار المشاريع المسموح للمراقب بإدارتها بالكامل)
+  const [projects, setProjects] = useState([]);
+  const [form, setForm]       = useState({ idNumber:'', role:'admin', label:'', password:'', allowedProjectIds:[] });
   const [selectedFarmer, setSelectedFarmer] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editUser, setEditUser] = useState(null);
   const [newPass, setNewPassPriv] = useState('');
+  // ✅ قائمة المشاريع الجاري تعديلها بمودال تغيير كلمة المرور/الصلاحيات
+  const [editAllowedIds, setEditAllowedIds] = useState([]);
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState('');
   const [success, setSuccess] = useState('');
@@ -595,8 +599,30 @@ function PrivilegedUsers({ lang, ar }) {
   const load = () => privilegedAPI.getAll().then(d => setUsers(d.users || [])).catch(() => {});
   useEffect(() => {
     adminAPI.getFarmers().then(d => setFarmers(d.farmers || [])).catch(() => {});
+    adminAPI.getProjects().then(d => setProjects(d.projects || [])).catch(() => {});
   }, []);
-  const openEdit = (u) => { setEditUser(u); setNewPassPriv(''); setError(''); };
+
+  const openEdit = (u) => {
+    setEditUser(u);
+    setNewPassPriv('');
+    setEditAllowedIds(u.allowedProjectIds || []);
+    setError('');
+  };
+
+  const toggleEditProject = (projId) => {
+    setEditAllowedIds(prev =>
+      prev.includes(projId) ? prev.filter(id => id !== projId) : [...prev, projId]
+    );
+  };
+
+  const toggleFormProject = (projId) => {
+    setForm(prev => ({
+      ...prev,
+      allowedProjectIds: prev.allowedProjectIds.includes(projId)
+        ? prev.allowedProjectIds.filter(id => id !== projId)
+        : [...prev.allowedProjectIds, projId],
+    }));
+  };
 
   const saveEdit = async () => {
     if (!newPass) { setError(ar ? 'أدخل كلمة المرور الجديدة' : 'הזן סיסמה חדשה'); return; }
@@ -604,10 +630,15 @@ function PrivilegedUsers({ lang, ar }) {
     setSaving(true);
     setError('');
     try {
-      await privilegedAPI.update(editUser.id, { password: newPass, label: editUser.label, role: editUser.role });
+      await privilegedAPI.update(editUser.id, {
+        password: newPass, label: editUser.label, role: editUser.role,
+        // ✅ نحفظ قائمة المشاريع المسموحة كمان (فقط ذات معنى إذا كان الدور مراقب)
+        allowedProjectIds: editUser.role === 'viewer' ? editAllowedIds : [],
+      });
       setEditUser(null);
       setNewPassPriv('');
-      setSuccess('✅ ' + (ar ? 'تم تغيير كلمة المرور' : 'הסיסמה שונתה'));
+      setEditAllowedIds([]);
+      setSuccess('✅ ' + (ar ? 'تم الحفظ' : 'נשמר'));
       setTimeout(() => setSuccess(''), 3000);
       load();
     } catch(e) { setError(e.message); }
@@ -626,7 +657,7 @@ function PrivilegedUsers({ lang, ar }) {
     setError('');
     try {
       await privilegedAPI.add(form);
-      setForm({ idNumber:'', role:'admin', label:'', password:'' });
+      setForm({ idNumber:'', role:'admin', label:'', password:'', allowedProjectIds:[] });
       setSelectedFarmer(null);
       setShowForm(false);
       setSuccess('✅ ' + (ar ? 'تم إضافة المخوّل' : 'המשתמש נוסף'));
@@ -653,7 +684,7 @@ function PrivilegedUsers({ lang, ar }) {
           </p>
         </div>
         <button className="btn btn-primary btn-sm"
-          onClick={() => { setShowForm(v => !v); setError(''); setSelectedFarmer(null); setForm({ idNumber:'', role:'admin', label:'', password:'' }); }}>
+          onClick={() => { setShowForm(v => !v); setError(''); setSelectedFarmer(null); setForm({ idNumber:'', role:'admin', label:'', password:'', allowedProjectIds:[] }); }}>
           {showForm ? (ar ? '✕ إلغاء' : '✕ ביטול') : (ar ? '+ إضافة مخوّل' : '+ הוסף מורשה')}
         </button>
       </div>
@@ -673,7 +704,7 @@ function PrivilegedUsers({ lang, ar }) {
             </div>
             <div className="form-group">
               <label>{ar ? 'الدور' : 'תפקיד'} *</label>
-              <select value={form.role} onChange={e => setForm({...form, role: e.target.value})}>
+              <select value={form.role} onChange={e => setForm({...form, role: e.target.value, allowedProjectIds: e.target.value === 'viewer' ? form.allowedProjectIds : []})}>
                 <option value="admin">{ROLES.admin}</option>
                 <option value="viewer">{ROLES.viewer}</option>
               </select>
@@ -688,6 +719,35 @@ function PrivilegedUsers({ lang, ar }) {
               <input type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} placeholder="••••••••"/>
             </div>
           </div>
+
+          {/* ✅ اختيار المشاريع المسموح بإدارتها بالكامل — يظهر فقط عند اختيار دور "مراقب" */}
+          {form.role === 'viewer' && (
+            <div style={{ background:'#fffbeb', border:'1px solid #fde68a', borderRadius:10, padding:'12px 14px', marginTop:8, marginBottom:8 }}>
+              <label style={{ fontWeight:700, color:'#92400e', fontSize:13, display:'block', marginBottom:8 }}>
+                🏗️ {ar
+                  ? 'صلاحية كاملة على مشاريع محددة (إضافة/تعديل/حذف مشتركين ودفعات)'
+                  : 'הרשאה מלאה על פרויקטים ספציפיים (הוספה/עריכה/מחיקה של משתתפים ותשלומים)'}
+              </label>
+              {projects.length === 0 ? (
+                <p style={{ fontSize:12, color:'var(--text-muted)', margin:0 }}>
+                  {ar ? 'لا توجد مشاريع بعد' : 'אין פרויקטים עדיין'}
+                </p>
+              ) : (
+                <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:160, overflowY:'auto' }}>
+                  {projects.map(p => (
+                    <label key={p.id} style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, cursor:'pointer' }}>
+                      <input type="checkbox"
+                        checked={form.allowedProjectIds.includes(p.id)}
+                        onChange={() => toggleFormProject(p.id)}
+                        style={{ width:16, height:16, cursor:'pointer' }}/>
+                      <span>{p.name}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {error && <div className="alert alert-error mb-8">{error}</div>}
           <div className="flex-gap gap-8">
             <button type="submit" className="btn btn-primary" disabled={saving}>
@@ -708,12 +768,13 @@ function PrivilegedUsers({ lang, ar }) {
               <th>{t('idNumber', lang)}</th>
               <th>{ar ? 'الدور' : 'תפקיד'}</th>
               <th>{ar ? 'الاسم' : 'שם'}</th>
+              <th>{ar ? 'مشاريع مسموحة' : 'פרויקטים מורשים'}</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {users.length === 0 && (
-              <tr><td colSpan={4} style={{textAlign:'center', color:'var(--text-muted)', padding:20}}>
+              <tr><td colSpan={5} style={{textAlign:'center', color:'var(--text-muted)', padding:20}}>
                 {ar ? 'لا يوجد مخولون' : 'אין משתמשים מורשים'}
               </td></tr>
             )}
@@ -722,6 +783,13 @@ function PrivilegedUsers({ lang, ar }) {
                 <td><code style={{background:'var(--surface-2)', padding:'2px 8px', borderRadius:4}}>{u.idNumber}</code></td>
                 <td><span className="badge badge-blue">{ROLES[u.role] || u.role}</span></td>
                 <td style={{fontFamily:'Heebo,sans-serif', fontWeight:600}}>{u.label || '—'}</td>
+                <td style={{fontSize:12}}>
+                  {u.role === 'viewer' && (u.allowedProjectIds || []).length > 0
+                    ? (u.allowedProjectIds || [])
+                        .map(pid => projects.find(p => p.id === pid)?.name || pid)
+                        .join('، ')
+                    : <span style={{color:'var(--text-muted)'}}>—</span>}
+                </td>
                 <td>
                   <div className="flex-gap gap-4">
                     <button onClick={() => openEdit(u)}
@@ -740,11 +808,11 @@ function PrivilegedUsers({ lang, ar }) {
         </table>
       </div>
 
-      {/* Modal تغيير كلمة المرور */}
+      {/* Modal تغيير كلمة المرور + الصلاحيات */}
       {editUser && (
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center'}}>
-          <div style={{background:'#fff',borderRadius:16,padding:28,width:'100%',maxWidth:380,boxShadow:'0 8px 40px rgba(0,0,0,0.2)'}}>
-            <h3 className="mb-16">🔐 {ar ? 'تغيير كلمة مرور' : 'שינוי סיסמה'}</h3>
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div style={{background:'#fff',borderRadius:16,padding:28,width:'100%',maxWidth:420,maxHeight:'88vh',overflowY:'auto',boxShadow:'0 8px 40px rgba(0,0,0,0.2)'}}>
+            <h3 className="mb-16">🔐 {ar ? 'تعديل صلاحيات' : 'עריכת הרשאות'}</h3>
             <p style={{color:'var(--text-muted)',fontSize:13,marginBottom:16}}>
               {editUser.label || editUser.idNumber} — <span className="badge badge-blue">{ROLES[editUser.role]}</span>
             </p>
@@ -754,12 +822,46 @@ function PrivilegedUsers({ lang, ar }) {
                 onChange={e => setNewPassPriv(e.target.value)}
                 placeholder="••••••••" autoFocus/>
             </div>
+
+            {/* ✅ تعديل المشاريع المسموحة — فقط للمراقب */}
+            {editUser.role === 'viewer' && (
+              <div style={{ background:'#fffbeb', border:'1px solid #fde68a', borderRadius:10, padding:'12px 14px', marginBottom:14 }}>
+                <label style={{ fontWeight:700, color:'#92400e', fontSize:13, display:'block', marginBottom:8 }}>
+                  🏗️ {ar
+                    ? 'صلاحية كاملة على مشاريع محددة'
+                    : 'הרשאה מלאה על פרויקטים ספציפיים'}
+                </label>
+                {projects.length === 0 ? (
+                  <p style={{ fontSize:12, color:'var(--text-muted)', margin:0 }}>
+                    {ar ? 'لا توجد مشاريع بعد' : 'אין פרויקטים עדיין'}
+                  </p>
+                ) : (
+                  <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:160, overflowY:'auto' }}>
+                    {projects.map(p => (
+                      <label key={p.id} style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, cursor:'pointer' }}>
+                        <input type="checkbox"
+                          checked={editAllowedIds.includes(p.id)}
+                          onChange={() => toggleEditProject(p.id)}
+                          style={{ width:16, height:16, cursor:'pointer' }}/>
+                        <span>{p.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <p style={{ fontSize:11, color:'#92400e', marginTop:8, marginBottom:0 }}>
+                  ⚠️ {ar
+                    ? 'التغيير يتطلب من المستخدم تسجيل الخروج والدخول من جديد ليصبح فعالاً.'
+                    : 'השינוי דורש מהמשתמש להתנתק ולהתחבר מחדש כדי להיכנס לתוקף.'}
+                </p>
+              </div>
+            )}
+
             {error && <div className="alert alert-error mb-8">{error}</div>}
             <div className="flex-gap gap-8">
               <button className="btn btn-primary" onClick={saveEdit} disabled={saving}>
                 {saving ? t('saving', lang) : t('changeBtn', lang)}
               </button>
-              <button className="btn btn-outline" onClick={() => { setEditUser(null); setError(''); }}>
+              <button className="btn btn-outline" onClick={() => { setEditUser(null); setError(''); setEditAllowedIds([]); }}>
                 {t('cancel', lang)}
               </button>
             </div>

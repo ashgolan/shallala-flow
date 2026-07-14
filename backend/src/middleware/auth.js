@@ -48,6 +48,9 @@ const requireAdmin = (req, res, next) => {
       if (decoded.role !== 'viewer')
         return res.status(403).json({ error: 'غير مصرح' });
       req.adminRole = 'viewer';
+      // ✅ صلاحيات المشاريع الخاصة بهذا المراقب (محقونة داخل التوكن وقت الدخول)
+      req.viewerId = decoded.userId || null;
+      req.viewerAllowedProjectIds = decoded.allowedProjectIds || [];
       return next();
     } catch (viewerErr) {
       // ✅ إذا انتهت صلاحية token الـ viewer → أرسل expired فوراً
@@ -99,7 +102,12 @@ const requireViewer = (req, res, next) => {
     }
     try {
       const d = verifyViewerToken(token);
-      if (d.role === 'viewer') { req.adminRole = 'viewer'; return next(); }
+      if (d.role === 'viewer') {
+        req.adminRole = 'viewer';
+        req.viewerId = d.userId || null;
+        req.viewerAllowedProjectIds = d.allowedProjectIds || [];
+        return next();
+      }
     } catch (e) {
       if (e.name === 'TokenExpiredError')
         return res.status(401).json({ error: 'انتهت صلاحية الجلسة', expired: true });

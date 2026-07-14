@@ -155,11 +155,22 @@ const adminLogin = async (req, res) => {
     if (!farmer) return res.status(401).json({ error: 'بيانات غير صحيحة' });
 
     recordSuccess(req);
+
+    // ✅ للمراقب: نحقن الصلاحيات الخاصة (allowedProjectIds) داخل التوكن نفسه
+    const allowedProjectIds = privilegedUser.allowedProjectIds || [];
     const token = privilegedUser.role === 'admin'
       ? generateAdminToken()
-      : generateViewerToken();
+      : generateViewerToken({
+          userId: privilegedUser._id.toString(),
+          allowedProjectIds,
+        });
 
-    return res.json({ success: true, token, role: privilegedUser.role });
+    return res.json({
+      success: true,
+      token,
+      role: privilegedUser.role,
+      allowedProjectIds: privilegedUser.role === 'viewer' ? allowedProjectIds : [],
+    });
 
   } catch (err) {
     console.error('adminLogin:', err);

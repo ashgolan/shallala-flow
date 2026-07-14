@@ -48,6 +48,8 @@ const privilegedSchema = new mongoose.Schema({
     role:     { type: String, enum: ['admin', 'viewer'], required: true },
     label:    { type: String, default: '' },
     password: { type: String, required: true },
+    // ✅ للمراقبين فقط: قائمة IDs المشاريع المسموح له بإدارة مشتركيها ودفعاتها بالكامل
+    allowedProjectIds: { type: [String], default: [] },
   }],
 }, { collection: 'settings_privileged', timestamps: true });
 

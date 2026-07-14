@@ -9,8 +9,13 @@ const { getStorage } = require('../../config/firebase');
 
 router.use(requireAdmin);
 
+// ✅ يسمح لمراقب مصرّح له بمشروع معيّن بإدارة مشتركي/دفعات ذلك المشروع فقط
+//    (باقي المسارات — بما فيها إنشاء/تعديل/حذف المشروع نفسه — تبقى محظورة على المراقب)
+const isProjectMemberSubroute = (path) => /^\/projects\/[^/]+\/members(\/.*)?$/.test(path);
+
 router.use((req, res, next) => {
   if (req.adminRole === 'viewer' && req.method !== 'GET') {
+    if (isProjectMemberSubroute(req.path)) return next();
     return res.status(403).json({ error: 'غير مصرح — المراقب يمكنه القراءة فقط' });
   }
   next();
@@ -122,6 +127,8 @@ router.get('/privileged', async (req, res) => {
       idNumber: u.idNumber,
       role:     u.role,
       label:    u.label,
+      // ✅ المشاريع المسموح بإدارتها بالكامل (للمراقبين فقط)
+      allowedProjectIds: u.allowedProjectIds || [],
     }));
     return res.json({ users });
   } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
@@ -130,7 +137,7 @@ router.get('/privileged', async (req, res) => {
 router.post('/privileged', async (req, res) => {
   try {
     const { Privileged } = require('../models/Settings');
-    const { idNumber, role, label, password } = req.body;
+    const { idNumber, role, label, password, allowedProjectIds } = req.body;
     if (!idNumber || !role || !password) return res.status(400).json({ error: 'رقم الهوية والدور وكلمة المرور مطلوبة' });
     if (!['admin','viewer'].includes(role)) return res.status(400).json({ error: 'الدور غير صالح' });
     if (password.length < 6) return res.status(400).json({ error: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' });
@@ -139,7 +146,11 @@ router.post('/privileged', async (req, res) => {
     const exists = doc.users.find(u => u.idNumber.trim() === idNumber.trim());
     if (exists) return res.status(409).json({ error: 'رقم الهوية موجود مسبقاً' });
     const hashedPassword = await bcrypt.hash(password, 12);
-    doc.users.push({ idNumber: idNumber.trim(), role, label: label||'', password: hashedPassword });
+    doc.users.push({
+      idNumber: idNumber.trim(), role, label: label||'', password: hashedPassword,
+      // ✅ نخزن قائمة المشاريع فقط إذا كان الدور مراقب
+      allowedProjectIds: role === 'viewer' ? (allowedProjectIds || []) : [],
+    });
     doc.markModified('users');
     await doc.save();
     return res.json({ success: true });
@@ -149,7 +160,7 @@ router.post('/privileged', async (req, res) => {
 router.put('/privileged/:userId', async (req, res) => {
   try {
     const { Privileged } = require('../models/Settings');
-    const { password, label, role } = req.body;
+    const { password, label, role, allowedProjectIds } = req.body;
     const doc = await Privileged.findOne({ key: 'privileged' });
     if (!doc) return res.status(404).json({ error: 'غير موجود' });
     const user = doc.users.id(req.params.userId);
@@ -160,6 +171,7 @@ router.put('/privileged/:userId', async (req, res) => {
     }
     if (label !== undefined) user.label = label;
     if (role) user.role = role;
+    if (allowedProjectIds !== undefined) user.allowedProjectIds = allowedProjectIds;
     doc.markModified('users');
     await doc.save();
     return res.json({ success: true });

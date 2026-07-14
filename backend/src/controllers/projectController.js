@@ -21,6 +21,13 @@ const parseAmountOrNull = (v) => {
   return isNaN(f) ? null : f;
 };
 
+// ✅ هل هذا الطلب (مدير أو مراقب مصرّح له) يقدر يدير مشتركي/دفعات هذا المشروع؟
+const canManageProject = (req, projectId) => {
+  if (req.adminRole === 'admin') return true;
+  const allowed = req.viewerAllowedProjectIds || [];
+  return allowed.includes((projectId || '').toString());
+};
+
 // GET /admin/projects
 const getProjects = async (req, res) => {
   try {
@@ -70,7 +77,6 @@ const updateProject = async (req, res) => {
       lat: lat||null, lng: lng||null, locationNote: locationNote||'',
       status: status||'active',
     };
-    // ✅ نحدّث customMembers فقط إذا أُرسلت صراحةً، حتى لا نصفّرها بالخطأ بتعديلات لا تشملها
     if (customMembers !== undefined) update.customMembers = !!customMembers;
     await Project.findByIdAndUpdate(req.params.projectId, update);
     return res.json({ success: true });
@@ -88,12 +94,14 @@ const deleteProject = async (req, res) => {
 // POST /admin/projects/:projectId/members — إضافة مشترك
 const addMember = async (req, res) => {
   try {
+    if (!canManageProject(req, req.params.projectId))
+      return res.status(403).json({ error: 'غير مصرح لك بإدارة هذا المشروع' });
+
     const { farmerId, memberName, amount } = req.body;
     const project = await Project.findById(req.params.projectId);
     if (!project) return res.status(404).json({ error: 'المشروع غير موجود' });
 
     if (project.customMembers) {
-      // مشروع بأسماء حرة — لا يوجد ربط بقائمة المزارعين
       if (!memberName?.trim()) return res.status(400).json({ error: 'اسم المشترك مطلوب' });
       const dup = project.members.find(m => (m.memberName||'').trim().toLowerCase() === memberName.trim().toLowerCase());
       if (dup) return res.status(409).json({ error: 'المشترك موجود مسبقاً في المشروع' });
@@ -112,12 +120,14 @@ const addMember = async (req, res) => {
 // PUT /admin/projects/:projectId/members/:memberId
 const updateMember = async (req, res) => {
   try {
+    if (!canManageProject(req, req.params.projectId))
+      return res.status(403).json({ error: 'غير مصرح لك بإدارة هذا المشروع' });
+
     const { amount, invoiced, memberName } = req.body;
     const project = await Project.findById(req.params.projectId);
     if (!project) return res.status(404).json({ error: 'غير موجود' });
     const member = project.members.id(req.params.memberId);
     if (!member) return res.status(404).json({ error: 'المشترك غير موجود' });
-    // ✅ amount === null صراحةً تعني "أعِد الحالة إلى غير محدد"؛ amount === undefined تعني "لا تغيير"
     if (amount !== undefined) member.amount = parseAmountOrNull(amount);
     if (invoiced !== undefined) member.invoiced = !!invoiced;
     if (memberName !== undefined) member.memberName = (memberName||'').trim();
@@ -129,6 +139,9 @@ const updateMember = async (req, res) => {
 // DELETE /admin/projects/:projectId/members/:memberId
 const deleteMember = async (req, res) => {
   try {
+    if (!canManageProject(req, req.params.projectId))
+      return res.status(403).json({ error: 'غير مصرح لك بإدارة هذا المشروع' });
+
     const project = await Project.findById(req.params.projectId);
     if (!project) return res.status(404).json({ error: 'غير موجود' });
     project.members = project.members.filter(m => m._id.toString() !== req.params.memberId);
@@ -140,6 +153,9 @@ const deleteMember = async (req, res) => {
 // POST /admin/projects/:projectId/members/:memberId/payments
 const addPayment = async (req, res) => {
   try {
+    if (!canManageProject(req, req.params.projectId))
+      return res.status(403).json({ error: 'غير مصرح لك بإدارة هذا المشروع' });
+
     const { amount, date, note, receiptNumber, bookNumber } = req.body;
     if (!amount || parseFloat(amount) <= 0) return res.status(400).json({ error: 'المبلغ مطلوب' });
     const project = await Project.findById(req.params.projectId);
@@ -161,6 +177,9 @@ const addPayment = async (req, res) => {
 // DELETE /admin/projects/:projectId/members/:memberId/payments/:paymentId
 const deletePayment = async (req, res) => {
   try {
+    if (!canManageProject(req, req.params.projectId))
+      return res.status(403).json({ error: 'غير مصرح لك بإدارة هذا المشروع' });
+
     const project = await Project.findById(req.params.projectId);
     if (!project) return res.status(404).json({ error: 'غير موجود' });
     const member = project.members.id(req.params.memberId);

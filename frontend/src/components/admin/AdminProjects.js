@@ -25,10 +25,12 @@ const parseGoogleCoords = (raw) => {
 const EMPTY_PROJECT = { name:'', description:'', date:'', lat:'', lng:'', gpsRaw:'', locationNote:'', status:'active', customMembers:false };
 const EMPTY_PAYMENT = { amount:'', date:new Date().toISOString().slice(0,10), note:'', receiptNumber:'', bookNumber:'' };
 
-export default function AdminProjects({ adminRole='admin' }) {
+// ✅ adminRole='admin' → صلاحية كاملة على كل شيء
+// ✅ adminRole='viewer' → صلاحية قراءة فقط، إلا للمشاريع الموجودة بـ allowedProjectIds (صلاحية كاملة على مشتركيها ودفعاتها فقط)
+export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] }) {
   const { lang } = useLang();
   const ar = lang === 'ar';
-  const isViewer = adminRole === 'viewer';
+  const isAdmin = adminRole === 'admin';
 
   const [projects,  setProjects]  = useState([]);
   const [farmers,   setFarmers]   = useState([]);
@@ -89,6 +91,12 @@ export default function AdminProjects({ adminRole='admin' }) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // ✅ هل عندي صلاحية كاملة (إضافة/تعديل/حذف مشتركين ودفعات) على هذا المشروع بالذات؟
+  const canManageMembers = (proj) => isAdmin || (proj && allowedProjectIds.includes(proj.id));
+
+  // ✅ هل أقدر أعدّل/أحذف المشروع نفسه (الاسم، الموقع، الحالة)؟ — حصري للمدير الرئيسي فقط
+  const canManageProjectItself = isAdmin;
 
   // حسابات المشروع
   const calcProject = (proj) => {
@@ -233,8 +241,8 @@ export default function AdminProjects({ adminRole='admin' }) {
   };
 
   // تعديل مبلغ مشترك (تحديد المبلغ لأول مرة، أو تغييره لاحقاً)
-  const startEditAmount = (m) => {
-    if (isViewer) return;
+  const startEditAmount = (m, proj) => {
+    if (!canManageMembers(proj)) return;
     setEditAmountId(m.id);
     setEditAmountVal(m.amount === null || m.amount === undefined ? '' : String(m.amount));
   };
@@ -372,8 +380,8 @@ export default function AdminProjects({ adminRole='admin' }) {
     <div>
       <MapModal />
 
-      {/* ── Modal: إضافة/تعديل مشروع ── */}
-      {showForm && (
+      {/* ── Modal: إضافة/تعديل مشروع ── (حصري للمدير الرئيسي) */}
+      {showForm && canManageProjectItself && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
           <div style={{background:'#fff',borderRadius:20,padding:28,maxWidth:540,width:'100%',maxHeight:'90vh',overflowY:'auto',boxShadow:'0 16px 60px rgba(0,0,0,0.3)'}}>
             <h3 style={{margin:'0 0 20px',fontSize:18,color:'var(--primary)'}}>
@@ -647,7 +655,7 @@ export default function AdminProjects({ adminRole='admin' }) {
       {/* ── رأس الصفحة ── */}
       <div className="flex-between mb-20" style={{flexWrap:'wrap',gap:12}}>
         <h2 style={{margin:0}}>🏗️ {ar?'المشاريع':'פרויקטים'}</h2>
-        {!isViewer && (
+        {canManageProjectItself && (
           <button className="btn btn-primary" onClick={openAdd}>
             + {ar?'مشروع جديد':'פרויקט חדש'}
           </button>
@@ -666,6 +674,7 @@ export default function AdminProjects({ adminRole='admin' }) {
           {projects.map(proj => {
             const { totalRequired, totalPaid, remaining, pct } = calcProject(proj);
             const isOpen = openProj?.id === proj.id;
+            const canManage = canManageMembers(proj); // ✅ صلاحية إدارة مشتركي/دفعات *هذا* المشروع تحديداً
 
             return (
               <div key={proj.id} className="card" style={{padding:0,overflow:'hidden'}}>
@@ -714,8 +723,8 @@ export default function AdminProjects({ adminRole='admin' }) {
                         </div>
                         <div style={{fontSize:10,color:'var(--text-muted)',textAlign:'center',marginTop:2}}>{pct}%</div>
                       </div>
-                      {/* أزرار التعديل */}
-                      {!isViewer && (
+                      {/* أزرار التعديل — حصرية للمدير الرئيسي (تعديل/حذف المشروع نفسه) */}
+                      {canManageProjectItself && (
                         <div className="flex-gap gap-4" onClick={e=>e.stopPropagation()}>
                           <button onClick={()=>openEdit(proj)} style={{width:28,height:28,borderRadius:7,border:'1.5px solid var(--border)',background:'var(--surface-2)',color:'var(--primary)',cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:13}}
                             onMouseEnter={e=>{e.currentTarget.style.background='var(--primary)';e.currentTarget.style.color='#fff';}}
@@ -736,7 +745,8 @@ export default function AdminProjects({ adminRole='admin' }) {
                       <strong style={{fontSize:14,color:'var(--primary)'}}>
                         👥 {ar?'المشتركون':'משתתפים'} ({proj.members.length})
                       </strong>
-                      {!isViewer && (
+                      {/* ✅ زر إضافة مشترك — يظهر للمدير أو للمراقب المصرّح له بهذا المشروع تحديداً */}
+                      {canManage && (
                         <button className="btn btn-outline btn-sm" onClick={()=>openAddMember(proj)}>
                           + {ar?'إضافة مشترك':'הוסף משתתף'}
                         </button>
@@ -757,7 +767,7 @@ export default function AdminProjects({ adminRole='admin' }) {
                             <th style={{padding:'8px 12px',textAlign:'center',fontWeight:800,color:'#dc2626'}}>{ar?'المتبقي':'נותר'}</th>
                             <th style={{padding:'8px 12px',textAlign:'center',fontWeight:800}}>{ar?'فاتورة':'חשבונית'}</th>
                             <th style={{padding:'8px 12px',textAlign:'center',fontWeight:800}}>{ar?'الدفعات':'תשלומים'}</th>
-                            {!isViewer && <th style={{padding:'8px 12px',width:80}}></th>}
+                            {canManage && <th style={{padding:'8px 12px',width:80}}></th>}
                           </tr>
                         </thead>
                         <tbody>
@@ -786,15 +796,15 @@ export default function AdminProjects({ adminRole='admin' }) {
                                           style={{background:'none',border:'none',color:'#dc2626',cursor:'pointer',fontSize:14,padding:0}}>✕</button>
                                       </div>
                                     ) : hasAmount(m) ? (
-                                      <span onClick={()=>startEditAmount(m)}
-                                        style={{cursor:isViewer?'default':'pointer'}}
-                                        title={!isViewer?(ar?'اضغط للتعديل':'לחץ לעריכה'):''}>
+                                      <span onClick={()=>startEditAmount(m, proj)}
+                                        style={{cursor:canManage?'pointer':'default'}}
+                                        title={canManage?(ar?'اضغط للتعديل':'לחץ לעריכה'):''}>
                                         ₪{(m.amount||0).toLocaleString()}
                                       </span>
                                     ) : (
-                                      <span onClick={()=>startEditAmount(m)}
-                                        style={{cursor:isViewer?'default':'pointer',background:'#fef3c7',color:'#92400e',padding:'3px 10px',borderRadius:8,fontSize:12,fontWeight:700,display:'inline-block'}}
-                                        title={!isViewer?(ar?'اضغط لتحديد المبلغ':'לחץ לקביעת סכום'):''}>
+                                      <span onClick={()=>startEditAmount(m, proj)}
+                                        style={{cursor:canManage?'pointer':'default',background:'#fef3c7',color:'#92400e',padding:'3px 10px',borderRadius:8,fontSize:12,fontWeight:700,display:'inline-block'}}
+                                        title={canManage?(ar?'اضغط لتحديد المبلغ':'לחץ לקביעת סכום'):''}>
                                         ⏳ {ar?'غير محدد':'לא ידוע'}
                                       </span>
                                     )}
@@ -812,7 +822,7 @@ export default function AdminProjects({ adminRole='admin' }) {
                                     )}
                                   </td>
                                   <td style={{padding:'10px 12px',textAlign:'center'}}>
-                                    {isViewer ? (
+                                    {!canManage ? (
                                       <span style={{fontSize:16}}>{m.invoiced?'✅':'○'}</span>
                                     ) : (
                                       <button onClick={()=>toggleInvoiced(m.id, m.invoiced)}
@@ -827,7 +837,7 @@ export default function AdminProjects({ adminRole='admin' }) {
                                       <span style={{fontSize:12,color:'var(--text-muted)'}}>
                                         {m.payments.length} {ar?'دفعة':'תשלומים'}
                                       </span>
-                                      {!isViewer && (
+                                      {canManage && (
                                         <button onClick={()=>{setOpenProj(proj);setPayModal({projectId:proj.id,memberId:m.id,farmerName:memberDisplayName(m)});}}
                                           style={{width:24,height:24,borderRadius:6,border:'1.5px solid #bbf7d0',background:'#f0fdf4',color:'var(--primary)',cursor:'pointer',fontSize:13,display:'inline-flex',alignItems:'center',justifyContent:'center',fontWeight:900}}>
                                           +
@@ -835,7 +845,7 @@ export default function AdminProjects({ adminRole='admin' }) {
                                       )}
                                     </div>
                                   </td>
-                                  {!isViewer && (
+                                  {canManage && (
                                     <td style={{padding:'10px 12px'}}>
                                       <button onClick={()=>deleteMember(m.id)}
                                         style={{width:26,height:26,borderRadius:6,border:'1.5px solid #fca5a5',background:'#fff1f2',color:'#dc2626',cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:12}}
@@ -847,7 +857,7 @@ export default function AdminProjects({ adminRole='admin' }) {
                                 {/* الدفعات */}
                                 {m.payments.length > 0 && (
                                   <tr>
-                                    <td colSpan={isViewer?6:7} style={{padding:'0 12px 10px 12px',background:mi%2===0?'#fff':'#f9fafb'}}>
+                                    <td colSpan={canManage?7:6} style={{padding:'0 12px 10px 12px',background:mi%2===0?'#fff':'#f9fafb'}}>
                                       <div style={{display:'flex',flexWrap:'wrap',gap:6,paddingRight:16}}>
                                         {m.payments.map(pay => (
                                           <div key={pay.id} style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:8,padding:'4px 10px',fontSize:12,display:'flex',alignItems:'center',gap:6}}>
@@ -861,7 +871,7 @@ export default function AdminProjects({ adminRole='admin' }) {
                                               </span>
                                             )}
                                             {pay.note && <span style={{color:'#64748b'}}>· {pay.note}</span>}
-                                            {!isViewer && (
+                                            {canManage && (
                                               <button onClick={()=>deletePayment(m.id,pay.id)}
                                                 style={{background:'none',border:'none',color:'#dc2626',cursor:'pointer',fontSize:13,padding:0,lineHeight:1}}>✕</button>
                                             )}
@@ -894,7 +904,7 @@ export default function AdminProjects({ adminRole='admin' }) {
                               <td style={{padding:'10px 12px',textAlign:'center',color:'#fff',fontSize:13}}>
                                 {proj.members.filter(m=>m.invoiced).length}/{proj.members.length} ✅
                               </td>
-                              <td colSpan={isViewer?1:2}/>
+                              <td colSpan={canManage?2:1}/>
                             </tr>
                           </tfoot>
                         )}

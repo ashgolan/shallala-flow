@@ -12,14 +12,18 @@ export default function App() {
   const [view,      setView]      = useState('loading');
   const [farmer,    setFarmer]    = useState(null);
   const [adminRole, setAdminRole] = useState('admin');
+  // ✅ قائمة المشاريع المسموح للمراقب بإدارتها بالكامل (فارغة للمدير الرئيسي أو المراقب العادي)
+  const [allowedProjectIds, setAllowedProjectIds] = useState([]);
   const idleTimer = useRef(null);
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem('shl_token');
     localStorage.removeItem('shl_farmer');
     localStorage.removeItem('shl_admin');
+    localStorage.removeItem('shl_allowed_projects');
     setFarmer(null);
     setAdminRole('admin');
+    setAllowedProjectIds([]);
     setView('login');
     if (idleTimer.current) clearTimeout(idleTimer.current);
   }, []);
@@ -48,11 +52,15 @@ export default function App() {
     const token       = localStorage.getItem('shl_token');
     const savedAdmin  = localStorage.getItem('shl_admin');
     const savedFarmer = localStorage.getItem('shl_farmer');
+    const savedAllowed = localStorage.getItem('shl_allowed_projects');
 
     if (!token) { setView('login'); return; }
 
     if (savedAdmin) {
       setAdminRole(savedAdmin);
+      if (savedAllowed) {
+        try { setAllowedProjectIds(JSON.parse(savedAllowed)); } catch { setAllowedProjectIds([]); }
+      }
       setView('admin');
     } else if (savedFarmer) {
       try {
@@ -77,15 +85,19 @@ export default function App() {
     localStorage.setItem('shl_token',  token);
     localStorage.setItem('shl_farmer', JSON.stringify(farmerData));
     localStorage.removeItem('shl_admin');
+    localStorage.removeItem('shl_allowed_projects');
     setFarmer(farmerData);
     setView('farmer');
   };
 
-  const handleAdminLogin = (token, role = 'admin') => {
+  // ✅ يستقبل الآن allowedProjectIds كمان (فارغة افتراضياً)
+  const handleAdminLogin = (token, role = 'admin', projectIds = []) => {
     localStorage.setItem('shl_token', token);
     localStorage.setItem('shl_admin', role);
+    localStorage.setItem('shl_allowed_projects', JSON.stringify(projectIds || []));
     localStorage.removeItem('shl_farmer');
     setAdminRole(role);
+    setAllowedProjectIds(projectIds || []);
     setView('admin');
   };
 
@@ -104,7 +116,7 @@ export default function App() {
 
   if (view === 'admin') return (
     <LangProvider>
-      <AdminDashboard adminRole={adminRole} onLogout={handleLogout} />
+      <AdminDashboard adminRole={adminRole} allowedProjectIds={allowedProjectIds} onLogout={handleLogout} />
     </LangProvider>
   );
 

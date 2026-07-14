@@ -10,8 +10,9 @@ const generateFarmerToken = (payload) =>
 const generateAdminToken = () =>
   jwt.sign({ role: 'admin' }, ADMIN_SECRET, { expiresIn: '8h' });
 
-const generateViewerToken = () =>
-  jwt.sign({ role: 'viewer' }, VIEWER_SECRET, { expiresIn: '8h' });
+// ✅ يقبل الآن حمولة إضافية اختيارية: { userId, allowedProjectIds }
+const generateViewerToken = (payload = {}) =>
+  jwt.sign({ role: 'viewer', ...payload }, VIEWER_SECRET, { expiresIn: '8h' });
 
 const verifyFarmerToken = (token) => jwt.verify(token, FARMER_SECRET);
 const verifyAdminToken  = (token) => jwt.verify(token, ADMIN_SECRET);
