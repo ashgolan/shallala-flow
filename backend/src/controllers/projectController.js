@@ -48,7 +48,7 @@ const getProjects = async (req, res) => {
 // POST /admin/projects
 const createProject = async (req, res) => {
   try {
-    const { name, description, date, lat, lng, locationNote, members, status, customMembers } = req.body;
+    const { name, description, date, lat, lng, locationNote, members, status, customMembers, targetAmount } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'اسم المشروع مطلوب' });
     const project = await Project.create({
       name: name.trim(), description: description||'',
@@ -62,6 +62,7 @@ const createProject = async (req, res) => {
       })),
       status: status||'active',
       customMembers: !!customMembers,
+      targetAmount: parseAmountOrNull(targetAmount),
     });
     return res.status(201).json({ success: true, id: project._id.toString() });
   } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم: ' + err.message }); }
@@ -70,7 +71,7 @@ const createProject = async (req, res) => {
 // PUT /admin/projects/:projectId
 const updateProject = async (req, res) => {
   try {
-    const { name, description, date, lat, lng, locationNote, status, customMembers } = req.body;
+    const { name, description, date, lat, lng, locationNote, status, customMembers, targetAmount } = req.body;
     const update = {
       name: name?.trim(), description: description||'',
       date: date ? new Date(date) : undefined,
@@ -78,15 +79,35 @@ const updateProject = async (req, res) => {
       status: status||'active',
     };
     if (customMembers !== undefined) update.customMembers = !!customMembers;
+    // ✅ نحدّث targetAmount فقط إذا أُرسل صراحةً (undefined = لا تغيير، null = مسح القيمة)
+    if (targetAmount !== undefined) update.targetAmount = parseAmountOrNull(targetAmount);
     await Project.findByIdAndUpdate(req.params.projectId, update);
     return res.json({ success: true });
   } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
 
 // DELETE /admin/projects/:projectId
+// DELETE /admin/projects/:projectId
 const deleteProject = async (req, res) => {
   try {
     await Project.findByIdAndDelete(req.params.projectId);
+    // ✅ تنظيف تلقائي: إزالة هذا المشروع من قوائم allowedProjectIds لكل المستخدمين المراقبين
+    //    (يمنع تراكم مراجع "يتيمة" لمشاريع محذوفة)
+    const { Privileged } = require('../models/Settings');
+    const doc = await Privileged.findOne({ key: 'privileged' });
+    if (doc) {
+      let changed = false;
+      doc.users.forEach(u => {
+        if (u.allowedProjectIds?.includes(req.params.projectId)) {
+          u.allowedProjectIds = u.allowedProjectIds.filter(id => id !== req.params.projectId);
+          changed = true;
+        }
+      });
+      if (changed) {
+        doc.markModified('users');
+        await doc.save();
+      }
+    }
     return res.json({ success: true });
   } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
@@ -102,10 +123,11 @@ const addMember = async (req, res) => {
     if (!project) return res.status(404).json({ error: 'المشروع غير موجود' });
 
     if (project.customMembers) {
+      // مشروع بأسماء حرة — لا يوجد ربط بقائمة المزارعين، ولا مبلغ فردي (الهدف عام لكامل المشروع)
       if (!memberName?.trim()) return res.status(400).json({ error: 'اسم المشترك مطلوب' });
       const dup = project.members.find(m => (m.memberName||'').trim().toLowerCase() === memberName.trim().toLowerCase());
       if (dup) return res.status(409).json({ error: 'المشترك موجود مسبقاً في المشروع' });
-      project.members.push({ memberName: memberName.trim(), amount: parseAmountOrNull(amount), invoiced: false, payments: [] });
+      project.members.push({ memberName: memberName.trim(), amount: null, invoiced: false, payments: [] });
     } else {
       if (!farmerId) return res.status(400).json({ error: 'farmerId مطلوب' });
       const exists = project.members.find(m => m.farmerId?.toString() === farmerId);
@@ -128,7 +150,8 @@ const updateMember = async (req, res) => {
     if (!project) return res.status(404).json({ error: 'غير موجود' });
     const member = project.members.id(req.params.memberId);
     if (!member) return res.status(404).json({ error: 'المشترك غير موجود' });
-    if (amount !== undefined) member.amount = parseAmountOrNull(amount);
+    // ✅ بمشاريع customMembers نتجاهل تعديل amount الفردي (الهدف عام لكامل المشروع فقط)
+    if (amount !== undefined && !project.customMembers) member.amount = parseAmountOrNull(amount);
     if (invoiced !== undefined) member.invoiced = !!invoiced;
     if (memberName !== undefined) member.memberName = (memberName||'').trim();
     await project.save();

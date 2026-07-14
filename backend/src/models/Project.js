@@ -11,7 +11,7 @@ const paymentSchema = new mongoose.Schema({
 const memberSchema = new mongoose.Schema({
   farmerId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Farmer', required: false }, // اختياري الآن
   memberName: { type: String, default: '' }, // اسم حر — يُستخدم فقط عندما لا يوجد farmerId (مشاريع customMembers)
-  amount:     { type: Number, default: null },   // المبلغ المطلوب — null = غير محدد بعد
+  amount:     { type: Number, default: null },   // المبلغ المطلوب الفردي — null = غير محدد بعد (لا يُستخدم في مشاريع customMembers)
   invoiced:   { type: Boolean, default: false }, // صدرت فاتورة
   payments:   { type: [paymentSchema], default: [] },
 }, { _id: true });
@@ -27,6 +27,9 @@ const projectSchema = new mongoose.Schema({
   status:        { type: String, enum: ['active','done','cancelled'], default: 'active' },
   // ✅ إذا true: المشتركون بأسماء حرة (غير مرتبطين بقائمة المزارعين)، وتظهر حقول رقم الوصل/الدفتر بالدفعات
   customMembers: { type: Boolean, default: false },
+  // ✅ المبلغ الإجمالي المطلوب لكامل المشروع — يُستخدم فقط عندما customMembers=true
+  //    (بدل تحديد مبلغ مطلوب لكل مشترك على حدة؛ كل شخص يدفع حسب قدرته من هذا الهدف العام)
+  targetAmount:  { type: Number, default: null },
 }, {
   timestamps: true,
   collection: 'projects',

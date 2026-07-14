@@ -22,8 +22,16 @@ const parseGoogleCoords = (raw) => {
   return null;
 };
 
-const EMPTY_PROJECT = { name:'', description:'', date:'', lat:'', lng:'', gpsRaw:'', locationNote:'', status:'active', customMembers:false };
+// ✅ تنسيق التاريخ بأرقام لاتينية وتقويم ميلادي دائماً (بدل الهجري/الأرقام الهندية الافتراضية لـ ar-SA)
+const formatDate = (dateVal, ar) => {
+  if (!dateVal) return '';
+  return new Date(dateVal).toLocaleDateString(ar ? 'ar-EG-u-nu-latn' : 'he-IL');
+};
+
+const EMPTY_PROJECT = { name:'', description:'', date:'', lat:'', lng:'', gpsRaw:'', locationNote:'', status:'active', customMembers:false, targetAmount:'' };
 const EMPTY_PAYMENT = { amount:'', date:new Date().toISOString().slice(0,10), note:'', receiptNumber:'', bookNumber:'' };
+// ✅ حقول الدفعة الأولى داخل مودال "إضافة مشترك" (لمشاريع customMembers فقط) — نفس شكل EMPTY_PAYMENT
+const EMPTY_FIRST_PAYMENT = { amount:'', date:new Date().toISOString().slice(0,10), note:'', receiptNumber:'', bookNumber:'' };
 
 // ✅ adminRole='admin' → صلاحية كاملة على كل شيء
 // ✅ adminRole='viewer' → صلاحية قراءة فقط، إلا للمشاريع الموجودة بـ allowedProjectIds (صلاحية كاملة على مشتركيها ودفعاتها فقط)
@@ -53,13 +61,16 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
   const [selFarmerId,     setSelFarmerId]     = useState('');
   const [selAmount,       setSelAmount]       = useState('');
   const [addingMember,    setAddingMember]    = useState(false);
+  const [addMemberErr,    setAddMemberErr]    = useState('');
   // بحث عن المزارع بالكتابة (بدل القائمة العادية) — للمشاريع العادية فقط
   const [memberSearch,    setMemberSearch]    = useState('');
   const [showMemberList,  setShowMemberList]  = useState(false);
   // اسم حر للمشترك — للمشاريع customMembers فقط
   const [customMemberName, setCustomMemberName] = useState('');
+  // ✅ حقول الدفعة الأولى (اختيارية) — تُدخل مع الاسم بنفس الخطوة لمشاريع customMembers
+  const [firstPayment, setFirstPayment] = useState(EMPTY_FIRST_PAYMENT);
 
-  // تعديل المبلغ المطلوب لمشترك موجود (بالضغط على الرقم بالجدول)
+  // تعديل المبلغ المطلوب لمشترك موجود (بالضغط على الرقم بالجدول) — للمشاريع العادية فقط
   const [editAmountId,    setEditAmountId]    = useState(null); // memberId الجاري تعديله
   const [editAmountVal,   setEditAmountVal]   = useState('');
 
@@ -95,15 +106,19 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
   // ✅ هل عندي صلاحية كاملة (إضافة/تعديل/حذف مشتركين ودفعات) على هذا المشروع بالذات؟
   const canManageMembers = (proj) => isAdmin || (proj && allowedProjectIds.includes(proj.id));
 
-  // ✅ هل أقدر أعدّل/أحذف المشروع نفسه (الاسم، الموقع، الحالة)؟ — حصري للمدير الرئيسي فقط
+  // ✅ هل أقدر أعدّل/أحذف المشروع نفسه (الاسم، الموقع، الحالة، الهدف الإجمالي)؟ — حصري للمدير الرئيسي
   const canManageProjectItself = isAdmin;
 
   // حسابات المشروع
+  // ✅ لمشاريع customMembers: "المطلوب" = الهدف الإجمالي للمشروع (targetAmount)، وليس مجموع مبالغ الأفراد
+  //    (لأن كل شخص يدفع حسب قدرته من دون مبلغ فردي محدد مسبقاً)
   const calcProject = (proj) => {
-    const totalRequired = proj.members.reduce((s,m) => s + (m.amount||0), 0);
-    const totalPaid     = proj.members.reduce((s,m) => s + m.payments.reduce((ss,p) => ss + (p.amount||0), 0), 0);
-    const remaining     = totalRequired - totalPaid;
-    const pct           = totalRequired > 0 ? Math.round(totalPaid/totalRequired*100) : 0;
+    const totalPaid = proj.members.reduce((s,m) => s + m.payments.reduce((ss,p) => ss + (p.amount||0), 0), 0);
+    const totalRequired = proj.customMembers
+      ? (proj.targetAmount || 0)
+      : proj.members.reduce((s,m) => s + (m.amount||0), 0);
+    const remaining = totalRequired - totalPaid;
+    const pct = totalRequired > 0 ? Math.round(totalPaid/totalRequired*100) : 0;
     return { totalRequired, totalPaid, remaining, pct };
   };
 
@@ -131,6 +146,7 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
       gpsRaw: (proj.lat&&proj.lng) ? `${proj.lat}, ${proj.lng}` : '',
       locationNote: proj.locationNote||'', status: proj.status||'active',
       customMembers: !!proj.customMembers,
+      targetAmount: proj.targetAmount != null ? String(proj.targetAmount) : '',
     });
     setLocMode('manual');
     setSelStation('');
@@ -169,6 +185,10 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
         locationNote: form.locationNote,
         status: form.status,
         customMembers: !!form.customMembers,
+        // ✅ الهدف الإجمالي — يُرسل فقط عندما تكون customMembers مفعّلة، وإلا يبقى null
+        targetAmount: form.customMembers
+          ? (form.targetAmount.trim() === '' ? null : parseFloat(form.targetAmount))
+          : null,
       };
       if (editProj) {
         await adminAPI.updateProject(editProj.id, payload);
@@ -196,6 +216,8 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
     setMemberSearch('');
     setShowMemberList(false);
     setCustomMemberName('');
+    setFirstPayment(EMPTY_FIRST_PAYMENT);
+    setAddMemberErr('');
     setAddMemberModal(true);
   };
 
@@ -206,9 +228,14 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
     setMemberSearch('');
     setShowMemberList(false);
     setCustomMemberName('');
+    setFirstPayment(EMPTY_FIRST_PAYMENT);
+    setAddMemberErr('');
   };
 
-  // إضافة مشترك (المبلغ اختياري — لو ترك فارغ يبقى "غير محدد" لحد ما يتحدد لاحقاً)
+  // إضافة مشترك
+  // ✅ للمشاريع العادية: نفس السلوك القديم بالضبط (مبلغ فردي اختياري، بدون دفعة).
+  // ✅ لمشاريع customMembers: الاسم + دفعة أولى اختيارية بنفس الخطوة —
+  //    إذا أُدخل مبلغ الدفعة الأولى، ننشئ المشترك ثم نضيف له الدفعة مباشرة بنداء تالٍ.
   const submitAddMember = async () => {
     const isCustom = !!openProj?.customMembers;
     if (isCustom) {
@@ -217,19 +244,64 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
       if (!selFarmerId) return;
     }
     setAddingMember(true);
+    setAddMemberErr('');
     try {
-      const amountToSend = selAmount.trim() === '' ? null : parseFloat(selAmount);
-      const payload = isCustom
-        ? { memberName: customMemberName.trim(), amount: amountToSend }
-        : { farmerId: selFarmerId, amount: amountToSend };
-      await adminAPI.addProjectMember(openProj.id, payload);
-      const updated = await adminAPI.getProjects();
-      setProjects(updated.projects||[]);
-      const proj = (updated.projects||[]).find(p => p.id === openProj.id);
-      if (proj) setOpenProj(proj);
-      closeAddMember();
-    } catch(e) { alert(e.message); }
-    finally { setAddingMember(false); }
+      if (isCustom) {
+        const createRes = await adminAPI.addProjectMember(openProj.id, { memberName: customMemberName.trim() });
+        const hasFirstPaymentAmount = firstPayment.amount.trim() !== '' && parseFloat(firstPayment.amount) > 0;
+
+        if (hasFirstPaymentAmount) {
+          // ✅ نجيب المشترك المُنشأ حديثاً من قائمة محدّثة (الـ backend لا يرجع memberId مباشرة بالإضافة)
+          const updated = await adminAPI.getProjects();
+          setProjects(updated.projects||[]);
+          const freshProj = (updated.projects||[]).find(p => p.id === openProj.id);
+          const newMember = freshProj?.members?.slice().reverse()
+            .find(m => (m.memberName||'').trim() === customMemberName.trim());
+
+          if (newMember) {
+            try {
+              await adminAPI.addProjectPayment(openProj.id, newMember.id, firstPayment);
+              const finalUpdated = await adminAPI.getProjects();
+              setProjects(finalUpdated.projects||[]);
+              setOpenProj((finalUpdated.projects||[]).find(p=>p.id===openProj.id)||null);
+              closeAddMember();
+              return;
+            } catch(payErr) {
+              // ✅ المشترك انضاف بنجاح لكن الدفعة الأولى فشلت — نبلّغ بوضوح بدل ما تختفي المشكلة
+              setOpenProj(freshProj || openProj);
+              setAddMemberErr(ar
+                ? `تمت إضافة المشترك بنجاح، لكن فشلت إضافة الدفعة الأولى: ${payErr.message}. يمكنك إضافتها يدوياً من زر "+" بجانب الدفعات.`
+                : `המשתתף נוסף בהצלחה, אך התשלום הראשון נכשל: ${payErr.message}. ניתן להוסיף אותו ידנית מכפתור "+" ליד התשלומים.`);
+              setAddingMember(false);
+              return;
+            }
+          } else {
+            setOpenProj(freshProj || openProj);
+            closeAddMember();
+            return;
+          }
+        } else {
+          const proj = (updated => (updated.projects||[]).find(p => p.id === openProj.id))(await adminAPI.getProjects());
+          const updated2 = await adminAPI.getProjects();
+          setProjects(updated2.projects||[]);
+          setOpenProj((updated2.projects||[]).find(p=>p.id===openProj.id)||null);
+          closeAddMember();
+          return;
+        }
+      } else {
+        const amountToSend = selAmount.trim() === '' ? null : parseFloat(selAmount);
+        await adminAPI.addProjectMember(openProj.id, { farmerId: selFarmerId, amount: amountToSend });
+        const updated = await adminAPI.getProjects();
+        setProjects(updated.projects||[]);
+        const proj = (updated.projects||[]).find(p => p.id === openProj.id);
+        if (proj) setOpenProj(proj);
+        closeAddMember();
+      }
+    } catch(e) {
+      setAddMemberErr(e.message);
+    } finally {
+      setAddingMember(false);
+    }
   };
 
   const deleteMember = async (memberId) => {
@@ -240,9 +312,9 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
     setOpenProj((updated.projects||[]).find(p=>p.id===openProj.id)||null);
   };
 
-  // تعديل مبلغ مشترك (تحديد المبلغ لأول مرة، أو تغييره لاحقاً)
+  // تعديل مبلغ مشترك — للمشاريع العادية فقط (customMembers لا تملك مبلغ فردي)
   const startEditAmount = (m, proj) => {
-    if (!canManageMembers(proj)) return;
+    if (!canManageMembers(proj) || proj.customMembers) return;
     setEditAmountId(m.id);
     setEditAmountVal(m.amount === null || m.amount === undefined ? '' : String(m.amount));
   };
@@ -302,7 +374,7 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
   // ✅ اسم المشترك للعرض: من المزارعين إذا فيه farmerId، وإلا من الاسم الحر (memberName)
   const memberDisplayName = (m) => m.farmerId ? farmerNameById(m.farmerId) : (m.memberName || '—');
 
-  // هل تم تحديد مبلغ لهذا المشترك؟ (null/undefined = غير محدد بعد)
+  // هل تم تحديد مبلغ لهذا المشترك؟ (null/undefined = غير محدد بعد) — للمشاريع العادية فقط
   const hasAmount = (m) => m.amount !== null && m.amount !== undefined;
 
   // المزارعون المتاحون للإضافة (غير مشتركين بالفعل بهذا المشروع) — للمشاريع العادية فقط
@@ -414,15 +486,33 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
               </div>
 
               {/* ── نوع المشتركين ── */}
-              <div style={{background:'#fffbeb',border:'1px solid #fde68a',borderRadius:10,padding:'10px 14px',marginBottom:14,display:'flex',alignItems:'center',gap:10}}>
-                <input type="checkbox" id="customMembersChk" checked={!!form.customMembers}
-                  onChange={e=>setForm({...form,customMembers:e.target.checked})}
-                  style={{width:18,height:18,cursor:'pointer'}}/>
-                <label htmlFor="customMembersChk" style={{cursor:'pointer',fontSize:13,fontWeight:700,color:'#92400e',margin:0}}>
-                  {ar
-                    ? '👤 مشتركون بأسماء حرة (غير مرتبطين بقائمة المزارعين) — تُفعّل حقول رقم الوصل ورقم الدفتر بالدفعات'
-                    : '👤 משתתפים בשמות חופשיים (לא מקושרים לרשימת החקלאים) — יופעלו שדות מספר קבלה ומספר פנקס'}
-                </label>
+              <div style={{background:'#fffbeb',border:'1px solid #fde68a',borderRadius:10,padding:'10px 14px',marginBottom:14}}>
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  <input type="checkbox" id="customMembersChk" checked={!!form.customMembers}
+                    onChange={e=>setForm({...form,customMembers:e.target.checked})}
+                    style={{width:18,height:18,cursor:'pointer'}}/>
+                  <label htmlFor="customMembersChk" style={{cursor:'pointer',fontSize:13,fontWeight:700,color:'#92400e',margin:0}}>
+                    {ar
+                      ? '👤 مشتركون بأسماء حرة (غير مرتبطين بقائمة المزارعين) — يدفع كل شخص حسب قدرته من هدف عام'
+                      : '👤 משתתפים בשמות חופשיים (לא מקושרים לרשימת החקלאים) — כל אחד משלם לפי יכולתו מיעד כללי'}
+                  </label>
+                </div>
+
+                {/* ✅ الهدف الإجمالي للمشروع — يظهر فقط عند تفعيل customMembers */}
+                {form.customMembers && (
+                  <div className="form-group" style={{margin:'12px 0 0'}}>
+                    <label style={{fontSize:12}}>{ar?'المبلغ الإجمالي المطلوب لكامل المشروع (₪)':'סכום כולל נדרש לכל הפרויקט (₪)'}</label>
+                    <input type="number" min="0" value={form.targetAmount}
+                      onChange={e=>setForm({...form,targetAmount:e.target.value})}
+                      placeholder={ar?'مثال: 30000':'לדוג׳: 30000'}
+                      style={{fontSize:16,fontWeight:700}}/>
+                    <div style={{fontSize:11,color:'#92400e',marginTop:4}}>
+                      {ar
+                        ? '💡 هذا هو الهدف العام للمشروع كامل — كل مشترك يدفع دفعات بحسب قدرته من دون مبلغ فردي محدد له.'
+                        : '💡 זהו היעד הכללי לכל הפרויקט — כל משתתף משלם תשלומים לפי יכולתו ללא סכום אישי קבוע.'}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* ── الموقع ── */}
@@ -504,23 +594,75 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
       {/* ── Modal: إضافة مشترك ── */}
       {addMemberModal && openProj && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
-          <div style={{background:'#fff',borderRadius:18,padding:28,maxWidth:400,width:'100%',boxShadow:'0 12px 50px rgba(0,0,0,0.25)'}}>
+          <div style={{background:'#fff',borderRadius:18,padding:28,maxWidth:420,width:'100%',maxHeight:'90vh',overflowY:'auto',boxShadow:'0 12px 50px rgba(0,0,0,0.25)'}}>
             <h3 style={{margin:'0 0 16px',color:'var(--primary)'}}>👤 {ar?'إضافة مشترك':'הוסף משתתף'}</h3>
 
             {openProj.customMembers ? (
-              /* ── مشروع بأسماء حرة: حقل نصي بسيط ── */
-              <div className="form-group">
-                <label>{ar?'اسم المشترك':'שם המשתתף'}</label>
-                <input
-                  value={customMemberName}
-                  onChange={e=>setCustomMemberName(e.target.value)}
-                  placeholder={ar?'اكتب اسم المشترك...':'הכנס שם משתתף...'}
-                  autoFocus
-                  style={{width:'100%'}}
-                />
-              </div>
+              /* ══════════════════════════════════════════════════
+                 ✅ مشروع بأسماء حرة: الاسم + دفعة أولى اختيارية بنفس الخطوة
+                 (بدل فتح مودال ثانٍ لاحقاً لإدخال أول دفعة)
+                 ══════════════════════════════════════════════════ */
+              <>
+                <div className="form-group">
+                  <label>{ar?'اسم المشترك':'שם המשתתף'} *</label>
+                  <input
+                    value={customMemberName}
+                    onChange={e=>setCustomMemberName(e.target.value)}
+                    placeholder={ar?'اكتب اسم المشترك...':'הכנס שם משתתף...'}
+                    autoFocus
+                    style={{width:'100%'}}
+                  />
+                </div>
+
+                <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:10,padding:'12px 14px',marginTop:6}}>
+                  <label style={{fontWeight:700,color:'var(--primary)',fontSize:13,display:'block',marginBottom:10}}>
+                    💳 {ar?'الدفعة الأولى (اختياري)':'תשלום ראשון (אופציונלי)'}
+                  </label>
+                  <div className="form-group" style={{margin:'0 0 10px'}}>
+                    <label style={{fontSize:12}}>{ar?'المبلغ (₪)':'סכום (₪)'}</label>
+                    <input type="number" min="0" value={firstPayment.amount}
+                      onChange={e=>setFirstPayment({...firstPayment, amount:e.target.value})}
+                      placeholder={ar?'اتركه فارغاً إن لم يدفع بعد':'השאר ריק אם עדיין לא שילם'}
+                      style={{fontSize:16,fontWeight:700,textAlign:'center'}}/>
+                  </div>
+                  {firstPayment.amount.trim() !== '' && (
+                    <>
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
+                        <div className="form-group" style={{margin:0}}>
+                          <label style={{fontSize:12}}>{ar?'التاريخ':'תאריך'}</label>
+                          <input type="date" value={firstPayment.date}
+                            onChange={e=>setFirstPayment({...firstPayment, date:e.target.value})}/>
+                        </div>
+                        <div className="form-group" style={{margin:0}}>
+                          <label style={{fontSize:12}}>{ar?'رقم الوصل':'מספר קבלה'}</label>
+                          <input value={firstPayment.receiptNumber}
+                            onChange={e=>setFirstPayment({...firstPayment, receiptNumber:e.target.value})}
+                            placeholder={ar?'مثال: 1024':'לדוג׳: 1024'}/>
+                        </div>
+                      </div>
+                      <div className="form-group" style={{margin:'0 0 10px'}}>
+                        <label style={{fontSize:12}}>{ar?'رقم الدفتر':'מספר פנקס'}</label>
+                        <input value={firstPayment.bookNumber}
+                          onChange={e=>setFirstPayment({...firstPayment, bookNumber:e.target.value})}
+                          placeholder={ar?'مثال: 3':'לדוג׳: 3'}/>
+                      </div>
+                      <div className="form-group" style={{margin:0}}>
+                        <label style={{fontSize:12}}>{ar?'ملاحظة':'הערה'}</label>
+                        <input value={firstPayment.note}
+                          onChange={e=>setFirstPayment({...firstPayment, note:e.target.value})}
+                          placeholder={ar?'اختياري...':'אופציונלי...'}/>
+                      </div>
+                    </>
+                  )}
+                  <div style={{fontSize:11,color:'var(--text-muted)',marginTop:8}}>
+                    {ar
+                      ? '💡 إذا دفع الآن، عبّي المبلغ وباقي التفاصيل هون مباشرة. لو لسا ما دفع، اتركها فارغة وتقدر تضيف دفعته من زر "+" بالجدول لاحقاً.'
+                      : '💡 אם שילם עכשיו, מלא את הסכום ושאר הפרטים כאן ישירות. אם עדיין לא שילם, השאר ריק ותוכל להוסיף את התשלום שלו מכפתור "+" בטבלה מאוחר יותר.'}
+                  </div>
+                </div>
+              </>
             ) : (
-              /* ── حقل بحث المزارع (بدل القائمة العادية) ── */
+              /* ── حقل بحث المزارع (بدل القائمة العادية) — للمشاريع العادية فقط ── */
               <div className="form-group" style={{position:'relative'}}>
                 <label>{ar?'اختر مزارع':'בחר חקלאי'}</label>
                 <input
@@ -580,17 +722,23 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
               </div>
             )}
 
-            <div className="form-group">
-              <label>{ar?'المبلغ المطلوب (₪)':'סכום נדרש (₪)'}</label>
-              <input type="number" value={selAmount} onChange={e=>setSelAmount(e.target.value)}
-                placeholder={ar?'اتركه فارغاً إن لم تعرفه بعد':'השאר ריק אם עדיין לא ידוע'} min="0"
-                style={{fontSize:18,fontWeight:700,textAlign:'center'}}/>
-              <div style={{fontSize:11,color:'var(--text-muted)',marginTop:4}}>
-                {ar?'💡 ما بتعرف المبلغ لسا؟ اتركه فارغاً — رح يظهر "غير محدد" وتقدر تحدده لاحقاً بالضغط عليه بالجدول.'
-                   :'💡 עדיין לא יודע את הסכום? השאר ריק — יוצג "לא ידוע" ותוכל לקבוע אותו מאוחר יותר בלחיצה בטבלה.'}
+            {/* حقل المبلغ الفردي — للمشاريع العادية فقط */}
+            {!openProj.customMembers && (
+              <div className="form-group">
+                <label>{ar?'المبلغ المطلوب (₪)':'סכום נדרש (₪)'}</label>
+                <input type="number" value={selAmount} onChange={e=>setSelAmount(e.target.value)}
+                  placeholder={ar?'اتركه فارغاً إن لم تعرفه بعد':'השאר ריק אם עדיין לא ידוע'} min="0"
+                  style={{fontSize:18,fontWeight:700,textAlign:'center'}}/>
+                <div style={{fontSize:11,color:'var(--text-muted)',marginTop:4}}>
+                  {ar?'💡 ما بتعرف المبلغ لسا؟ اتركه فارغاً — رح يظهر "غير محدد" وتقدر تحدده لاحقاً بالضغط عليه بالجدول.'
+                     :'💡 עדיין לא יודע את הסכום? השאר ריק — יוצג "לא ידוע" ותוכל לקבוע אותו מאוחר יותר בלחיצה בטבלה.'}
+                </div>
               </div>
-            </div>
-            <div className="flex-gap gap-12">
+            )}
+
+            {addMemberErr && <div className="alert alert-error mb-8" style={{marginTop:12}}>{addMemberErr}</div>}
+
+            <div className="flex-gap gap-12" style={{marginTop:16}}>
               <button className="btn btn-primary" onClick={submitAddMember}
                 disabled={addingMember || (openProj.customMembers ? !customMemberName.trim() : !selFarmerId)}>
                 {addingMember?'⏳':`✅ ${ar?'إضافة':'הוסף'}`}
@@ -603,7 +751,7 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
         </div>
       )}
 
-      {/* ── Modal: إضافة دفعة ── */}
+      {/* ── Modal: إضافة دفعة (لدفعات إضافية بعد الأولى) ── */}
       {payModal && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
           <div style={{background:'#fff',borderRadius:18,padding:28,maxWidth:380,width:'100%',boxShadow:'0 12px 50px rgba(0,0,0,0.25)'}}>
@@ -675,6 +823,7 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
             const { totalRequired, totalPaid, remaining, pct } = calcProject(proj);
             const isOpen = openProj?.id === proj.id;
             const canManage = canManageMembers(proj); // ✅ صلاحية إدارة مشتركي/دفعات *هذا* المشروع تحديداً
+            const isCustom = !!proj.customMembers;
 
             return (
               <div key={proj.id} className="card" style={{padding:0,overflow:'hidden'}}>
@@ -703,26 +852,35 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
                           📍 {ar?'الموقع':'מיקום'}
                         </button>
                       )}
-                      {/* الأعداد */}
-                      <div style={{textAlign:'center'}}>
-                        <div style={{fontSize:11,color:'var(--text-muted)'}}>{ar?'مطلوب':'נדרש'}</div>
-                        <div style={{fontWeight:800,fontSize:14}}>₪{totalRequired.toLocaleString()}</div>
-                      </div>
-                      <div style={{textAlign:'center'}}>
-                        <div style={{fontSize:11,color:'var(--text-muted)'}}>{ar?'مدفوع':'שולם'}</div>
-                        <div style={{fontWeight:800,fontSize:14,color:'#16a34a'}}>₪{totalPaid.toLocaleString()}</div>
-                      </div>
-                      <div style={{textAlign:'center'}}>
-                        <div style={{fontSize:11,color:'var(--text-muted)'}}>{ar?'متبقي':'נותר'}</div>
-                        <div style={{fontWeight:800,fontSize:14,color:remaining>0?'#dc2626':'#16a34a'}}>₪{remaining.toLocaleString()}</div>
-                      </div>
-                      {/* شريط التقدم */}
-                      <div style={{width:80}}>
-                        <div style={{height:6,borderRadius:3,background:'#e5e7eb',overflow:'hidden'}}>
-                          <div style={{height:'100%',borderRadius:3,background:pct>=100?'#16a34a':'var(--primary)',width:`${Math.min(pct,100)}%`,transition:'width 0.3s'}}/>
-                        </div>
-                        <div style={{fontSize:10,color:'var(--text-muted)',textAlign:'center',marginTop:2}}>{pct}%</div>
-                      </div>
+                      {/* إشارة "مطلوب" فارغ لمشروع customMembers بدون هدف محدد */}
+                      {isCustom && !proj.targetAmount ? (
+                        <span style={{background:'#fef3c7',color:'#92400e',padding:'2px 10px',borderRadius:8,fontSize:11,fontWeight:700}}>
+                          {ar?'⏳ لا يوجد هدف محدد':'⏳ אין יעד מוגדר'}
+                        </span>
+                      ) : (
+                        <>
+                          {/* الأعداد */}
+                          <div style={{textAlign:'center'}}>
+                            <div style={{fontSize:11,color:'var(--text-muted)'}}>{ar?'مطلوب':'נדרש'}</div>
+                            <div style={{fontWeight:800,fontSize:14}}>₪{totalRequired.toLocaleString()}</div>
+                          </div>
+                          <div style={{textAlign:'center'}}>
+                            <div style={{fontSize:11,color:'var(--text-muted)'}}>{ar?'مدفوع':'שולם'}</div>
+                            <div style={{fontWeight:800,fontSize:14,color:'#16a34a'}}>₪{totalPaid.toLocaleString()}</div>
+                          </div>
+                          <div style={{textAlign:'center'}}>
+                            <div style={{fontSize:11,color:'var(--text-muted)'}}>{ar?'متبقي':'נותר'}</div>
+                            <div style={{fontWeight:800,fontSize:14,color:remaining>0?'#dc2626':'#16a34a'}}>₪{remaining.toLocaleString()}</div>
+                          </div>
+                          {/* شريط التقدم */}
+                          <div style={{width:80}}>
+                            <div style={{height:6,borderRadius:3,background:'#e5e7eb',overflow:'hidden'}}>
+                              <div style={{height:'100%',borderRadius:3,background:pct>=100?'#16a34a':'var(--primary)',width:`${Math.min(pct,100)}%`,transition:'width 0.3s'}}/>
+                            </div>
+                            <div style={{fontSize:10,color:'var(--text-muted)',textAlign:'center',marginTop:2}}>{pct}%</div>
+                          </div>
+                        </>
+                      )}
                       {/* أزرار التعديل — حصرية للمدير الرئيسي (تعديل/حذف المشروع نفسه) */}
                       {canManageProjectItself && (
                         <div className="flex-gap gap-4" onClick={e=>e.stopPropagation()}>
@@ -757,7 +915,119 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
                       <div style={{textAlign:'center',padding:20,color:'var(--text-muted)',fontSize:13}}>
                         {ar?'لا يوجد مشتركون بعد':'אין משתתפים עדיין'}
                       </div>
+                    ) : isCustom ? (
+                      /* ══════════════════════════════════════════════════
+                         ✅ جدول مبسّط لمشاريع customMembers: بدون أعمدة
+                         "مطلوب/متبقي" فردية — فقط اسم + مجموع مدفوع + دفعات
+                         ══════════════════════════════════════════════════ */
+                      <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                        <thead>
+                          <tr style={{background:'#e8f5e9'}}>
+                            <th style={{padding:'8px 12px',textAlign:'right',fontWeight:800}}>{ar?'المشترك':'משתתף'}</th>
+                            <th style={{padding:'8px 12px',textAlign:'center',fontWeight:800,color:'#16a34a'}}>{ar?'إجمالي المدفوع':'סה"כ שולם'}</th>
+                            <th style={{padding:'8px 12px',textAlign:'center',fontWeight:800}}>{ar?'فاتورة':'חשבונית'}</th>
+                            <th style={{padding:'8px 12px',textAlign:'center',fontWeight:800}}>{ar?'الدفعات':'תשלומים'}</th>
+                            {canManage && <th style={{padding:'8px 12px',width:80}}></th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {proj.members.map((m, mi) => {
+                            const { paid } = calcMember(m);
+                            return (
+                              <React.Fragment key={m.id}>
+                                <tr style={{borderBottom:'1px solid #e5e7eb',background:mi%2===0?'#fff':'#f9fafb'}}>
+                                  <td style={{padding:'10px 12px',fontFamily:'Heebo,sans-serif',fontWeight:700,fontSize:14}}>
+                                    {memberDisplayName(m)}
+                                  </td>
+                                  <td style={{padding:'10px 12px',textAlign:'center',fontWeight:700,color:'#16a34a'}}>
+                                    ₪{paid.toLocaleString()}
+                                  </td>
+                                  <td style={{padding:'10px 12px',textAlign:'center'}}>
+                                    {!canManage ? (
+                                      <span style={{fontSize:16}}>{m.invoiced?'✅':'○'}</span>
+                                    ) : (
+                                      <button onClick={()=>toggleInvoiced(m.id, m.invoiced)}
+                                        title={m.invoiced?(ar?'إلغاء الفاتورة':'בטל חשבונית'):(ar?'تم إصدار فاتورة':'הוצאה חשבונית')}
+                                        style={{width:32,height:32,borderRadius:8,border:`2px solid ${m.invoiced?'#16a34a':'#d1d5db'}`,background:m.invoiced?'#f0fdf4':'#fff',cursor:'pointer',fontSize:16,display:'inline-flex',alignItems:'center',justifyContent:'center',transition:'all 0.2s'}}>
+                                        {m.invoiced?'✅':'○'}
+                                      </button>
+                                    )}
+                                  </td>
+                                  <td style={{padding:'10px 12px',textAlign:'center'}}>
+                                    <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
+                                      <span style={{fontSize:12,color:'var(--text-muted)'}}>
+                                        {m.payments.length} {ar?'دفعة':'תשלומים'}
+                                      </span>
+                                      {canManage && (
+                                        <button onClick={()=>{setOpenProj(proj);setPayModal({projectId:proj.id,memberId:m.id,farmerName:memberDisplayName(m)});}}
+                                          style={{width:24,height:24,borderRadius:6,border:'1.5px solid #bbf7d0',background:'#f0fdf4',color:'var(--primary)',cursor:'pointer',fontSize:13,display:'inline-flex',alignItems:'center',justifyContent:'center',fontWeight:900}}>
+                                          +
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                  {canManage && (
+                                    <td style={{padding:'10px 12px'}}>
+                                      <button onClick={()=>deleteMember(m.id)}
+                                        style={{width:26,height:26,borderRadius:6,border:'1.5px solid #fca5a5',background:'#fff1f2',color:'#dc2626',cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:12}}
+                                        onMouseEnter={e=>{e.currentTarget.style.background='#dc2626';e.currentTarget.style.color='#fff';}}
+                                        onMouseLeave={e=>{e.currentTarget.style.background='#fff1f2';e.currentTarget.style.color='#dc2626';}}>✕</button>
+                                    </td>
+                                  )}
+                                </tr>
+                                {/* الدفعات */}
+                                {m.payments.length > 0 && (
+                                  <tr>
+                                    <td colSpan={canManage?5:4} style={{padding:'0 12px 10px 12px',background:mi%2===0?'#fff':'#f9fafb'}}>
+                                      <div style={{display:'flex',flexWrap:'wrap',gap:6,paddingRight:16}}>
+                                        {m.payments.map(pay => (
+                                          <div key={pay.id} style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:8,padding:'4px 10px',fontSize:12,display:'flex',alignItems:'center',gap:6}}>
+                                            <span style={{fontWeight:700,color:'#16a34a'}}>₪{pay.amount.toLocaleString()}</span>
+                                            <span style={{color:'var(--text-muted)'}}>{formatDate(pay.date, ar)}</span>
+                                            {(pay.receiptNumber || pay.bookNumber) && (
+                                              <span style={{color:'#0369a1',fontWeight:700}}>
+                                                {pay.receiptNumber && `📄${pay.receiptNumber}`}
+                                                {pay.receiptNumber && pay.bookNumber && ' · '}
+                                                {pay.bookNumber && `📘${pay.bookNumber}`}
+                                              </span>
+                                            )}
+                                            {pay.note && <span style={{color:'#64748b'}}>· {pay.note}</span>}
+                                            {canManage && (
+                                              <button onClick={()=>deletePayment(m.id,pay.id)}
+                                                style={{background:'none',border:'none',color:'#dc2626',cursor:'pointer',fontSize:13,padding:0,lineHeight:1}}>✕</button>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
+                            );
+                          })}
+                        </tbody>
+                        {/* مجموع المشروع */}
+                        {proj.members.length > 1 && (
+                          <tfoot>
+                            <tr style={{background:'var(--primary)',borderTop:'2px solid var(--primary-dark)'}}>
+                              <td style={{padding:'10px 12px',color:'#fff',fontWeight:900,fontSize:14}}>
+                                ⚡ {ar?'الإجمالي':'סה"כ'}
+                              </td>
+                              <td style={{padding:'10px 12px',textAlign:'center',color:'#a3e635',fontWeight:900,fontSize:15}}>
+                                ₪{totalPaid.toLocaleString()}
+                              </td>
+                              <td style={{padding:'10px 12px',textAlign:'center',color:'#fff',fontSize:13}}>
+                                {proj.members.filter(m=>m.invoiced).length}/{proj.members.length} ✅
+                              </td>
+                              <td colSpan={canManage?2:1}/>
+                            </tr>
+                          </tfoot>
+                        )}
+                      </table>
                     ) : (
+                      /* ══════════════════════════════════════════════════
+                         الجدول العادي (المشاريع المرتبطة بالمزارعين) — بدون أي تغيير
+                         ══════════════════════════════════════════════════ */
                       <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                         <thead>
                           <tr style={{background:'#e8f5e9'}}>
@@ -862,14 +1132,7 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
                                         {m.payments.map(pay => (
                                           <div key={pay.id} style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:8,padding:'4px 10px',fontSize:12,display:'flex',alignItems:'center',gap:6}}>
                                             <span style={{fontWeight:700,color:'#16a34a'}}>₪{pay.amount.toLocaleString()}</span>
-                                            <span style={{color:'var(--text-muted)'}}>{pay.date?new Date(pay.date).toLocaleDateString(ar?'ar-SA':'he-IL'):''}</span>
-                                            {(pay.receiptNumber || pay.bookNumber) && (
-                                              <span style={{color:'#0369a1',fontWeight:700}}>
-                                                {pay.receiptNumber && `📄${pay.receiptNumber}`}
-                                                {pay.receiptNumber && pay.bookNumber && ' · '}
-                                                {pay.bookNumber && `📘${pay.bookNumber}`}
-                                              </span>
-                                            )}
+                                            <span style={{color:'var(--text-muted)'}}>{formatDate(pay.date, ar)}</span>
                                             {pay.note && <span style={{color:'#64748b'}}>· {pay.note}</span>}
                                             {canManage && (
                                               <button onClick={()=>deletePayment(m.id,pay.id)}
