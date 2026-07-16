@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { togglePaid, updateNote } from '../../api';
 import { getPrice } from '../../utils/pricing'; // ✅ سعر موحّد شامل الضريبة (מע"מ)
-import { cupsDiff, cupsPositive } from '../../utils/cups'; // ✅ فرق أكواب موحّد
+import { cupsDiff, cupsPositive, getMeterChange } from '../../utils/cups'; // ✅ فرق أكواب موحّد (يدمج تبديل العداد ضمن نفس الفترة)
 import { getExtrasList as getExtras, getExtrasNet } from '../../utils/extras'; // ✅ إضافات موحّدة
 
 const PaidBtn = ({ paid, loading, onClick, size = 17 }) => (
@@ -25,6 +25,7 @@ const IconBtn = ({ onClick, title, bg, hoverBg, color, hoverColor, border, child
 
 // ✅ يحدد الفترات "النشطة" لقراءة معينة (أي فترة بدأت فعلاً بقراءة أولى — vals[i] موجودة)
 // وحالة الدفع الإجمالية للسطر: full (الكل مدفوع) / partial (دفع جزئي) / unpaid (ولا شي مدفوع)
+// ✅ فترات تبديل العداد تبقى قابلة للدفع تماماً كأي فترة عادية (الاستهلاك مدموج فيها)
 const getPayStatus = (r) => {
   const vals = r.readings || [];
   const periodsCount = Math.max(0, vals.length - 1);
@@ -91,8 +92,8 @@ export default function ReadingsTable({
     else if (sortKey==='land')    { va=landName(a.landId);     vb=landName(b.landId); }
     else if (sortKey==='year')    { va=a.year;                 vb=b.year; }
     else if (sortKey==='station') { va=a.stationNumber||'';    vb=b.stationNumber||''; }
-    else if (sortKey==='total')   { va=(a.readings||[]).slice(1).reduce((s,_,i)=>s+cupsPositive(a.readings,i),0); vb=(b.readings||[]).slice(1).reduce((s,_,i)=>s+cupsPositive(b.readings,i),0); }
-    else if (sortKey==='amount')  { va=(a.readings||[]).slice(1).reduce((s,_,i)=>s+cupsPositive(a.readings,i)*getPrice(prices,a.year,a.landId,i+1),0); vb=(b.readings||[]).slice(1).reduce((s,_,i)=>s+cupsPositive(b.readings,i)*getPrice(prices,b.year,b.landId,i+1),0); }
+    else if (sortKey==='total')   { va=(a.readings||[]).slice(1).reduce((s,_,i)=>s+cupsPositive(a.readings,i,a.meterChanges||[]),0); vb=(b.readings||[]).slice(1).reduce((s,_,i)=>s+cupsPositive(b.readings,i,b.meterChanges||[]),0); }
+    else if (sortKey==='amount')  { va=(a.readings||[]).slice(1).reduce((s,_,i)=>s+cupsPositive(a.readings,i,a.meterChanges||[])*getPrice(prices,a.year,a.landId,i+1),0); vb=(b.readings||[]).slice(1).reduce((s,_,i)=>s+cupsPositive(b.readings,i,b.meterChanges||[])*getPrice(prices,b.year,b.landId,i+1),0); }
     else if (sortKey==='paid')    { va=payRank(a); vb=payRank(b); }
     if (typeof va==='string') return sortDir==='asc' ? va.localeCompare(vb,'he') : vb.localeCompare(va,'he');
     return sortDir==='asc' ? va-vb : vb-va;
@@ -134,8 +135,8 @@ export default function ReadingsTable({
 
   const maxReadings = Math.max(2, ...readings.map(r=>r.readings?.length||0));
   const cupsCols    = maxReadings - 1;
-  const grandCups   = sorted.reduce((s,r)=>s+(r.readings||[]).slice(1).reduce((ss,_,i)=>ss+cupsPositive(r.readings,i),0),0);
-  const grandAmount = sorted.reduce((s,r)=>s+(r.readings||[]).slice(1).reduce((ss,_,i)=>ss+cupsPositive(r.readings,i)*getPrice(prices,r.year,r.landId,i+1),0),0);
+  const grandCups   = sorted.reduce((s,r)=>s+(r.readings||[]).slice(1).reduce((ss,_,i)=>ss+cupsPositive(r.readings,i,r.meterChanges||[]),0),0);
+  const grandAmount = sorted.reduce((s,r)=>s+(r.readings||[]).slice(1).reduce((ss,_,i)=>ss+cupsPositive(r.readings,i,r.meterChanges||[])*getPrice(prices,r.year,r.landId,i+1),0),0);
 
   // ✅ عدّاد ملخّص الدفع بـ 3 حالات بدل حالتين
   const fullPaidCount    = readings.filter(r=>getPayStatus(r)==='full').length;
@@ -248,11 +249,12 @@ export default function ReadingsTable({
             {sorted.map(r => {
               const expanded      = expandedId===r.id;
               const vals          = r.readings||[];
-              const cupsPerPeriod = Array.from({length:cupsCols}).map((_,i)=>cupsDiff(vals,i));
+              const meterChanges  = r.meterChanges||[]; // ✅ تبديلات العداد المسجّلة لهذه القراءة
+              const cupsPerPeriod = Array.from({length:cupsCols}).map((_,i)=>cupsDiff(vals,i,meterChanges));
               const totalCups     = cupsPerPeriod.reduce((s,c)=>s+(c && c>0 ? c : 0),0);
               const rowAmount     = cupsPerPeriod.reduce((s,c,i)=>s+(c && c>0 ? c : 0)*getPrice(prices,r.year,r.landId,i+1),0);
 
-              // ✅ حالة الدفع الإجمالية للسطر بناءً على كل فترة لحالها
+              // ✅ حالة الدفع الإجمالية للسطر — فترات تبديل العداد قابلة للدفع تماماً كأي فترة عادية
               const payStatus = getPayStatus(r);
               const rowBg   = payStatus==='full' ? 'rgba(220,252,231,0.5)' : payStatus==='partial' ? 'rgba(254,243,199,0.55)' : 'rgba(254,226,226,0.35)';
               const borderColor = payStatus==='full' ? '#16a34a' : payStatus==='partial' ? '#f59e0b' : '#ef4444';
@@ -271,7 +273,7 @@ export default function ReadingsTable({
               // ✅ نص التلميح (tooltip) لأيقونة الدفع الملخّصة
               const paidTooltip = cupsPerPeriod
                 .map((_, i) => (vals[i] != null && vals[i] !== '')
-                  ? `${ar?`ف${i+1}`:`ת${i+1}`}: ${r.paidPeriods?.[i] ? (ar?'مدفوع':'שולם') : (ar?'غير مدفوع':'לא שולם')}`
+                  ? `${ar?`ف${i+1}`:`ת${i+1}`}: ${r.paidPeriods?.[i] ? (ar?'مدفوع':'שולם') : (ar?'غير مدفوع':'לא שולם')}${getMeterChange(meterChanges,i)?' 🔄':''}`
                   : null)
                 .filter(Boolean)
                 .join('\n');
@@ -329,6 +331,7 @@ export default function ReadingsTable({
 
                     {cupsPerPeriod.map((cups,i) => {
                       const rawB = vals[i+1];
+                      const change = getMeterChange(meterChanges, i); // ✅ تبديل عداد مسجّل بهذه الفترة (إن وُجد)
                       const periodActive = vals[i] != null && vals[i] !== ''; // ✅ الفترة بدأت (قراءة بداية موجودة)
                       const periodPaid = !!(r.paidPeriods && r.paidPeriods[i]);
                       return (
@@ -341,11 +344,25 @@ export default function ReadingsTable({
                                 : periodActive
                                   ? <span style={{color:'#d1d5db',fontSize:11}}>—</span>
                                   : <span style={{color:'#e5e7eb',fontSize:11}}>·</span>}
+                            {/* ✅ شارة صغيرة تشير إلى أن هذه الفترة تحتوي تبديل عداد — بدون إخفاء الرقم أو الدفع */}
+                            {change && (
+                              <span title={ar
+                                  ? `تبديل عداد: إغلاق قديم ${change.oldFinal} + بداية جديد ${change.newInitial}`
+                                  : `החלפת מונה: סגירה ${change.oldFinal} + פתיחה ${change.newInitial}`}
+                                style={{fontSize:11}}>🔄</span>
+                            )}
                             {periodActive && (
-                              isViewer
-                                ? <span style={{fontSize:11}}>{periodPaid?'✓':'○'}</span>
-                                : <PaidBtn paid={periodPaid} loading={togglingId===`${r.id}_${i}`}
-                                    onClick={e=>handlePaid(e,r,i)} size={15}/>
+                              cups === null ? (
+                                // ✅ الفترة لسا ما إلها استهلاك محسوب (مثلاً تبديل عداد بانتظار القراءة التالية) —
+                                // نعرض دائرة حمراء ثابتة غير قابلة للنقر بدل زر الدفع، لمنع تعليم فترة كمدفوعة قبل معرفة قيمتها
+                                <span title={ar?'لا يمكن الدفع قبل معرفة عدد الأكواب لهذه الفترة':'לא ניתן לשלם לפני שידוע מספר הקוב לתקופה זו'}
+                                  style={{ width:15, height:15, borderRadius:'50%', border:'2px solid #f87171', background:'transparent', display:'inline-flex', cursor:'not-allowed', flexShrink:0 }} />
+                              ) : isViewer ? (
+                                <span style={{fontSize:11}}>{periodPaid?'✓':'○'}</span>
+                              ) : (
+                                <PaidBtn paid={periodPaid} loading={togglingId===`${r.id}_${i}`}
+                                  onClick={e=>handlePaid(e,r,i)} size={15}/>
+                              )
                             )}
                           </div>
                         </td>
@@ -471,6 +488,21 @@ export default function ReadingsTable({
                                 {cupsPerPeriod.map((cups,i) => cups!==null && (
                                   <span key={i} style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:6,padding:'3px 10px',fontSize:12,fontWeight:700,color:'var(--primary)'}}>
                                     {ar?`ت${i+1}`:`ת${i+1}`}: <strong>{cups.toLocaleString()}</strong> × ₪{getPrice(prices,r.year,r.landId,i+1).toFixed(2)} = <strong style={{color:'#854d0e'}}>₪{Math.round(cups*getPrice(prices,r.year,r.landId,i+1)).toLocaleString()}</strong>
+                                    {getMeterChange(meterChanges,i) && <span style={{marginRight:4}}>🔄</span>}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* ✅ تفاصيل تبديلات العداد المدمجة ضمن فتراتها */}
+                          {meterChanges.length > 0 && (
+                            <div>
+                              <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:4,fontWeight:700}}>🔄 {ar?'تبديل العداد:':'החלפת מונה:'}</div>
+                              <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                                {meterChanges.map((m,mi) => (
+                                  <span key={mi} style={{background:'#f3e8ff',border:'1px solid #d8b4fe',borderRadius:6,padding:'3px 10px',fontSize:12,fontWeight:700,color:'#7c3aed'}}>
+                                    {ar?`ت${m.period+1}`:`ת${m.period+1}`}: 🔄 {ar?'إغلاق قديم':'סגירה'} {m.oldFinal} ← {ar?'بداية جديد':'פתיחה'} {m.newInitial}
                                   </span>
                                 ))}
                               </div>
@@ -557,7 +589,7 @@ export default function ReadingsTable({
               <tr style={{background:'linear-gradient(90deg,#14532d,#166534)', borderTop:'2px solid #14532d'}}>
                 <td colSpan={5} style={{fontWeight:900,color:'#fff',fontSize:14,padding:'11px 14px'}}>⚡ {ar?'الإجمالي الكلي':'סה"כ כללי'}</td>
                 {Array.from({length:cupsCols}).map((_,i) => {
-                  const col = sorted.reduce((s,r)=>s+cupsPositive(r.readings||[],i),0);
+                  const col = sorted.reduce((s,r)=>s+cupsPositive(r.readings||[],i,r.meterChanges||[]),0);
                   return <td key={i} style={{textAlign:'center',padding:'11px 8px'}}><span style={{fontWeight:900,color:'#a3e635',fontSize:15}}>{col.toLocaleString()}</span></td>;
                 })}
                 <td style={{textAlign:'center',padding:'11px 8px'}}><span style={{fontWeight:900,color:'#a3e635',fontSize:17}}>{grandCups.toLocaleString()}</span></td>

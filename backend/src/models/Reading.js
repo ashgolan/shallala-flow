@@ -6,6 +6,17 @@ const extraSchema = new mongoose.Schema({
   paid:   { type: Number, default: 0 },    // المدفوع منه
 }, { _id: true });
 
+// ✅ تبديل عداد داخل فترة موجودة (بدون إضافة فترة جديدة):
+// period      = فهرس الفترة (0-based) التي حصل فيها التبديل — بين readings[period] و readings[period+1]
+// oldFinal    = آخر قراءة على العداد القديم (إغلاقه) قبل الفك
+// newInitial  = أول قراءة على العداد الجديد (بدايته) بعد التركيب
+// الاستهلاك الكلي لهذه الفترة = (oldFinal - readings[period]) + (readings[period+1] - newInitial)
+const meterChangeSchema = new mongoose.Schema({
+  period:     { type: Number, required: true },
+  oldFinal:   { type: Number, required: true },
+  newInitial: { type: Number, required: true },
+}, { _id: false });
+
 const readingSchema = new mongoose.Schema({
   farmerId:      { type: mongoose.Schema.Types.ObjectId, ref: 'Farmer', required: true, index: true },
   landId:        { type: mongoose.Schema.Types.ObjectId, ref: 'Land',   required: true, index: true },
@@ -21,11 +32,12 @@ const readingSchema = new mongoose.Schema({
   extraPaid:     { type: Number,  default: 0 },
   extraNote:     { type: String,  default: '' },
   note:          { type: String,  default: '' },
-  // ✅ جديد: حالة دفع كل فترة (دورة) على حدة
-  // paidPeriods[i] = هل الفترة بين readings[i] و readings[i+1] مدفوعة؟
+  // ✅ حالة دفع كل فترة (دورة) على حدة
   paidPeriods:   { type: [Boolean], default: [] },
+  // ✅ تبديلات العداد — كل فترة تحتفظ برقمها وسعرها تماماً، ويُدمج فيها استهلاك
+  // العداد القديم + الجديد معاً بدل خلق فترة منفصلة
+  meterChanges:  { type: [meterChangeSchema], default: [] },
   // ✅ الحقول القديمة — تبقى للتوافق فقط، وتُشتق تلقائياً من paidPeriods
-  // (true فقط إذا كل الفترات النشطة/التي بدأت فعلاً مدفوعة بالكامل)
   paid:          { type: Boolean, default: false },
   paidAt:        { type: Date,    default: null },
 }, {

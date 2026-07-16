@@ -184,7 +184,6 @@ const cleanDuplicateLands = async (req, res) => {
 // ════════════════════════════════════════
 //  READINGS
 // ════════════════════════════════════════
-// ✅ دالة مساعدة لتحويل extras من الطلب
 const parseExtras = (extrasRaw) => {
   if (!Array.isArray(extrasRaw)) return [];
   return extrasRaw
@@ -196,23 +195,37 @@ const parseExtras = (extrasRaw) => {
     }));
 };
 
-// ✅ ينظّف مصفوفة القراءات (تحويل نصوص فارغة لـ null، أرقام لأرقام فعلية)
 const cleanReadingsArray = (readings) => (readings || []).map((r) => {
   if (r === '' || r === null || r === undefined) return null;
   const f = parseFloat(r);
   return isNaN(f) ? null : f;
 });
 
-// ✅ يبني/يحدّث مصفوفة حالة الدفع لكل فترة، بنفس طول عدد الفترات الفعلي
-// ويحافظ على القيم القديمة بحسب الفهرس عند تعديل قراءة موجودة (لا يصفّرها)
+// ✅ ينظّف مصفوفة تبديلات العداد: فهرس فترة صالح ضمن المدى، وقيم رقمية كاملة،
+// وفترة واحدة كحد أقصى لكل تبديل (لا يُسمح بتبديلين لنفس الفترة)
+const cleanMeterChanges = (changes, periodsCount) => {
+  if (!Array.isArray(changes)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const c of changes) {
+    const period     = parseInt(c?.period, 10);
+    const oldFinal    = parseFloat(c?.oldFinal);
+    const newInitial  = parseFloat(c?.newInitial);
+    if (isNaN(period) || period < 0 || period >= periodsCount) continue;
+    if (isNaN(oldFinal) || isNaN(newInitial)) continue;
+    if (seen.has(period)) continue;
+    seen.add(period);
+    out.push({ period, oldFinal, newInitial });
+  }
+  return out.sort((a, b) => a.period - b.period);
+};
+
 const buildPaidPeriods = (existing = [], periodsCount) => {
   const arr = [];
   for (let i = 0; i < periodsCount; i++) arr.push(!!existing[i]);
   return arr;
 };
 
-// ✅ يشتق قيمة paid القديمة (للتوافق) من paidPeriods:
-// true فقط إذا كل الفترات "النشطة" (التي بدأت فعلاً بقراءة أولى) مدفوعة بالكامل
 const deriveLegacyPaid = (cleanReadings, paidPeriods) => {
   const activeIdx = [];
   for (let i = 0; i < cleanReadings.length - 1; i++) {
@@ -221,7 +234,6 @@ const deriveLegacyPaid = (cleanReadings, paidPeriods) => {
   return activeIdx.length > 0 && activeIdx.every(i => paidPeriods[i]);
 };
 
-// ✅ دالة مساعدة لتوحيد بيانات القراءة في الاستجابة
 const serializeReading = (r) => ({
   ...r,
   id:       r._id.toString(),
@@ -230,20 +242,19 @@ const serializeReading = (r) => ({
   stationNumber: r.stationNumber || '',
   stationLat:    r.stationLat    || null,
   stationLng:    r.stationLng    || null,
-  // ✅ extras الجديدة
   extras:    (r.extras || []).map(e => ({
     id:     e._id?.toString(),
     note:   e.note   || '',
     amount: e.amount || 0,
     paid:   e.paid   || 0,
   })),
-  // الحقول القديمة للتوافق
   extra:     r.extra     || 0,
   extraPaid: r.extraPaid || 0,
   extraNote: r.extraNote || '',
   note:      r.note      || '',
-  // ✅ حالة دفع كل فترة لحالها
   paidPeriods: r.paidPeriods || [],
+  // ✅ تبديلات العداد (فترة + إغلاق قديم + بداية جديد)
+  meterChanges: r.meterChanges || [],
   paid:      r.paid      || false,
   paidAt:    r.paidAt    || null,
 });
@@ -268,7 +279,8 @@ const createReading = async (req, res) => {
     const land = await Land.findById(landId).lean();
     const cleanReadings = cleanReadingsArray(readings);
     const periodsCount  = Math.max(0, cleanReadings.length - 1);
-    const paidPeriods   = buildPaidPeriods([], periodsCount); // ✅ الكل غير مدفوع افتراضياً
+    const paidPeriods   = buildPaidPeriods([], periodsCount);
+    const meterChanges  = cleanMeterChanges(req.body.meterChanges, periodsCount);
 
     const reading = await Reading.create({
       farmerId, landId, year: parseInt(year),
@@ -282,6 +294,7 @@ const createReading = async (req, res) => {
       extraNote: extraNote || '',
       note:      note      || '',
       paidPeriods,
+      meterChanges,
       paid:      false,
       paidAt:    null,
     });
@@ -303,9 +316,9 @@ const updateReading = async (req, res) => {
 
     const cleanReadings = cleanReadingsArray(readings);
     const periodsCount  = Math.max(0, cleanReadings.length - 1);
-    // ✅ نحافظ على حالة دفع كل فترة موجودة مسبقاً بحسب فهرسها، ونضيف false للفترات الجديدة فقط
     const paidPeriods   = buildPaidPeriods(existing?.paidPeriods || [], periodsCount);
     const derivedPaid   = deriveLegacyPaid(cleanReadings, paidPeriods);
+    const meterChanges  = cleanMeterChanges(req.body.meterChanges, periodsCount);
 
     const updateData = {
       farmerId, landId, year: parseInt(year),
@@ -319,6 +332,7 @@ const updateReading = async (req, res) => {
       extraNote: extraNote || '',
       note:      note      || '',
       paidPeriods,
+      meterChanges,
       paid:      derivedPaid,
       paidAt:    derivedPaid ? (existing?.paidAt || new Date()) : null,
     };
@@ -434,6 +448,8 @@ const getReport = async (req, res) => {
         extra: r.extra || 0, extraPaid: r.extraPaid || 0,
         extraNote: r.extraNote || '',
         paidPeriods: r.paidPeriods || [],
+        // ✅ تبديلات العداد — لازم تُستخدم بالتقارير عند حساب الاستهلاك
+        meterChanges: r.meterChanges || [],
         paid: r.paid || false, paidAt: r.paidAt || null,
       })),
       prices,
@@ -574,10 +590,13 @@ const applyReadingsImport = async (req, res) => {
           existing.readings = merged;
           existing.markModified('readings');
 
-          // ✅ نحافظ على طول paidPeriods متوافق مع عدد الفترات الجديد بعد الاستيراد
           const periodsCount = Math.max(0, merged.length - 1);
           existing.paidPeriods = buildPaidPeriods(existing.paidPeriods || [], periodsCount);
           existing.markModified('paidPeriods');
+
+          // ✅ نتخلص من تبديلات العداد التي صارت خارج المدى بعد الاستيراد
+          existing.meterChanges = cleanMeterChanges(existing.meterChanges || [], periodsCount);
+          existing.markModified('meterChanges');
 
           await existing.save();
           applied++;
@@ -595,6 +614,7 @@ const applyReadingsImport = async (req, res) => {
             stationLng:    land?.stationLng    || null,
             extras: [], extra: 0, extraPaid: 0, extraNote: '', note: '',
             paidPeriods: buildPaidPeriods([], periodsCount),
+            meterChanges: [],
           });
           created++;
         }

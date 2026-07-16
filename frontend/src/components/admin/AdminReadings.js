@@ -4,7 +4,7 @@ import { useLang } from '../../contexts/LangContext';
 import { t } from '../../i18n/translations';
 import ReadingsTable from './ReadingsTable';
 import { getPrice, getBasePrice, getVatRate } from '../../utils/pricing'; // ✅ سعر موحّد شامل الضريبة (מע"מ)
-import { cupsPositive } from '../../utils/cups'; // ✅ فرق أكواب موحّد (مجاميع فقط، بدون قيم سالبة)
+import { cupsPositive } from '../../utils/cups'; // ✅ فرق أكواب موحّد (يدعم تبديل العداد ضمن نفس الفترة)
 
 const dmsToDecimal = (deg, min, sec, dir) => {
   let dd = parseFloat(deg) + parseFloat(min)/60 + parseFloat(sec)/3600;
@@ -32,6 +32,9 @@ const EMPTY_FORM = {
   farmerId:'', landId:'', year: new Date().getFullYear(),
   readings:['',''],
   extras: [], // ✅ مصفوفة الإضافات
+  // ✅ تبديلات العداد: [{ period, oldFinal, newInitial }] — period = فهرس الفترة (0-based)
+  // بين readings[period] و readings[period+1]. الاستهلاك يُدمج بنفس رقم هذه الفترة.
+  meterChanges: [],
   extra:'', extraPaid:'', extraNote:'',
 };
 
@@ -149,8 +152,9 @@ function BulkExtraModal({ farmers, lands, regions, readings, onClose, onApplied,
     const r = readings.find(x => String(x.farmerId)===String(farmerId) && String(x.landId)===String(landId) && x.year===currentYear);
     if (!r) return null;
     const vals = r.readings || [];
+    const changes = r.meterChanges || [];
     let total = 0;
-    vals.slice(1).forEach((_, i) => { total += cupsPositive(vals, i); });
+    vals.slice(1).forEach((_, i) => { total += cupsPositive(vals, i, changes); });
     return total;
   };
 
@@ -228,6 +232,7 @@ function BulkExtraModal({ farmers, lands, regions, readings, onClose, onApplied,
           farmerId: r.farmerId, landId: r.landId, year: r.year,
           readings: r.readings, note: r.note||'',
           extras: newExtras,
+          meterChanges: r.meterChanges||[],
           extra: r.extra||0, extraPaid: r.extraPaid||0, extraNote: r.extraNote||'',
         });
         success++;
@@ -622,8 +627,6 @@ export default function AdminReadings({ adminRole='admin' }) {
   const farmerLands = rForm.farmerId ? lands.filter(l => String(l.farmerId) === String(rForm.farmerId)) : lands;
 
   // ✅ مزارعون لم يكملوا دفعهم لمشروع/مشاريع معينة — Map: farmerId -> [{ projectName, remaining }]
-  // نفس منطق calcMember في AdminProjects.js: المبلغ المطلوب لهذا المشترك تحديداً ناقص مجموع دفعاته.
-  // لا يشمل مشتركين بدون مبلغ محدد بعد (amount = null) — لأنه ما في شي "لم يُكمل" طالما ما تحدد أصلاً.
   const unpaidProjectsByFarmer = (() => {
     const map = {};
     projects.forEach(p => {
@@ -665,6 +668,12 @@ export default function AdminReadings({ adminRole='admin' }) {
       farmerId: r.farmerId, landId: r.landId, year: r.year,
       readings: [...r.readings.map(String)],
       extras: (r.extras||[]).map(e=>({note:e.note||'',amount:String(e.amount||''),paid:String(e.paid||'')})),
+      // ✅ تحميل تبديلات العداد المخزّنة مسبقاً (كنصوص قابلة للتعديل بالحقول)
+      meterChanges: (r.meterChanges||[]).map(m => ({
+        period: m.period,
+        oldFinal: String(m.oldFinal ?? ''),
+        newInitial: String(m.newInitial ?? ''),
+      })),
       extra: r.extra||'', extraPaid: r.extraPaid||'', extraNote: r.extraNote||'',
     });
     gatherSuggestions(readings);
@@ -683,6 +692,11 @@ export default function AdminReadings({ adminRole='admin' }) {
         extras: (rForm.extras||[]).filter(e=>e.note||parseFloat(e.amount)>0).map(e=>({
           note: e.note||'', amount: parseFloat(e.amount)||0, paid: parseFloat(e.paid)||0,
         })),
+        meterChanges: (rForm.meterChanges||[]).map(m => ({
+          period: m.period,
+          oldFinal: parseFloat(m.oldFinal),
+          newInitial: parseFloat(m.newInitial),
+        })).filter(m => !isNaN(m.oldFinal) && !isNaN(m.newInitial)), // ✅ يتجاهل التبديلات غير المكتملة
       };
       if (editR) await adminAPI.updateReading(editR.id, payload);
       else       await adminAPI.createReading(payload);
@@ -699,10 +713,40 @@ export default function AdminReadings({ adminRole='admin' }) {
   const addReadingField    = () => setRForm({ ...rForm, readings:[...rForm.readings,''] });
   const removeReadingField = i  => {
     if (rForm.readings.length <= 2) return;
-    setRForm({ ...rForm, readings: rForm.readings.filter((_,idx) => idx !== i) });
+    // ✅ عند حذف حقل قراءة، لازم نصحح فهارس تبديلات العداد كي تبقى متوافقة مع الفهرسة الجديدة
+    const removedPeriod = i - 1; // الفترة المرتبطة بهذا الحقل (إن وُجدت)
+    setRForm({
+      ...rForm,
+      readings: rForm.readings.filter((_,idx) => idx !== i),
+      meterChanges: (rForm.meterChanges||[])
+        .filter(m => m.period !== removedPeriod)
+        .map(m => m.period > removedPeriod ? { ...m, period: m.period - 1 } : m),
+    });
   };
   const updateReadingField = (i,v) => {
     const r = [...rForm.readings]; r[i] = v; setRForm({ ...rForm, readings:r });
+  };
+
+  // ✅ يبحث عن تبديل عداد مسجّل لفترة معينة ضمن النموذج الحالي
+  const getMeterChangeFor = (period) => (rForm.meterChanges||[]).find(m => m.period === period);
+
+  // ✅ تفعيل/إلغاء تبديل عداد لفترة معينة
+  const toggleMeterChange = (period) => {
+    setRForm(prev => {
+      const existing = (prev.meterChanges||[]).find(m => m.period === period);
+      if (existing) {
+        return { ...prev, meterChanges: prev.meterChanges.filter(m => m.period !== period) };
+      }
+      return { ...prev, meterChanges: [...(prev.meterChanges||[]), { period, oldFinal:'', newInitial:'' }] };
+    });
+  };
+
+  // ✅ تحديث حقل (oldFinal أو newInitial) لتبديل عداد معين
+  const updateMeterChangeField = (period, field, value) => {
+    setRForm(prev => ({
+      ...prev,
+      meterChanges: (prev.meterChanges||[]).map(m => m.period === period ? { ...m, [field]: value } : m),
+    }));
   };
 
   // ✅ إضافة/تعديل/حذف إضافة
@@ -723,16 +767,19 @@ export default function AdminReadings({ adminRole='admin' }) {
   });
 
   // ✅ إجمالي المبالغ (قبل / بعد الضريبة) للقراءات المعروضة حالياً حسب الفلاتر
+  // (تبديل العداد يُدمج داخل نفس رقم فترته تلقائياً عبر cupsPositive — لا حاجة لأي معالجة إضافية هنا)
   const grandBeforeVat = filtered.reduce((sum, r) => {
     const vals = r.readings || [];
+    const changes = r.meterChanges || [];
     return sum + vals.slice(1).reduce((s, _, i) => {
-      return s + cupsPositive(vals, i) * getBasePrice(prices, r.year, r.landId, i+1);
+      return s + cupsPositive(vals, i, changes) * getBasePrice(prices, r.year, r.landId, i+1);
     }, 0);
   }, 0);
   const grandAfterVat = filtered.reduce((sum, r) => {
     const vals = r.readings || [];
+    const changes = r.meterChanges || [];
     return sum + vals.slice(1).reduce((s, _, i) => {
-      return s + cupsPositive(vals, i) * getPrice(prices, r.year, r.landId, i+1);
+      return s + cupsPositive(vals, i, changes) * getPrice(prices, r.year, r.landId, i+1);
     }, 0);
   }, 0);
   const vatPercentLabel = (getVatRate(prices) * 100).toFixed(1).replace(/\.0$/, '');
@@ -743,8 +790,9 @@ export default function AdminReadings({ adminRole='admin' }) {
     let total = 0, maxPeriods = 0;
     filtered.forEach(r => {
       const vals = r.readings || [];
+      const changes = r.meterChanges || [];
       vals.slice(1).forEach((_, i) => {
-        const cups = cupsPositive(vals, i);
+        const cups = cupsPositive(vals, i, changes);
         if (cups) { byPeriod[i+1] = (byPeriod[i+1] || 0) + cups; total += cups; }
         maxPeriods = Math.max(maxPeriods, i+1);
       });
@@ -752,10 +800,20 @@ export default function AdminReadings({ adminRole='admin' }) {
     return { total, byPeriod, maxPeriods };
   })();
 
+  // ✅ إجمالي مبلغ النموذج — يدمج تبديل العداد ضمن نفس رقم فترته (بدون انزياح بالسعر)
   const formTotalAmount = rForm.readings.slice(1).reduce((total, _, i) => {
+    const change = getMeterChangeFor(i);
     const prev = parseFloat(rForm.readings[i]);
     const curr = parseFloat(rForm.readings[i+1]);
-    const cups = (!isNaN(prev) && !isNaN(curr)) ? curr - prev : 0;
+    let cups = 0;
+    if (!isNaN(prev) && !isNaN(curr)) {
+      if (change) {
+        const of = parseFloat(change.oldFinal), ni = parseFloat(change.newInitial);
+        cups = (!isNaN(of) && !isNaN(ni)) ? (of - prev) + (curr - ni) : 0;
+      } else {
+        cups = curr - prev;
+      }
+    }
     const price = getPrice(prices, rForm.year, rForm.landId, i+1);
     return total + (cups > 0 ? cups * price : 0);
   }, 0);
@@ -985,35 +1043,91 @@ export default function AdminReadings({ adminRole='admin' }) {
               <label>{ar ? 'القراءات' : 'קריאות'}</label>
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                 {rForm.readings.map((v,i) => {
+                  const periodIndex = i - 1; // ✅ الفترة المرتبطة بهذا الحقل (بين القراءة i-1 والقراءة i)
+                  const change = i > 0 ? getMeterChangeFor(periodIndex) : null;
                   const prev  = parseFloat(rForm.readings[i-1]);
                   const curr  = parseFloat(v);
-                  const cups  = i > 0 && !isNaN(prev) && !isNaN(curr) && v !== '' ? curr - prev : null;
+                  let cups = null;
+                  if (i > 0 && v !== '' && !isNaN(prev) && !isNaN(curr)) {
+                    if (change) {
+                      const of = parseFloat(change.oldFinal), ni = parseFloat(change.newInitial);
+                      cups = (!isNaN(of) && !isNaN(ni)) ? (of - prev) + (curr - ni) : null;
+                    } else {
+                      cups = curr - prev;
+                    }
+                  }
                   const price = i > 0 ? getPrice(prices, rForm.year, rForm.landId, i) : 0;
                   const amount = cups !== null && cups > 0 ? cups * price : null;
                   const isEmpty = v === '' || v === null;
                   return (
-                    <div key={i} style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
-                      <span style={{ width:130, fontSize:13, fontWeight:700, color: i===0 ? 'var(--primary)' : 'var(--text-muted)', flexShrink:0 }}>
-                        {ar ? 'قراءة' : 'קריאה'} {i+1}
-                        {i===0 ? ` (${ar ? 'بداية *' : 'התחלה *'})` : ` (${ar ? 'فترة' : 'תקופה'} ${i})`}
-                      </span>
-                      <input type="number" step="any" value={v}
-                        onChange={e => updateReadingField(i, e.target.value)}
-                        placeholder={i===0 ? (ar?'مطلوب':'חובה') : (ar?'لم تؤخذ بعد':'טרם נלקחה')}
-                        style={{ width:130, fontWeight:700, borderColor: i===0 && isEmpty ? '#ef4444' : '' }} />
-                      {cups !== null && (
-                        <span style={{ fontSize:12, fontWeight:700, minWidth:90, color:cups>=0?'#16a34a':'#dc2626', background:cups>=0?'#f0fdf4':'#fff1f2', border:`1px solid ${cups>=0?'#bbf7d0':'#fca5a5'}`, padding:'2px 10px', borderRadius:6 }}>
-                          {cups >= 0 ? `🪣 ${cups}` : `⚠️ ${cups}`} {ar ? 'م³' : 'קוב'}
+                    <div key={i} style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                      <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
+                        <span style={{ width:130, fontSize:13, fontWeight:700, color: i===0 ? 'var(--primary)' : 'var(--text-muted)', flexShrink:0 }}>
+                          {ar ? 'قراءة' : 'קריאה'} {i+1}
+                          {i===0 ? ` (${ar ? 'بداية *' : 'התחלה *'})` : ` (${ar ? 'فترة' : 'תקופה'} ${i})`}
                         </span>
-                      )}
-                      {amount !== null && (
-                        <span style={{ fontSize:12, fontWeight:700, color:'#854d0e', background:'#fef9c3', border:'1px solid #fde047', padding:'2px 10px', borderRadius:6 }}>
-                          💰 ₪{Math.round(amount).toLocaleString()}
-                        </span>
-                      )}
-                      {i >= 2 && (
-                        <button type="button" onClick={() => removeReadingField(i)}
-                          style={{ width:26, height:26, borderRadius:6, border:'1.5px solid #fca5a5', background:'#fff1f2', color:'#dc2626', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:13 }}>✕</button>
+                        <input type="number" step="any" value={v}
+                          onChange={e => updateReadingField(i, e.target.value)}
+                          placeholder={i===0 ? (ar?'مطلوب':'חובה') : (ar?'لم تؤخذ بعد':'טרם נלקחה')}
+                          style={{ width:130, fontWeight:700, borderColor: i===0 && isEmpty ? '#ef4444' : (change ? '#a855f7' : '') }} />
+
+                        {/* ✅ زر تبديل العداد — يظهر لكل فترة (من الحقل الثاني وما فوق) */}
+                        {i > 0 && (
+                          <button type="button" onClick={() => toggleMeterChange(periodIndex)}
+                            title={ar ? 'فعّلها إذا صار تبديل/تعطّل للعداد أثناء هذه الفترة' : 'הפעל אם הוחלף המונה בתקופה זו'}
+                            style={{
+                              fontSize:11, fontWeight:700, padding:'4px 10px', borderRadius:8, cursor:'pointer',
+                              border: change ? '1.5px solid #a855f7' : '1.5px solid var(--border)',
+                              background: change ? '#f3e8ff' : '#fff',
+                              color: change ? '#7c3aed' : 'var(--text-muted)',
+                            }}>
+                            🔄 {change ? (ar?'تبديل عداد بهذه الفترة ✓':'החלפת מונה בתקופה זו ✓') : (ar?'تبديل عداد بهذه الفترة؟':'החלפת מונה בתקופה זו?')}
+                          </button>
+                        )}
+
+                        {cups !== null && (
+                          <span style={{ fontSize:12, fontWeight:700, minWidth:90, color:cups>=0?'#16a34a':'#dc2626', background:cups>=0?'#f0fdf4':'#fff1f2', border:`1px solid ${cups>=0?'#bbf7d0':'#fca5a5'}`, padding:'2px 10px', borderRadius:6 }}>
+                            {cups >= 0 ? `🪣 ${cups}` : `⚠️ ${cups}`} {ar ? 'م³' : 'קוב'}
+                          </span>
+                        )}
+                        {amount !== null && (
+                          <span style={{ fontSize:12, fontWeight:700, color:'#854d0e', background:'#fef9c3', border:'1px solid #fde047', padding:'2px 10px', borderRadius:6 }}>
+                            💰 ₪{Math.round(amount).toLocaleString()}
+                          </span>
+                        )}
+                        {i >= 2 && (
+                          <button type="button" onClick={() => removeReadingField(i)}
+                            style={{ width:26, height:26, borderRadius:6, border:'1.5px solid #fca5a5', background:'#fff1f2', color:'#dc2626', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:13 }}>✕</button>
+                        )}
+                      </div>
+
+                      {/* ✅ حقول تبديل العداد — تظهر فقط عند تفعيل الزر لهذه الفترة */}
+                      {change && (
+                        <div style={{ marginRight:140, display:'flex', gap:10, flexWrap:'wrap', alignItems:'flex-end', background:'#faf5ff', border:'1px dashed #d8b4fe', borderRadius:10, padding:'10px 12px' }}>
+                          <div>
+                            <label style={{ fontSize:11, color:'#7c3aed', fontWeight:700, display:'block', marginBottom:3 }}>
+                              {ar ? 'آخر قراءة على العداد القديم' : 'קריאה אחרונה במונה הישן'}
+                            </label>
+                            <input type="number" step="any" value={change.oldFinal}
+                              onChange={e => updateMeterChangeField(periodIndex, 'oldFinal', e.target.value)}
+                              placeholder={ar?'مثال: 14620':'לדוג׳: 14620'}
+                              style={{ width:140, fontWeight:700 }} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize:11, color:'#7c3aed', fontWeight:700, display:'block', marginBottom:3 }}>
+                              {ar ? 'أول قراءة على العداد الجديد' : 'קריאה ראשונה במונה החדש'}
+                            </label>
+                            <input type="number" step="any" value={change.newInitial}
+                              onChange={e => updateMeterChangeField(periodIndex, 'newInitial', e.target.value)}
+                              placeholder={ar?'مثال: 199 أو 0':'לדוג׳: 199 או 0'}
+                              style={{ width:140, fontWeight:700 }} />
+                          </div>
+                          <div style={{ fontSize:11, color:'#7c3aed', flex:'1 1 200px' }}>
+                            💡 {ar
+                              ? `الاستهلاك هذه الفترة = (إغلاق القديم − ${isNaN(prev)?'؟':prev}) + (${isNaN(curr)?'؟':curr} − بداية الجديد) — ويُحسب بسعر نفس هذه الفترة (فترة ${i}) بدون أي تغيير بترقيمها.`
+                              : `הצריכה בתקופה זו = (סגירת הישן − ${isNaN(prev)?'?':prev}) + (${isNaN(curr)?'?':curr} − פתיחת החדש) — ותחושב לפי מחיר אותה תקופה (תקופה ${i}).`}
+                          </div>
+                        </div>
                       )}
                     </div>
                   );
