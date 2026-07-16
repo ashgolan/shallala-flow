@@ -836,8 +836,24 @@ export default function AdminReadings({ adminRole='admin' }) {
         />
       )}
 
+      {/* ✅ ترويسة طباعة أنيقة — تظهر فقط عند الطباعة (مخفية على الشاشة) */}
+      <div className="print-letterhead">
+        <div className="print-letterhead-brand">🌿 الشلالة — نظام إدارة مياه الري</div>
+        <div className="print-letterhead-title">{ar ? 'كشف قراءة مياه' : 'דו"ח קריאת מים'}</div>
+        {filtered.length === 1 && (
+          <div className="print-letterhead-info">
+            <span>{ar ? 'المزارع' : 'חקלאי'}: <strong>{farmerName(filtered[0].farmerId)}</strong></span>
+            <span>{ar ? 'المحطة' : 'עמדה'}: <strong>{filtered[0].stationNumber || landName(filtered[0].landId)}</strong></span>
+            <span>{ar ? 'السنة' : 'שנה'}: <strong>{filtered[0].year}</strong></span>
+          </div>
+        )}
+        <div className="print-letterhead-date">
+          {new Date().toLocaleDateString(ar ? 'ar-EG' : 'he-IL')}
+        </div>
+      </div>
+
       {/* ── ملخّص الحساب: قبل وبعد الضريبة (מע"מ) ── */}
-      <div className="flex-gap gap-12 mb-16" style={{ flexWrap:'wrap' }}>
+      <div className="flex-gap gap-12 mb-16 print-summary" style={{ flexWrap:'wrap' }}>
         <div style={{ flex:'1 1 200px', background:'var(--surface-2)', border:'1.5px solid var(--border)', borderRadius:10, padding:'10px 16px' }}>
           <div style={{ fontSize:12, color:'var(--text-muted)', fontWeight:700, marginBottom:2 }}>
             {ar ? 'الإجمالي قبل الضريبة' : 'סה"כ לפני מע"מ'}
@@ -857,7 +873,7 @@ export default function AdminReadings({ adminRole='admin' }) {
       </div>
 
       {/* ── إجمالي الأكواب + تفصيل الدورات ── */}
-      <div className="card mb-16">
+      <div className="card mb-16 print-cups-card">
         <div className="flex-between mb-12" style={{ flexWrap:'wrap', gap:8 }}>
           <h3 style={{ margin:0 }}>
             🥤 {ar ? 'إجمالي الأكواب' : 'סה"כ קובים'}
@@ -872,7 +888,7 @@ export default function AdminReadings({ adminRole='admin' }) {
             {ar ? 'لا توجد بيانات كافية لعرض التفصيل' : 'אין מספיק נתונים להצגת פירוט'}
           </p>
         ) : (
-          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+          <div className="print-cups-detail" style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
             {Array.from({ length: cupsBreakdown.maxPeriods }, (_, idx) => idx + 1).map(p => {
               const val = cupsBreakdown.byPeriod[p] || 0;
               const pct = cupsBreakdown.total > 0 ? Math.round((val / cupsBreakdown.total) * 100) : 0;
@@ -898,6 +914,7 @@ export default function AdminReadings({ adminRole='admin' }) {
       {/* ── شريط الفلاتر ── */}
       <div className="flex-between mb-16" style={{ flexWrap:'wrap', gap:12 }}>
         <div className="flex-gap gap-8" style={{ flexWrap:'wrap' }}>
+
           <div style={{ position:'relative' }}>
             <input type="text" value={farmerSearch}
               onChange={e => { setFarmerSearch(e.target.value); setShowFarmerList(true); }}

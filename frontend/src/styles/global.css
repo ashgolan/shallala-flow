@@ -295,8 +295,19 @@ tr:hover td { background: var(--surface); }
 }
 
 /* ── Print Styles ── */
+
+/* الترويسة تظهر فقط عند الطباعة */
+.print-letterhead { display: none; }
+
 @media print {
-  /* إخفاء كل شيء غير الجدول */
+  /* ✅ حل جذري لتراكب أي عنصر ثابت/عائم (fixed/sticky) فوق المحتوى وقت الطباعة —
+     الطباعة لا تحتاج أي تموضع ثابت، فنفرض position: static على كل شيء */
+  * { position: static !important; }
+
+  /* مسافة أمان أعلى الصفحة المطبوعة تحسباً لأي بقايا هوامش */
+  .print-letterhead { margin-top: 4mm !important; }
+
+  /* إخفاء كل شيء غير المحتوى المطبوع */
   .admin-sidebar,
   .mobile-menu-btn,
   .announce-banner,
@@ -311,22 +322,96 @@ tr:hover td { background: var(--surface); }
     display: none !important;
   }
 
-  /* إعادة ضبط الـ layout للطباعة */
-  body  { background: white !important; font-size: 11px; }
-  main  { margin: 0 !important; padding: 0 !important; }
-  .card { box-shadow: none !important; border: 1px solid #ccc; }
+  /* ✅ إخفاء أي شريط علوي ثابت/عائم (عنوان الصفحة + أيقونات تعديل/قائمة) —
+     هذا الشريط مصمم ليكون ثابتاً بالشاشة (fixed/sticky) وعند الطباعة كان
+     يظهر متراكباً فوق المحتوى بدل أن يبقى في مكانه الطبيعي بالتخطيط */
+  header,
+  [class*="topbar"],
+  [class*="Topbar"],
+  [class*="mobile-header"],
+  [class*="page-header"],
+  [class*="page-title"] {
+    display: none !important;
+  }
 
-  /* الجدول يملأ الصفحة */
-  .tbl-wrap { overflow: visible !important; }
-  table { width: 100% !important; font-size: 10px; border-collapse: collapse; }
-  th, td { border: 1px solid #ddd !important; padding: 4px 6px !important; }
+  /* ✅ الترويسة الأنيقة أعلى الصفحة */
+  .print-letterhead {
+    display: block !important;
+    text-align: center;
+    padding-bottom: 10px;
+    margin-bottom: 14px;
+    border-bottom: 2.5px solid #14532d;
+  }
+  .print-letterhead-brand {
+    font-size: 15px; font-weight: 900; color: #14532d; margin-bottom: 4px;
+  }
+  .print-letterhead-title {
+    font-size: 12px; font-weight: 700; color: #4b7a5a; margin-bottom: 6px;
+  }
+  .print-letterhead-info {
+    display: flex; justify-content: center; gap: 22px;
+    font-size: 11px; color: #14532d; margin-bottom: 4px;
+  }
+  .print-letterhead-info strong { color: #052e16; }
+  .print-letterhead-date {
+    font-size: 10px; color: #6b7280;
+  }
+
+  /* ✅ شريط ملخّص أنيق (قبل/بعد الضريبة) — عمودين متساويين، بلا ظلال، بحدود نظيفة */
+  .print-summary {
+    display: flex !important;
+    gap: 10px !important;
+    margin-bottom: 12px !important;
+  }
+  .print-summary > div {
+    flex: 1 1 0 !important;
+    border-radius: 6px !important;
+    text-align: center !important;
+    padding: 8px 10px !important;
+  }
+
+  /* ✅ بطاقة إجمالي الأكواب: نُبقي العنوان والرقم الكبير فقط، ونخفي تفصيل الدورات
+     (الصناديق الملوّنة لكل دورة) لأنها تفصيل زائد عن الحاجة بكشف يُرسل للمزارع */
+  .print-cups-card { padding: 8px 14px !important; margin-bottom: 12px !important; text-align: center; }
+  .print-cups-card h3 { font-size: 13px !important; }
+  .print-cups-detail { display: none !important; }
+
+  /* إعادة ضبط الـ layout للطباعة */
+  body  { background: white !important; font-size: 10px; }
+  main  { margin: 0 !important; padding: 0 !important; }
+  .card { box-shadow: none !important; border: 1px solid #ddd; padding: 6px !important; }
+
+  /* الجدول يملأ الصفحة — نترك التوزيع تلقائياً (auto) حسب محتوى كل عمود بدل fixed،
+     لأن fixed كان يضغط أعمدة الأرقام (الإجمالي/الكل) لعرض ضيق جداً فيقص أول رمز
+     من الرقم (₪) بسبب overflow:hidden. auto layout يعطي كل عمود العرض اللي يحتاجه فعلياً */
+  .tbl-wrap { overflow: visible !important; border: 1px solid #14532d; border-radius: 6px !important; }
+  table { width: 100% !important; font-size: 9px; border-collapse: collapse; min-width: 0 !important; }
+  th, td { border: 1px solid #ddd !important; padding: 3px 4px !important; word-break: break-word; }
+
+  /* ✅ إخفاء/توسيع أعمدة محددة وقت الطباعة عبر أصناف صريحة (بدل ترقيم الأعمدة
+     nth-child الذي ينكسر مع أي خلية مدموجة colSpan مثل صف "الإجمالي الكلي") —
+     هذا يضمن عدم التأثر إطلاقاً على صف الإجمالي، فتبقى كل قيمه في مكانها الصحيح */
+  .print-col-paid,
+  .print-col-station,
+  .print-col-note {
+    display: none !important;
+  }
+  .print-col-farmer {
+    white-space: normal !important;
+  }
+  .print-col-extras {
+    white-space: normal !important;
+  }
+
+  /* ✅ منع تقطيع أي صف بين صفحتين — يبقي القراءات القليلة مجمّعة بصفحة واحدة */
+  tr { page-break-inside: avoid; }
 
   /* إظهار أرقام الساعات مباشرة */
   .print-readings-row { display: table-row !important; }
 
   /* ألوان الطباعة */
   thead th { background: #14532d !important; color: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  tr:nth-child(even) td { background: #f8f8f8 !important; }
+  tr:nth-child(even) td { background: #f8faf8 !important; }
 
   /* إخفاء أعمدة غير ضرورية */
   td:last-child, th:last-child { display: none !important; } /* أعمدة الإجراءات */
@@ -335,10 +420,11 @@ tr:hover td { background: var(--surface); }
   .print-total td { background: #14532d !important; color: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
   @page {
-    margin: 10mm;
-    size: landscape;
+    margin: 12mm 10mm;
+    size: A4 portrait;
   }
 }
+
 
 /* ── Unified Table Action Buttons ── */
 .tbl-btn {

@@ -100,8 +100,8 @@ export default function ReadingsTable({
   });
 
   const SI = ({ col }) => sortKey!==col ? <span style={{opacity:0.2,fontSize:9}}>⇅</span> : <span style={{fontSize:9,color:'var(--primary)'}}>{sortDir==='asc'?'▲':'▼'}</span>;
-  const STh = ({ col, children, style={} }) => (
-    <th onClick={()=>handleSort(col)} style={{ cursor:'pointer', userSelect:'none', whiteSpace:'nowrap', ...style }}
+  const STh = ({ col, children, style={}, className='' }) => (
+    <th onClick={()=>handleSort(col)} className={className} style={{ cursor:'pointer', userSelect:'none', whiteSpace:'nowrap', ...style }}
       onMouseEnter={e=>e.currentTarget.style.background='#d4edda'} onMouseLeave={e=>e.currentTarget.style.background=''}>
       <span style={{display:'inline-flex',alignItems:'center',gap:3}}>{children} <SI col={col}/></span>
     </th>
@@ -230,18 +230,18 @@ export default function ReadingsTable({
         <table style={{minWidth:600}}>
           <thead>
             <tr>
-              <STh col="paid"    style={{...thBase, minWidth:50, textAlign:'center'}}>{ar?'دفع':'תשלום'}</STh>
-              <STh col="farmer"  style={{...thBase, minWidth:130}}>{ar?'المزارع':'חקלאי'}</STh>
+              <STh col="paid"    className="print-col-paid"    style={{...thBase, minWidth:50, textAlign:'center'}}>{ar?'دفع':'תשלום'}</STh>
+              <STh col="farmer"  className="print-col-farmer"  style={{...thBase, minWidth:130}}>{ar?'المزارع':'חקלאי'}</STh>
               <STh col="land"    style={{...thBase, minWidth:100}}>{ar?'المنطقة':'אזור'}</STh>
               <STh col="year"    style={{...thBase, minWidth:60, textAlign:'center'}}>{ar?'السنة':'שנה'}</STh>
-              <STh col="station" style={{...thBase, minWidth:65, textAlign:'center', fontFamily:'monospace'}}>{ar?'المحطة':'עמדה'}</STh>
+              <STh col="station" className="print-col-station" style={{...thBase, minWidth:65, textAlign:'center', fontFamily:'monospace'}}>{ar?'المحطة':'עמדה'}</STh>
               {Array.from({length:cupsCols}).map((_,i) => (
                 <STh key={i} col={`cups_${i}`} style={thCups}>🪣 {ar?`ف${i+1}`:`ת${i+1}`}</STh>
               ))}
               <STh col="total"  style={thTotal}>🪣 {ar?'الكل':'כלל'}</STh>
-              <th style={{ ...thBase, minWidth:90, background:'#fff3e0', color:'#e65100', textAlign:'center' }}>➕ {ar?'إضافات':'תוספות'}</th>
+              <th className="print-col-extras" style={{ ...thBase, minWidth:90, background:'#fff3e0', color:'#e65100', textAlign:'center' }}>➕ {ar?'إضافات':'תוספות'}</th>
               <STh col="amount" style={{...thAmount, minWidth:100}}>💰 {ar?'الإجمالي':'סה"כ'}</STh>
-              <th style={{...thBase, minWidth:90, textAlign:'center'}}>💬</th>
+              <th className="print-col-note" style={{...thBase, minWidth:90, textAlign:'center'}}>💬</th>
               <th style={{...thBase, minWidth:70, textAlign:'center', position:'sticky', left:0, background:'var(--surface-2)', zIndex:2, boxShadow:'2px 0 4px rgba(0,0,0,0.06)'}}></th>
             </tr>
           </thead>
@@ -289,12 +289,12 @@ export default function ReadingsTable({
                     onMouseEnter={e=>e.currentTarget.style.filter='brightness(0.96)'}
                     onMouseLeave={e=>e.currentTarget.style.filter=''}>
 
-                    <td style={{textAlign:'center'}} onClick={e=>e.stopPropagation()} title={paidTooltip}>
+                    <td className="print-col-paid" style={{textAlign:'center'}} onClick={e=>e.stopPropagation()} title={paidTooltip}>
                       <span style={{fontSize:16}}>
                         {payStatus==='full' ? '✅' : payStatus==='partial' ? '⚠️' : '❌'}
                       </span>
                     </td>
-                    <td style={{whiteSpace:'nowrap'}}>
+                    <td className="print-col-farmer" style={{whiteSpace:'nowrap'}}>
                       <div style={{display:'flex',alignItems:'center',gap:5}}>
                         <strong style={{fontFamily:'Heebo,sans-serif',fontSize:14,whiteSpace:'nowrap'}}>{farmerName(r.farmerId)}</strong>
                         {farmerUnpaidProjects.length > 0 && (
@@ -310,7 +310,7 @@ export default function ReadingsTable({
                     <td style={{fontFamily:'Heebo,sans-serif',fontSize:13}}>{landName(r.landId)}</td>
                     <td style={{textAlign:'center'}}><span className="badge badge-blue">{r.year}</span></td>
 
-                    <td style={{textAlign:'center'}} onClick={e => e.stopPropagation()}>
+                    <td className="print-col-station" style={{textAlign:'center'}} onClick={e => e.stopPropagation()}>
                       {(() => {
                         const land = rowLand;
                         const lat  = land?.stationLat || r.stationLat;
@@ -380,7 +380,7 @@ export default function ReadingsTable({
                     </td>
 
                     {/* ✅ عمود الإضافات المتعددة */}
-                    <td style={{textAlign:'center', background:'#fff3e0', padding:'6px 4px', minWidth:90}}>
+                    <td className="print-col-extras" style={{textAlign:'center', background:'#fff3e0', padding:'6px 4px', minWidth:90}}>
                       {rowExtras.length === 0 ? (
                         <span style={{color:'var(--border)'}}>—</span>
                       ) : (
@@ -419,7 +419,7 @@ export default function ReadingsTable({
                       </strong>
                     </td>
 
-                    <td style={{textAlign:'center'}} onClick={e=>e.stopPropagation()}>
+                    <td className="print-col-note" style={{textAlign:'center'}} onClick={e=>e.stopPropagation()}>
                       {isViewer ? (
                         r.note
                           ? <span style={{background:'#fef9c3',border:'1px solid #fde047',borderRadius:6,padding:'2px 8px',fontSize:12,color:'#78350f',fontWeight:600}}>💬 {r.note}</span>
@@ -587,13 +587,15 @@ export default function ReadingsTable({
 
             {sorted.length > 1 && (
               <tr style={{background:'linear-gradient(90deg,#14532d,#166534)', borderTop:'2px solid #14532d'}}>
-                <td colSpan={5} style={{fontWeight:900,color:'#fff',fontSize:14,padding:'11px 14px'}}>⚡ {ar?'الإجمالي الكلي':'סה"כ כללי'}</td>
+                <td className="print-col-paid"></td>
+                <td colSpan={3} style={{fontWeight:900,color:'#fff',fontSize:14,padding:'11px 14px'}}>⚡ {ar?'الإجمالي الكلي':'סה"כ כללי'}</td>
+                <td className="print-col-station"></td>
                 {Array.from({length:cupsCols}).map((_,i) => {
                   const col = sorted.reduce((s,r)=>s+cupsPositive(r.readings||[],i,r.meterChanges||[]),0);
                   return <td key={i} style={{textAlign:'center',padding:'11px 8px'}}><span style={{fontWeight:900,color:'#a3e635',fontSize:15}}>{col.toLocaleString()}</span></td>;
                 })}
                 <td style={{textAlign:'center',padding:'11px 8px'}}><span style={{fontWeight:900,color:'#a3e635',fontSize:17}}>{grandCups.toLocaleString()}</span></td>
-                <td style={{textAlign:'center',padding:'11px 8px',color:'#fde68a',fontWeight:900,fontSize:15}}>
+                <td className="print-col-extras" style={{textAlign:'center',padding:'11px 8px',color:'#fde68a',fontWeight:900,fontSize:15}}>
                   ₪{sorted.reduce((s,r)=>s+getExtras(r).reduce((ss,e)=>(ss+(parseFloat(e.amount)||0)),0),0).toLocaleString()}
                 </td>
                 <td style={{textAlign:'center',padding:'11px 8px',borderLeft:'2px solid #a3e635'}}>
@@ -601,7 +603,8 @@ export default function ReadingsTable({
                     ₪{Math.round(grandAmount + grandExtrasRem).toLocaleString()}
                   </span>
                 </td>
-                <td colSpan={2}/>
+                <td className="print-col-note"></td>
+                <td></td>
               </tr>
             )}
           </tbody>
