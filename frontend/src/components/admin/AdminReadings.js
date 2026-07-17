@@ -5,6 +5,7 @@ import { t } from '../../i18n/translations';
 import ReadingsTable from './ReadingsTable';
 import { getPrice, getBasePrice, getVatRate } from '../../utils/pricing'; // ✅ سعر موحّد شامل الضريبة (מע"מ)
 import { cupsPositive } from '../../utils/cups'; // ✅ فرق أكواب موحّد (يدعم تبديل العداد ضمن نفس الفترة)
+import { getExtrasList as getExtras } from '../../utils/extras'; // ✅ إضافات موحّدة — تُستخدم برسالة واتساب
 
 const dmsToDecimal = (deg, min, sec, dir) => {
   let dd = parseFloat(deg) + parseFloat(min)/60 + parseFloat(sec)/3600;
@@ -821,6 +822,96 @@ export default function AdminReadings({ adminRole='admin' }) {
   // إجمالي الإضافات في النموذج
   const extrasTotal = (rForm.extras||[]).reduce((s,e)=>(s+(parseFloat(e.amount)||0)-(parseFloat(e.paid)||0)),0);
 
+  // ✅ تحويل رقم الهاتف لصيغة دولية يفهمها رابط واتساب (wa.me) — افتراض إسرائيل (972+)
+  const normalizePhone = (phone) => {
+    let digits = (phone || '').replace(/\D/g, '');
+    if (!digits) return '';
+    if (digits.startsWith('0')) digits = '972' + digits.slice(1);
+    else if (!digits.startsWith('972')) digits = '972' + digits;
+    return digits;
+  };
+
+  // ✅ يبني نص كشف واتساب لمزارع واحد: تفصيل كل أرض/فترة + المبلغ الإجمالي غير المدفوع
+  const buildFarmerStatement = (farmer, readingsForFarmer) => {
+    let grandTotal = 0;
+    const landBlocks = [];
+
+    readingsForFarmer.forEach(r => {
+      const land = lands.find(l => String(l.id) === String(r.landId));
+      const stationLabel = land?.stationNumber || '';
+      // ✅ اسم الأرض الوصفي (منطقة/اسم خاص) — يُعرض بجانب رقم المحطة لأن بعض
+      // المزارعين لا يعرفون رقم محطتهم، بينما اسم الأرض/المنطقة مألوف لهم
+      const landDisplay = landName(r.landId);
+      const landLabel = (stationLabel && landDisplay && landDisplay !== stationLabel)
+        ? `${stationLabel} — ${landDisplay}`
+        : (stationLabel || landDisplay || '');
+
+      const vals = r.readings || [];
+      const changes = r.meterChanges || [];
+      const periodLines = [];
+      let landTotal = 0;
+
+      vals.slice(1).forEach((_, i) => {
+        const cups = cupsPositive(vals, i, changes);
+        if (cups <= 0) return;
+        const price = getPrice(prices, r.year, r.landId, i + 1);
+        const amt = cups * price;
+        const isPaid = !!(r.paidPeriods && r.paidPeriods[i]);
+        periodLines.push(
+          `   - ${ar ? 'فترة' : 'תקופה'} ${i + 1}: ${Math.round(cups).toLocaleString()} ${ar ? 'كوب' : 'קוב'} — ₪${Math.round(amt).toLocaleString()} ${isPaid ? (ar?'[مدفوع]':'[שולם]') : (ar?'[غير مدفوع]':'[לא שולם]')}`
+        );
+        if (!isPaid) { landTotal += amt; grandTotal += amt; }
+      });
+
+      // ✅ الإضافات غير المدفوعة لهذه الأرض
+      getExtras(r).forEach(ex => {
+        const amt = parseFloat(ex.amount) || 0;
+        const paidAmt = parseFloat(ex.paid) || 0;
+        const rem = amt - paidAmt;
+        if (rem > 0.01) {
+          periodLines.push(`   - ${ex.note || (ar ? 'إضافة' : 'תוספת')}: ₪${Math.round(rem).toLocaleString()} ${ar?'[غير مدفوع]':'[לא שולם]'}`);
+          landTotal += rem; grandTotal += rem;
+        }
+      });
+
+      if (periodLines.length > 0) {
+        landBlocks.push(
+          `${ar?'الأرض':'קרקע'}: ${landLabel} (${r.year})\n${periodLines.join('\n')}` +
+          (landTotal > 0 ? `\n   ${ar ? 'مجموع الأرض' : 'סה"כ קרקע'}: ₪${Math.round(landTotal).toLocaleString()}` : '')
+        );
+      }
+    });
+
+    const farmerDisplayName = farmer.nameHeb || farmer.name || '';
+    const header = `${ar ? 'مرحباً' : 'שלום'} ${farmerDisplayName}،\n${ar ? 'كشف قراءة المياه — الشلالة' : 'דו"ח קריאת מים — השלאלה'}\n`;
+    const body = landBlocks.length > 0
+      ? landBlocks.join('\n\n')
+      : (ar ? 'لا يوجد مبلغ مستحق حالياً' : 'אין סכום לתשלום כרגע');
+    const footer = grandTotal > 0
+      ? `\n\n${ar ? 'الإجمالي المطلوب دفعه' : 'סה"כ לתשלום'}: ₪${Math.round(grandTotal).toLocaleString()}`
+      : '';
+
+    return `${header}\n${body}${footer}`;
+  };
+
+  // ✅ زر واتساب: يعمل فقط عند الفلترة على مزارع واحد بالتحديد (لأن الرسالة مخصصة لشخص واحد)
+  const sendWhatsAppStatement = () => {
+    const farmerIds = [...new Set(filtered.map(r => String(r.farmerId)))];
+    if (farmerIds.length !== 1) {
+      alert(ar ? 'فلتر باسم مزارع واحد فقط أولاً من الأعلى' : 'סנן קודם לפי חקלאי אחד בלבד');
+      return;
+    }
+    const farmer = farmers.find(f => String(f.id) === farmerIds[0]);
+    if (!farmer) return;
+    if (!farmer.phone) {
+      alert(ar ? 'لا يوجد رقم هاتف مسجل لهذا المزارع' : 'אין מספר טלפון רשום לחקלאי זה');
+      return;
+    }
+    const text = buildFarmerStatement(farmer, filtered);
+    const digits = normalizePhone(farmer.phone);
+    window.open(`https://wa.me/${digits}?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
   return (
     <div>
       {/* ══ شباك الإضافة الجماعية ══ */}
@@ -848,7 +939,7 @@ export default function AdminReadings({ adminRole='admin' }) {
           </div>
         )}
         <div className="print-letterhead-date">
-          {new Date().toLocaleDateString(ar ? 'ar-EG' : 'he-IL')}
+          {new Date().toLocaleDateString(ar ? 'ar-EG-u-nu-latn' : 'he-IL')}
         </div>
       </div>
 
@@ -966,6 +1057,13 @@ export default function AdminReadings({ adminRole='admin' }) {
         </div>
         <div className="flex-gap gap-8">
           <button className="btn btn-outline btn-sm" onClick={() => window.print()}>🖨️</button>
+          <button className="btn btn-outline btn-sm" onClick={sendWhatsAppStatement}
+            title={ar ? 'إرسال كشف واتساب للمزارع (فلتر بمزارع واحد أولاً)' : 'שלח דו"ח בוואטסאפ (סנן חקלאי אחד קודם)'}
+            style={{ color:'#25D366', borderColor:'#25D366', display:'inline-flex', alignItems:'center', justifyContent:'center' }}>
+            <svg viewBox="0 0 32 32" width="18" height="18" fill="currentColor" aria-hidden="true">
+              <path d="M16.004 3C9.377 3 4 8.373 4 15c0 2.24.615 4.42 1.78 6.32L4 29l7.86-1.75A11.94 11.94 0 0 0 16.004 27C22.63 27 28 21.627 28 15S22.63 3 16.004 3Zm0 21.8c-1.93 0-3.82-.52-5.47-1.5l-.39-.23-4.66 1.04 1.02-4.54-.25-.4A9.77 9.77 0 0 1 5.2 15c0-5.96 4.85-10.8 10.8-10.8 5.96 0 10.8 4.84 10.8 10.8 0 5.96-4.84 10.8-10.8 10.8Zm5.93-8.1c-.32-.16-1.9-.94-2.2-1.04-.3-.11-.51-.16-.73.16-.21.32-.84 1.04-1.03 1.25-.19.21-.38.24-.7.08-.32-.16-1.35-.5-2.57-1.6-.95-.85-1.6-1.9-1.78-2.22-.19-.32-.02-.49.14-.65.14-.14.32-.38.48-.56.16-.19.21-.32.32-.53.11-.21.05-.4-.03-.56-.08-.16-.73-1.76-1-2.41-.26-.63-.53-.55-.73-.56-.19-.01-.4-.01-.62-.01-.21 0-.56.08-.86.4-.3.32-1.13 1.1-1.13 2.7 0 1.6 1.16 3.14 1.32 3.36.16.21 2.28 3.48 5.53 4.88.77.33 1.37.53 1.84.68.77.24 1.47.21 2.02.13.62-.09 1.9-.78 2.17-1.53.27-.75.27-1.4.19-1.53-.08-.13-.29-.21-.61-.37Z"/>
+            </svg>
+          </button>
           {!isViewer && (
             <button className="btn" style={{background:'#4c1d95',color:'#fff',border:'1.5px solid #4c1d95'}}
               onClick={() => setShowBulkModal(true)}>

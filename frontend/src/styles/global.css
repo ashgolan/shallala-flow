@@ -388,6 +388,12 @@ tr:hover td { background: var(--surface); }
   table { width: 100% !important; font-size: 9px; border-collapse: collapse; min-width: 0 !important; }
   th, td { border: 1px solid #ddd !important; padding: 3px 4px !important; word-break: break-word; }
 
+  /* ✅ إخفاء نص التلميح الإرشادي (💡 اضغط على الصف...) — مخصص للاستخدام على
+     الشاشة فقط، لا معنى له بكشف مطبوع يُرسل للمزارع */
+  .print-hide-tip {
+    display: none !important;
+  }
+
   /* ✅ إخفاء/توسيع أعمدة محددة وقت الطباعة عبر أصناف صريحة (بدل ترقيم الأعمدة
      nth-child الذي ينكسر مع أي خلية مدموجة colSpan مثل صف "الإجمالي الكلي") —
      هذا يضمن عدم التأثر إطلاقاً على صف الإجمالي، فتبقى كل قيمه في مكانها الصحيح */

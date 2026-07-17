@@ -223,7 +223,7 @@ export default function ReadingsTable({
           )}
           <span style={{color:'#dc2626',fontWeight:700,fontSize:13}}>✕ {unpaidCount} {ar?'غير مدفوع':'לא שולם'}</span>
         </div>
-        <span style={{fontSize:12,color:'var(--text-muted)'}}>💡 {ar?'اضغط على الصف لأرقام الساعات — الدائرة داخل كل عمود كوب تدفع تلك الفترة تحديداً':'לחץ על שורה לקריאות'}</span>
+        <span className="print-hide-tip" style={{fontSize:12,color:'var(--text-muted)'}}>💡 {ar?'اضغط على الصف لأرقام الساعات — الدائرة داخل كل عمود كوب تدفع تلك الفترة تحديداً':'לחץ על שורה לקריאות'}</span>
       </div>
 
       <div className="tbl-wrap">
