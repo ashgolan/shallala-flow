@@ -627,7 +627,11 @@ export default function AdminReadings({ adminRole='admin' }) {
   const years = [...new Set(readings.map(r => r.year))].sort((a,b) => b-a);
   const farmerLands = rForm.farmerId ? lands.filter(l => String(l.farmerId) === String(rForm.farmerId)) : lands;
 
-  // ✅ مزارعون لم يكملوا دفعهم لمشروع/مشاريع معينة — Map: farmerId -> [{ projectName, remaining }]
+  // ✅ مزارعون لم يكملوا دفعهم لمشروع/مشاريع معينة — Map: farmerId -> [{ projectName, remaining, stationNumber }]
+  // ✅ stationNumber هنا (نص) هو مفتاح المطابقة الفعلي مع reading.stationNumber، وهذا يتجاوز
+  // مشكلة الأراضي المكررة بقاعدة البيانات كلياً. الأولوية: محطة المشترك نفسه (m.stationNumber —
+  // لمشاريع تخص عدة محطات مختلفة كل مشترك بمحطته، مثل "تطوير طريق")، وإلا محطة المشروع العامة
+  // (p.stationNumber — لمشروع يخص محطة واحدة بالذات)، وإلا فارغ = توافق قديم يشمل كل أراضي المزارع.
   const unpaidProjectsByFarmer = (() => {
     const map = {};
     projects.forEach(p => {
@@ -637,7 +641,8 @@ export default function AdminReadings({ adminRole='admin' }) {
         const remaining = m.amount - paid;
         if (remaining > 0.01) {
           if (!map[m.farmerId]) map[m.farmerId] = [];
-          map[m.farmerId].push({ projectName: p.name, remaining });
+          const stationNumber = (m.stationNumber && m.stationNumber.trim()) || p.stationNumber || '';
+          map[m.farmerId].push({ projectName: p.name, remaining, stationNumber });
         }
       });
     });

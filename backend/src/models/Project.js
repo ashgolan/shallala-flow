@@ -11,6 +11,10 @@ const paymentSchema = new mongoose.Schema({
 const memberSchema = new mongoose.Schema({
   farmerId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Farmer', required: false }, // اختياري الآن
   memberName: { type: String, default: '' }, // اسم حر — يُستخدم فقط عندما لا يوجد farmerId (مشاريع customMembers)
+  // ✅ محطة خاصة بهذا المشترك تحديداً — تُستخدم لمشاريع لا تخص محطة واحدة (مثل "تطوير طريق")
+  // بل عدة مزارعين كل واحد على محطته الخاصة. لها أولوية على محطة المشروع العامة (project.stationNumber)
+  // عند تحديد نطاق تحذير "لم يدفع" بصفحة القراءات. فارغة = تُستخدم محطة المشروع العامة إن وُجدت.
+  stationNumber: { type: String, default: '' },
   amount:     { type: Number, default: null },   // المبلغ المطلوب الفردي — null = غير محدد بعد (لا يُستخدم في مشاريع customMembers)
   invoiced:   { type: Boolean, default: false }, // صدرت فاتورة
   payments:   { type: [paymentSchema], default: [] },
@@ -23,6 +27,13 @@ const projectSchema = new mongoose.Schema({
   lat:           { type: Number, default: null },
   lng:           { type: Number, default: null },
   locationNote:  { type: String, default: '' }, // اسم النقطة أو وصفها
+  // ✅ الأرض/المحطة التي يخص بها هذا المشروع بأكمله — اختياري (يُستخدم لعرض GPS على الخريطة فقط)
+  landId:        { type: mongoose.Schema.Types.ObjectId, ref: 'Land', default: null },
+  // ✅ رقم المحطة كنص — هذا هو المفتاح الفعلي المستخدم لمطابقة تحذير "لم يدفع" بصفحة
+  // القراءات (يُقارَن بـ reading.stationNumber نصياً). نعتمد النص بدل landId لأن الأراضي
+  // المكررة بقاعدة البيانات (نفس رقم المحطة بعدة سجلات) تكسر أي مطابقة تعتمد على الـ ID،
+  // بينما النص "K3" يبقى متطابقاً دائماً بغض النظر عن عدد النسخ المكررة.
+  stationNumber: { type: String, default: '' },
   members:       { type: [memberSchema], default: [] },
   status:        { type: String, enum: ['active','done','cancelled'], default: 'active' },
   // ✅ إذا true: المشتركون بأسماء حرة (غير مرتبطين بقائمة المزارعين)، وتظهر حقول رقم الوصل/الدفتر بالدفعات

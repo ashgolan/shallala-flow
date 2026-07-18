@@ -28,7 +28,7 @@ const formatDate = (dateVal, ar) => {
   return new Date(dateVal).toLocaleDateString(ar ? 'ar-EG-u-nu-latn' : 'he-IL');
 };
 
-const EMPTY_PROJECT = { name:'', description:'', date:'', lat:'', lng:'', gpsRaw:'', locationNote:'', status:'active', customMembers:false, targetAmount:'' };
+const EMPTY_PROJECT = { name:'', description:'', date:'', lat:'', lng:'', gpsRaw:'', locationNote:'', landId:'', status:'active', customMembers:false, targetAmount:'' };
 const EMPTY_PAYMENT = { amount:'', date:new Date().toISOString().slice(0,10), note:'', receiptNumber:'', bookNumber:'' };
 // ✅ حقول الدفعة الأولى داخل مودال "إضافة مشترك" (لمشاريع customMembers فقط) — نفس شكل EMPTY_PAYMENT
 const EMPTY_FIRST_PAYMENT = { amount:'', date:new Date().toISOString().slice(0,10), note:'', receiptNumber:'', bookNumber:'' };
@@ -60,6 +60,8 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
   const [addMemberModal,  setAddMemberModal]  = useState(false);
   const [selFarmerId,     setSelFarmerId]     = useState('');
   const [selAmount,       setSelAmount]       = useState('');
+  // ✅ محطة خاصة بهذا المشترك (اختياري) — لمشاريع تخص عدة محطات مختلفة (مثل "تطوير طريق")
+  const [selMemberStation, setSelMemberStation] = useState('');
   const [addingMember,    setAddingMember]    = useState(false);
   const [addMemberErr,    setAddMemberErr]    = useState('');
   // بحث عن المزارع بالكتابة (بدل القائمة العادية) — للمشاريع العادية فقط
@@ -73,6 +75,10 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
   // تعديل المبلغ المطلوب لمشترك موجود (بالضغط على الرقم بالجدول) — للمشاريع العادية فقط
   const [editAmountId,    setEditAmountId]    = useState(null); // memberId الجاري تعديله
   const [editAmountVal,   setEditAmountVal]   = useState('');
+
+  // ✅ تعديل محطة مشترك موجود (بالضغط على شارة المحطة بالجدول) — للمشاريع العادية فقط
+  const [editStationId,   setEditStationId]   = useState(null); // memberId الجاري تعديله
+  const [editStationVal,  setEditStationVal]  = useState('');
 
   // إضافة دفعة
   const [payModal,    setPayModal]    = useState(null); // { projectId, memberId, farmerName }
@@ -127,6 +133,10 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
     return { paid, remaining: (m.amount||0) - paid };
   };
 
+  // ✅ اسم/رقم المحطة المرتبطة بمشروع (إن وُجدت) — نعتمد النص المخزّن مباشرة (موثوق دائماً)
+  // بدل البحث عبر landId (قد يشير لأي نسخة من نسخ محطة مكررة بقاعدة البيانات)
+  const projectStationLabel = (proj) => proj.stationNumber || null;
+
   // فتح نموذج المشروع
   const openAdd = () => {
     setEditProj(null);
@@ -145,11 +155,12 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
       lat: proj.lat||'', lng: proj.lng||'',
       gpsRaw: (proj.lat&&proj.lng) ? `${proj.lat}, ${proj.lng}` : '',
       locationNote: proj.locationNote||'', status: proj.status||'active',
+      landId: proj.landId||'',
       customMembers: !!proj.customMembers,
       targetAmount: proj.targetAmount != null ? String(proj.targetAmount) : '',
     });
-    setLocMode('manual');
-    setSelStation('');
+    setLocMode(proj.landId ? 'station' : 'manual');
+    setSelStation(proj.landId || '');
     setFormErr('');
     setShowForm(true);
   };
@@ -162,11 +173,15 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
   const handleStationSelect = (stationId) => {
     setSelStation(stationId);
     const land = lands.find(l => l.id === stationId);
-    if (land?.stationLat && land?.stationLng) {
+    if (land) {
       setForm(prev => ({
         ...prev,
-        lat: land.stationLat, lng: land.stationLng,
-        gpsRaw: `${land.stationLat}, ${land.stationLng}`,
+        // ✅ landId هنا يُستخدم فقط لعرض GPS بالخريطة — الخادم يشتق منه رقم المحطة (نص)
+        // ويحفظه كمفتاح المطابقة الفعلي (project.stationNumber)، فتبقى المطابقة موثوقة
+        // حتى لو كان هذا السجل بالذات واحداً من عدة نسخ مكررة لنفس رقم المحطة
+        landId: stationId,
+        lat: land.stationLat || prev.lat, lng: land.stationLng || prev.lng,
+        gpsRaw: (land.stationLat && land.stationLng) ? `${land.stationLat}, ${land.stationLng}` : prev.gpsRaw,
         locationNote: prev.locationNote || land.stationNumber || '',
       }));
     }
@@ -183,6 +198,7 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
         lat: form.lat ? parseFloat(form.lat) : null,
         lng: form.lng ? parseFloat(form.lng) : null,
         locationNote: form.locationNote,
+        landId: form.landId || null,
         status: form.status,
         customMembers: !!form.customMembers,
         // ✅ الهدف الإجمالي — يُرسل فقط عندما تكون customMembers مفعّلة، وإلا يبقى null
@@ -213,6 +229,7 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
     setOpenProj(proj);
     setSelFarmerId('');
     setSelAmount('');
+    setSelMemberStation('');
     setMemberSearch('');
     setShowMemberList(false);
     setCustomMemberName('');
@@ -225,6 +242,7 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
     setAddMemberModal(false);
     setSelFarmerId('');
     setSelAmount('');
+    setSelMemberStation('');
     setMemberSearch('');
     setShowMemberList(false);
     setCustomMemberName('');
@@ -290,7 +308,7 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
         }
       } else {
         const amountToSend = selAmount.trim() === '' ? null : parseFloat(selAmount);
-        await adminAPI.addProjectMember(openProj.id, { farmerId: selFarmerId, amount: amountToSend });
+        await adminAPI.addProjectMember(openProj.id, { farmerId: selFarmerId, amount: amountToSend, stationNumber: selMemberStation || '' });
         const updated = await adminAPI.getProjects();
         setProjects(updated.projects||[]);
         const proj = (updated.projects||[]).find(p => p.id === openProj.id);
@@ -334,6 +352,28 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
       setOpenProj((updated.projects||[]).find(p=>p.id===openProj.id)||null);
     } catch(e) { alert(e.message); }
     finally { cancelEditAmount(); }
+  };
+
+  // ✅ تعديل محطة مشترك موجود — للمشاريع العادية فقط (customMembers لا تملك محطة فردية)
+  const startEditStation = (m, proj) => {
+    if (!canManageMembers(proj) || proj.customMembers) return;
+    setEditStationId(m.id);
+    setEditStationVal(m.stationNumber || '');
+  };
+
+  const cancelEditStation = () => {
+    setEditStationId(null);
+    setEditStationVal('');
+  };
+
+  const saveEditStation = async (memberId) => {
+    try {
+      await adminAPI.updateProjectMember(openProj.id, memberId, { stationNumber: editStationVal.trim() });
+      const updated = await adminAPI.getProjects();
+      setProjects(updated.projects||[]);
+      setOpenProj((updated.projects||[]).find(p=>p.id===openProj.id)||null);
+    } catch(e) { alert(e.message); }
+    finally { cancelEditStation(); }
   };
 
   const toggleInvoiced = async (memberId, current) => {
@@ -395,6 +435,22 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
   })();
 
   const selectedMemberFarmer = selFarmerId ? farmers.find(f => f.id === selFarmerId) : null;
+
+  // ✅ قائمة محطات بدون تكرار — نجمع كل الأراضي حسب رقم المحطة (نص) ونختار من كل
+  // مجموعة سجلاً واحداً تمثيلياً (نفضّل واحداً فيه GPS)، بدل عرض كل نسخة مكررة
+  // على حدة بالقائمة. هذا لا يحذف أو يدمج أي بيانات — فقط تنظيف للعرض.
+  const uniqueStations = (() => {
+    const groups = {};
+    lands.filter(l => l.stationNumber).forEach(l => {
+      const key = l.stationNumber.trim();
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(l);
+    });
+    return Object.values(groups).map(group => {
+      // نفضّل تمثيل المجموعة بأرض فيها GPS، وإلا أول سجل بالمجموعة
+      return group.find(l => l.stationLat && l.stationLng) || group[0];
+    }).sort((a,b) => (a.stationNumber||'').localeCompare(b.stationNumber||''));
+  })();
 
   // ── MapModal ──
   const MapModal = () => {
@@ -521,7 +577,7 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
                   📍 {ar?'موقع المشروع':'מיקום הפרויקט'}
                 </label>
                 <div style={{display:'flex',gap:8,marginBottom:12}}>
-                  <button type="button" onClick={()=>setLocMode('manual')}
+                  <button type="button" onClick={()=>{ setLocMode('manual'); setSelStation(''); setForm(prev=>({...prev, landId:''})); }}
                     style={{flex:1,padding:'7px',borderRadius:8,border:`2px solid ${locMode==='manual'?'var(--primary)':'var(--border)'}`,background:locMode==='manual'?'#f0fdf4':'var(--surface-2)',fontWeight:700,fontSize:12,cursor:'pointer',color:locMode==='manual'?'var(--primary)':'var(--text-muted)'}}>
                     ✏️ {ar?'إدخال يدوي':'הזנה ידנית'}
                   </button>
@@ -541,6 +597,11 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
                         ✓ {parseFloat(form.lat).toFixed(5)}, {parseFloat(form.lng).toFixed(5)}
                       </div>
                     )}
+                    <div style={{fontSize:11,color:'var(--text-muted)',marginTop:6}}>
+                      {ar
+                        ? '💡 بهذا الوضع لن يُربط المشروع بأي محطة محددة — تحذير "لم يدفع" بصفحة القراءات سيظهر على كل أراضي كل مشترك. للربط بمحطة محددة، اختر "من محطة مسجلة" بدل ذلك.'
+                        : '💡 במצב זה הפרויקט לא יקושר לעמדה מסוימת — אזהרת "לא שולם" תופיע על כל הקרקעות של כל משתתף. לקישור לעמדה ספציפית, בחר "מתחנה רשומה" במקום.'}
+                    </div>
                   </div>
                 ) : (
                   <div className="form-group" style={{margin:0}}>
@@ -548,9 +609,9 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
                     <select value={selStation} onChange={e=>handleStationSelect(e.target.value)}
                       style={{fontFamily:'monospace',fontWeight:700}}>
                       <option value="">{ar?'— اختر محطة —':'— בחר תחנה —'}</option>
-                      {lands.filter(l=>l.stationNumber&&l.stationLat).map(l=>(
+                      {uniqueStations.map(l=>(
                         <option key={l.id} value={l.id}>
-                          {l.stationNumber} — 📍 {parseFloat(l.stationLat).toFixed(4)}, {parseFloat(l.stationLng).toFixed(4)}
+                          {l.stationNumber}{l.stationLat && l.stationLng ? ` — 📍 ${parseFloat(l.stationLat).toFixed(4)}, ${parseFloat(l.stationLng).toFixed(4)}` : ''}
                         </option>
                       ))}
                     </select>
@@ -559,6 +620,11 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
                         ✓ {parseFloat(form.lat).toFixed(5)}, {parseFloat(form.lng).toFixed(5)}
                       </div>
                     )}
+                    <div style={{fontSize:11,color:'#1e40af',marginTop:6}}>
+                      {ar
+                        ? '💡 نفس هذه المحطة تصير مرتبطة بالمشروع تلقائياً: تحذير "لم يدفع" بصفحة القراءات لكل مشتركي هذا المشروع سيظهر فقط على قراءات هذه المحطة (بالمطابقة على رقم المحطة نفسه، وليس سجلاً بعينه)، بدل الظهور على كل أراضيهم.'
+                        : '💡 אותה עמדה זו תהיה מקושרת לפרויקט אוטומטית: אזהרת "לא שולם" בעמוד הקריאות לכל משתתפי פרויקט זה תופיע רק על קריאות עמדה זו, במקום על כל הקרקעות שלהם.'}
+                    </div>
                   </div>
                 )}
 
@@ -722,6 +788,29 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
               </div>
             )}
 
+            {/* ✅ محطة خاصة بهذا المشترك (اختياري) — لمشاريع متعددة المحطات مثل "تطوير طريق" */}
+            {!openProj.customMembers && (
+              <div className="form-group">
+                <label>{ar?'محطة هذا المشترك (اختياري)':'עמדה של משתתף זה (אופציונלי)'}</label>
+                <select value={selMemberStation} onChange={e=>setSelMemberStation(e.target.value)}
+                  style={{fontFamily:'monospace',fontWeight:700}}>
+                  <option value="">
+                    {openProj.stationNumber
+                      ? (ar?`— نفس محطة المشروع (${openProj.stationNumber}) —`:`— אותה עמדה של הפרויקט (${openProj.stationNumber}) —`)
+                      : (ar?'— بدون تحديد (كل أراضي المزارع) —':'— ללא ציון (כל הקרקעות של החקלאי) —')}
+                  </option>
+                  {uniqueStations.map(l => (
+                    <option key={l.id} value={l.stationNumber}>{l.stationNumber}</option>
+                  ))}
+                </select>
+                <div style={{fontSize:11,color:'var(--text-muted)',marginTop:4}}>
+                  {ar
+                    ? '💡 لمشروع يخص محطة واحدة اتركه فارغاً. لمشروع متعدد المحطات (مثل تطوير طريق يمر بعدة أراضٍ)، حدد هنا محطة هذا المشترك بالذات ليظهر تحذير "لم يدفع" على قراءات محطته فقط.'
+                    : '💡 לפרויקט שנוגע לעמדה אחת השאר ריק. לפרויקט מרובה עמדות (כמו כביש שעובר בכמה קרקעות), ציין כאן את העמדה של משתתף זה כדי שהאזהרה תופיע רק על קריאות העמדה שלו.'}
+                </div>
+              </div>
+            )}
+
             {/* حقل المبلغ الفردي — للمشاريع العادية فقط */}
             {!openProj.customMembers && (
               <div className="form-group">
@@ -824,6 +913,7 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
             const isOpen = openProj?.id === proj.id;
             const canManage = canManageMembers(proj); // ✅ صلاحية إدارة مشتركي/دفعات *هذا* المشروع تحديداً
             const isCustom = !!proj.customMembers;
+            const stationLabel = projectStationLabel(proj);
 
             return (
               <div key={proj.id} className="card" style={{padding:0,overflow:'hidden'}}>
@@ -836,7 +926,15 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
                         {isOpen?'▲':'▼'}
                       </button>
                       <div>
-                        <div style={{fontWeight:900,fontSize:16,color:'var(--primary)'}}>{proj.name}</div>
+                        <div style={{display:'flex',alignItems:'center',gap:8}}>
+                          <div style={{fontWeight:900,fontSize:16,color:'var(--primary)'}}>{proj.name}</div>
+                          {/* ✅ شارة المحطة المرتبطة بالمشروع (إن وُجدت) */}
+                          {stationLabel && (
+                            <span style={{background:'#dbeafe',color:'#1e40af',padding:'2px 8px',borderRadius:6,fontSize:11,fontWeight:800,fontFamily:'monospace'}}>
+                              📍 {stationLabel}
+                            </span>
+                          )}
+                        </div>
                         {proj.description && <div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>{proj.description}</div>}
                       </div>
                     </div>
@@ -1032,6 +1130,7 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
                         <thead>
                           <tr style={{background:'#e8f5e9'}}>
                             <th style={{padding:'8px 12px',textAlign:'right',fontWeight:800}}>{ar?'المزارع':'חקלאי'}</th>
+                            <th style={{padding:'8px 12px',textAlign:'center',fontWeight:800}}>{ar?'المحطة':'עמדה'}</th>
                             <th style={{padding:'8px 12px',textAlign:'center',fontWeight:800}}>{ar?'المطلوب':'נדרש'}</th>
                             <th style={{padding:'8px 12px',textAlign:'center',fontWeight:800,color:'#16a34a'}}>{ar?'المدفوع':'שולם'}</th>
                             <th style={{padding:'8px 12px',textAlign:'center',fontWeight:800,color:'#dc2626'}}>{ar?'المتبقي':'נותר'}</th>
@@ -1049,6 +1148,36 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
                                 <tr style={{borderBottom:'1px solid #e5e7eb',background:mi%2===0?'#fff':'#f9fafb'}}>
                                   <td style={{padding:'10px 12px',fontFamily:'Heebo,sans-serif',fontWeight:700,fontSize:14}}>
                                     {memberDisplayName(m)}
+                                  </td>
+                                  {/* ✅ عمود المحطة الخاصة بهذا المشترك — قابل للتعديل بالضغط عليه */}
+                                  <td style={{padding:'10px 12px',textAlign:'center'}}>
+                                    {editStationId === m.id ? (
+                                      <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
+                                        <select autoFocus value={editStationVal} onChange={e=>setEditStationVal(e.target.value)}
+                                          style={{fontSize:12,padding:'3px 4px',fontWeight:700}}>
+                                          <option value="">{proj.stationNumber ? `— ${proj.stationNumber} —` : (ar?'بدون تحديد':'ללא ציון')}</option>
+                                          {uniqueStations.map(l => (
+                                            <option key={l.id} value={l.stationNumber}>{l.stationNumber}</option>
+                                          ))}
+                                        </select>
+                                        <button onClick={()=>saveEditStation(m.id)} title={ar?'حفظ':'שמור'}
+                                          style={{background:'none',border:'none',color:'#16a34a',cursor:'pointer',fontSize:16,padding:0}}>✓</button>
+                                        <button onClick={cancelEditStation} title={ar?'إلغاء':'ביטול'}
+                                          style={{background:'none',border:'none',color:'#dc2626',cursor:'pointer',fontSize:14,padding:0}}>✕</button>
+                                      </div>
+                                    ) : m.stationNumber ? (
+                                      <span onClick={()=>startEditStation(m, proj)}
+                                        style={{cursor:canManage?'pointer':'default',background:'#dcfce7',color:'var(--primary)',padding:'3px 10px',borderRadius:8,fontSize:12,fontWeight:800,fontFamily:'monospace',display:'inline-block'}}
+                                        title={canManage?(ar?'اضغط للتعديل':'לחץ לעריכה'):''}>
+                                        📍 {m.stationNumber}
+                                      </span>
+                                    ) : (
+                                      <span onClick={()=>startEditStation(m, proj)}
+                                        style={{cursor:canManage?'pointer':'default',color:'var(--text-muted)',fontSize:11}}
+                                        title={canManage?(ar?'اضغط لتحديد محطة خاصة':'לחץ לבחירת עמדה'):''}>
+                                        {proj.stationNumber ? `(${proj.stationNumber})` : (ar?'—':'—')}
+                                      </span>
+                                    )}
                                   </td>
                                   <td style={{padding:'10px 12px',textAlign:'center',fontWeight:700}}>
                                     {editAmountId === m.id ? (
@@ -1127,7 +1256,7 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
                                 {/* الدفعات */}
                                 {m.payments.length > 0 && (
                                   <tr>
-                                    <td colSpan={canManage?7:6} style={{padding:'0 12px 10px 12px',background:mi%2===0?'#fff':'#f9fafb'}}>
+                                    <td colSpan={canManage?8:7} style={{padding:'0 12px 10px 12px',background:mi%2===0?'#fff':'#f9fafb'}}>
                                       <div style={{display:'flex',flexWrap:'wrap',gap:6,paddingRight:16}}>
                                         {m.payments.map(pay => (
                                           <div key={pay.id} style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:8,padding:'4px 10px',fontSize:12,display:'flex',alignItems:'center',gap:6}}>
@@ -1155,6 +1284,7 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
                               <td style={{padding:'10px 12px',color:'#fff',fontWeight:900,fontSize:14}}>
                                 ⚡ {ar?'الإجمالي':'סה"כ'}
                               </td>
+                              <td/>
                               <td style={{padding:'10px 12px',textAlign:'center',color:'#a3e635',fontWeight:900,fontSize:15}}>
                                 ₪{totalRequired.toLocaleString()}
                               </td>

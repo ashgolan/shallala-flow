@@ -268,7 +268,12 @@ export default function ReadingsTable({
               const rowExtrasTotal = rowExtras.reduce((s,e)=>(s+(parseFloat(e.amount)||0)-(parseFloat(e.paid)||0)),0);
 
               // ✅ مشاريع لم يُكمل هذا المزارع دفعها (تحذير ⚠️ جنب اسمه)
-              const farmerUnpaidProjects = unpaidProjectsByFarmer[r.farmerId] || [];
+              // ✅ نفلتر التحذيرات حسب رقم محطة هذه القراءة تحديداً (مطابقة نصية، وليست
+              // بالـ landId) — نُبقي فقط العناصر التي إما لا تحدد محطة معينة (فارغة =
+              // يخص كل أراضي المزارع، توافق قديم) أو تحدد بالضبط نفس رقم محطة هذه القراءة.
+              // المطابقة النصية تتجاوز مشكلة الأراضي المكررة بقاعدة البيانات كلياً.
+              const farmerUnpaidProjects = (unpaidProjectsByFarmer[r.farmerId] || [])
+                .filter(p => !p.stationNumber || String(p.stationNumber).trim() === String(r.stationNumber || '').trim());
 
               // ✅ نص التلميح (tooltip) لأيقونة الدفع الملخّصة
               const paidTooltip = cupsPerPeriod

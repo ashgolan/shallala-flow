@@ -5,6 +5,8 @@ const Land    = require('../models/Land');
 const plain = p => {
   const o = p.toObject ? p.toObject() : { ...p };
   o.id = o._id?.toString();
+  o.landId = o.landId?.toString() || null;
+  o.stationNumber = o.stationNumber || '';
   o.members = (o.members || []).map(m => ({
     ...m,
     id:       m._id?.toString(),
@@ -35,6 +37,8 @@ const getProjects = async (req, res) => {
     return res.json({ projects: projects.map(p => ({
       ...p,
       id: p._id.toString(),
+      landId: p.landId?.toString() || null,
+      stationNumber: p.stationNumber || '',
       members: (p.members||[]).map(m => ({
         ...m,
         id:       m._id?.toString(),
@@ -45,15 +49,26 @@ const getProjects = async (req, res) => {
   } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
 
+// ✅ يشتق رقم المحطة (نص) من أرض معينة — هذا النص هو مفتاح المطابقة الفعلي
+// المُستخدم بصفحة القراءات، وليس الـ landId نفسه (تفادياً لمشكلة الأراضي المكررة)
+const deriveStationNumber = async (landId) => {
+  if (!landId) return '';
+  const land = await Land.findById(landId).lean();
+  return land?.stationNumber || '';
+};
+
 // POST /admin/projects
 const createProject = async (req, res) => {
   try {
-    const { name, description, date, lat, lng, locationNote, members, status, customMembers, targetAmount } = req.body;
+    const { name, description, date, lat, lng, locationNote, landId, members, status, customMembers, targetAmount } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'اسم المشروع مطلوب' });
+    const stationNumber = await deriveStationNumber(landId);
     const project = await Project.create({
       name: name.trim(), description: description||'',
       date: date ? new Date(date) : new Date(),
       lat: lat||null, lng: lng||null, locationNote: locationNote||'',
+      landId: landId || null,
+      stationNumber,
       members: (members||[]).map(m => ({
         farmerId: m.farmerId || undefined,
         memberName: m.memberName || '',
@@ -71,7 +86,7 @@ const createProject = async (req, res) => {
 // PUT /admin/projects/:projectId
 const updateProject = async (req, res) => {
   try {
-    const { name, description, date, lat, lng, locationNote, status, customMembers, targetAmount } = req.body;
+    const { name, description, date, lat, lng, locationNote, landId, status, customMembers, targetAmount } = req.body;
     const update = {
       name: name?.trim(), description: description||'',
       date: date ? new Date(date) : undefined,
@@ -81,12 +96,17 @@ const updateProject = async (req, res) => {
     if (customMembers !== undefined) update.customMembers = !!customMembers;
     // ✅ نحدّث targetAmount فقط إذا أُرسل صراحةً (undefined = لا تغيير، null = مسح القيمة)
     if (targetAmount !== undefined) update.targetAmount = parseAmountOrNull(targetAmount);
+    // ✅ landId: undefined = لا تغيير، '' أو null = مسح الربط (يرجع للسلوك القديم لكل مشتركي المشروع)
+    // نحدّث stationNumber معه دائماً حتى يبقى مفتاح المطابقة النصي متزامناً مع الاختيار
+    if (landId !== undefined) {
+      update.landId = landId || null;
+      update.stationNumber = await deriveStationNumber(landId);
+    }
     await Project.findByIdAndUpdate(req.params.projectId, update);
     return res.json({ success: true });
   } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
 
-// DELETE /admin/projects/:projectId
 // DELETE /admin/projects/:projectId
 const deleteProject = async (req, res) => {
   try {
@@ -118,7 +138,7 @@ const addMember = async (req, res) => {
     if (!canManageProject(req, req.params.projectId))
       return res.status(403).json({ error: 'غير مصرح لك بإدارة هذا المشروع' });
 
-    const { farmerId, memberName, amount } = req.body;
+    const { farmerId, memberName, amount, stationNumber } = req.body;
     const project = await Project.findById(req.params.projectId);
     if (!project) return res.status(404).json({ error: 'المشروع غير موجود' });
 
@@ -132,7 +152,10 @@ const addMember = async (req, res) => {
       if (!farmerId) return res.status(400).json({ error: 'farmerId مطلوب' });
       const exists = project.members.find(m => m.farmerId?.toString() === farmerId);
       if (exists) return res.status(409).json({ error: 'المزارع موجود مسبقاً في المشروع' });
-      project.members.push({ farmerId, amount: parseAmountOrNull(amount), invoiced: false, payments: [] });
+      project.members.push({
+        farmerId, amount: parseAmountOrNull(amount), invoiced: false, payments: [],
+        stationNumber: (stationNumber || '').trim(),
+      });
     }
     await project.save();
     return res.json({ success: true });
@@ -145,7 +168,7 @@ const updateMember = async (req, res) => {
     if (!canManageProject(req, req.params.projectId))
       return res.status(403).json({ error: 'غير مصرح لك بإدارة هذا المشروع' });
 
-    const { amount, invoiced, memberName } = req.body;
+    const { amount, invoiced, memberName, stationNumber } = req.body;
     const project = await Project.findById(req.params.projectId);
     if (!project) return res.status(404).json({ error: 'غير موجود' });
     const member = project.members.id(req.params.memberId);
@@ -154,6 +177,8 @@ const updateMember = async (req, res) => {
     if (amount !== undefined && !project.customMembers) member.amount = parseAmountOrNull(amount);
     if (invoiced !== undefined) member.invoiced = !!invoiced;
     if (memberName !== undefined) member.memberName = (memberName||'').trim();
+    // ✅ stationNumber: undefined = لا تغيير، '' = مسح (يرجع لمحطة المشروع العامة إن وُجدت)
+    if (stationNumber !== undefined) member.stationNumber = (stationNumber || '').trim();
     await project.save();
     return res.json({ success: true });
   } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
