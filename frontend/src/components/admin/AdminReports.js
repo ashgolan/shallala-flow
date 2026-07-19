@@ -28,15 +28,13 @@ export function AdminReports({ adminRole='admin' }) {
   const [showFarmerList,setShowFarmerList]= useState(false);
 
   // ✅ فلتر الإضافات غير المدفوعة
-  const [activeTab,       setActiveTab]       = useState('main');   // 'main' | 'extras' | 'missing'
+  const [activeTab,       setActiveTab]       = useState('main');   // 'main' | 'extras' | 'audit'
   const [filterExtraNote, setFilterExtraNote] = useState('');
   const [extraNoteInput,  setExtraNoteInput]  = useState('');
 
-  // ✅ تبويب "اشتراكات مفقودة"
-  const [subName,     setSubName]     = useState('');        // اسم الاشتراك
+  // ✅ تدقيق اشتراك/إضافة معينة (داخل تبويب "تدقيق البيانات")
+  const [subName,     setSubName]     = useState('');        // اسم الاشتراك (اختياري)
   const [subAmount,   setSubAmount]   = useState('');        // المبلغ
-  const [subType,     setSubType]     = useState('forever'); // 'forever' | 'yearly'
-  const [subYear,     setSubYear]     = useState(new Date().getFullYear());
   const [addingAll,   setAddingAll]   = useState(false);     // جاري الإضافة
   const [addedCount,  setAddedCount]  = useState(null);      // نتيجة الإضافة
 
@@ -144,6 +142,17 @@ export function AdminReports({ adminRole='admin' }) {
 
   const auditTotal = dataAnomalies.total + missingReadings.length;
 
+  // ✅ السنة الحالية + إجمالي أكواب أرض معينة لهذه السنة (لعمود "أكواب هذه السنة" بقسم تدقيق الاشتراك)
+  const currentYear = new Date().getFullYear();
+  const cupsThisYearForLand = (landId) => {
+    const r = readings.find(x => String(x.landId) === String(landId) && x.year === currentYear);
+    if (!r) return null;
+    const vals = r.readings || [];
+    let total = 0;
+    vals.slice(1).forEach((_, i) => { total += cupsPositive(vals, i, r.meterChanges||[]); });
+    return total;
+  };
+
   // ✅ جمع كل extraNotes الفريدة الموجودة في النظام
   // ✅ جمع كل أسماء الإضافات من extras[] الجديدة + الحقول القديمة
   const allExtraNotes = [...new Set([
@@ -229,18 +238,81 @@ export function AdminReports({ adminRole='admin' }) {
   const grandCups  = filtered.reduce((s,r) => s + calcRow(r).totalCups, 0);
   const paidCount  = filtered.filter(r => r.paid).length;
 
+  // ✅ تدقيق اشتراك/إضافة محددة: من لم يُضف له الاشتراك إطلاقاً، أو أُضيف ولم يُدفع بالكامل
+  // (بدون خيار "مرة واحدة/سنوي" — كلها تُفحص كسداد كامل لمرة واحدة بغض النظر عن السنة)
+  const missingSubscription = (() => {
+    if (!subName.trim()) return [];
+    const nameNorm = subName.trim().toLowerCase();
+    const hasSub = (r) => {
+      const exs = r.extras || [];
+      if (exs.length > 0) {
+        return exs.some(e =>
+          e.note?.toLowerCase().trim() === nameNorm &&
+          (parseFloat(e.amount)||0) > 0 &&
+          (parseFloat(e.paid)||0) >= (parseFloat(e.amount)||0)
+        );
+      }
+      return (r.extraNote || '').toLowerCase().trim() === nameNorm
+        && (parseFloat(r.extra)||0) > 0
+        && (parseFloat(r.extraPaid)||0) >= (parseFloat(r.extra)||0);
+    };
+    const paidFarmerLands = new Set(); // farmerId_landId
+    readings.forEach(r => { if (hasSub(r)) paidFarmerLands.add(`${r.farmerId}_${r.landId}`); });
+
+    // ✅ سطر واحد لكل أرض (أحدث قراءة)، بدل تكرار نفس الأرض لكل سنة
+    const latestByLand = {};
+    readings.forEach(r => {
+      const key = `${r.farmerId}_${r.landId}`;
+      if (paidFarmerLands.has(key)) return;
+      if (!latestByLand[key] || r.year > latestByLand[key].year) latestByLand[key] = r;
+    });
+    return Object.values(latestByLand);
+  })();
+
+  // إضافة الاشتراك لكل المفقودين
+  const addSubToAll = async () => {
+    if (!subName.trim() || !subAmount || missingSubscription.length === 0) return;
+    if (!window.confirm(
+      (ar
+        ? `إضافة "${subName}" (₪${subAmount}) على ${missingSubscription.length} قراءة؟`
+        : `הוסף "${subName}" (₪${subAmount}) ל-${missingSubscription.length} קריאות?`)
+    )) return;
+    setAddingAll(true); setAddedCount(null);
+    let count = 0;
+    for (const r of missingSubscription) {
+      try {
+        const existing = readings.find(x => x.id === r.id);
+        if (!existing) continue;
+        const newExtras = [
+          ...(existing.extras || []),
+          { note: subName.trim(), amount: parseFloat(subAmount)||0, paid: 0 },
+        ];
+        await adminAPI.updateReading(r.id, {
+          farmerId:  r.farmerId, landId: r.landId, year: r.year,
+          readings:  r.readings, note: r.note||'',
+          extras:    newExtras,
+          extra:     r.extra||0, extraPaid: r.extraPaid||0, extraNote: r.extraNote||'',
+        });
+        count++;
+      } catch(e) { console.error(e); }
+    }
+    setAddedCount(count);
+    setAddingAll(false);
+    load(); // إعادة تحميل
+  };
+
   // ── Map Modal ──
   const MapModal = () => {
     if (!mapModal) return null;
     const { lat, lng, name } = mapModal;
-    const esriUrl = `https://maps.google.com/maps?q=${lat},${lng}&z=18&t=k&output=embed&markers=${lat},${lng}`;
+    const esriUrl  = `https://maps.google.com/maps?q=${lat},${lng}&z=18&t=k&output=embed&markers=${lat},${lng}`;
     const earthUrl = `https://earth.google.com/web/@${lat},${lng},400a,800d,30y,0h,0t,0r/data=CgRCAggBMikKJwolCiExS0M0V193eFlWeTQ2UFR6RW81VkFtVVlvMDNHemUtUHQgAToDCgEwQgIIAEoICIXm6fQFEAE?hl=ar`;
     return (
       <div onClick={() => setMapModal(null)}
         style={{ position:'fixed', inset:0, zIndex:9999, background:'rgba(0,0,0,0.65)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
         <div onClick={e => e.stopPropagation()}
           style={{ background:'#fff', borderRadius:16, overflow:'hidden', width:'100%', maxWidth:600, boxShadow:'0 20px 60px rgba(0,0,0,0.4)' }}>
-          <div style={{ padding:'14px 18px', background:'#14532d', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div style={{ padding:'14px 18px', background:'var(--primary-dark)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
             <div style={{ display:'flex', alignItems:'center', gap:10 }}>
               <span style={{ fontSize:20 }}>📍</span>
               <div>
@@ -251,7 +323,7 @@ export function AdminReports({ adminRole='admin' }) {
             <div style={{ display:'flex', gap:8, alignItems:'center' }}>
               <a href={earthUrl} target="_blank" rel="noopener noreferrer"
                 style={{ color:'#a3e635', fontSize:12, fontWeight:700, textDecoration:'none', background:'rgba(255,255,255,0.1)', padding:'5px 10px', borderRadius:8 }}>
-                🌍 Google Earth
+                🗺️ Google Earth
               </a>
               <button onClick={() => setMapModal(null)}
                 style={{ background:'rgba(255,255,255,0.15)', border:'none', color:'#fff', width:30, height:30, borderRadius:'50%', cursor:'pointer', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
@@ -415,65 +487,39 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
       const vals   = r.readings || [];
       const farmer = farmers.find(f => String(f.id) === String(r.farmerId));
       const land   = lands.find(l => String(l.id) === String(r.landId));
-      const extraNet = getExtrasNet(r); // ✅ صافي الإضافات (extras[] + الحقول القديمة) — مرة واحدة فقط لكل قراءة
-      let firstRowOfReading = true;
-      vals.slice(1).forEach((_, i) => {
-        const from = vals[i], to = vals[i+1];
-        if (from == null || from === '' || to == null || to === '') return;
-        const fa = parseFloat(from), fb = parseFloat(to);
-        if (isNaN(fa) || isNaN(fb)) return;
+      const extraNet = getExtrasNet(r); // ✅ صافي الإضافات (extras[] + الحقول القديمة) — مرة واحدة فقط
+      const stationNumber = land?.stationNumber || r.stationNumber || '';
+      let running = vals[0];
+      vals.slice(1).forEach((v, i) => {
+        const cups  = cupsPositive(vals, i);
         const price = getP(prices, r.year, r.landId, i+1);
         rows.push({
-          'المزارع':                    farmer?.nameHeb || farmer?.name || '—',
-          'المحطة':                     land?.stationNumber || r.stationNumber || '—',
-          'السنة':                       r.year,
-          'الفترة':                      `${i+1}←${i+2}`,
-          'القراءة الأولى':              fa,
-          'القراءة الثانية':             fb,
-          'الفرق (أكواب) - خام':         fb - fa,
-          'الفرق المعتمد للمجموع':       fb - fa, // ✅ سيُستبدل بمعادلة MAX(0,...) بالأسفل
-          'السعر (قبل الضريبة)':         Math.round(getBaseP(prices, r.year, r.landId, i+1) * 100) / 100,
-          'المبلغ قبل الضريبة':          Math.round((fb - fa > 0 ? (fb - fa) : 0) * getBaseP(prices, r.year, r.landId, i+1) * 100) / 100,
-          'المبلغ بعد الضريبة':          Math.round((fb - fa > 0 ? (fb - fa) : 0) * price * 100) / 100,
-          // ✅ الإضافات تُكتب مرة واحدة فقط في أول فترة لكل قراءة (لتفادي تكرارها بكل مجموع)
-          'الإضافات (صافي)':             firstRowOfReading ? Math.round(extraNet * 100) / 100 : 0,
+          'המזמינה':        farmer?.nameHeb||farmer?.name||'—',
+          'עמדה':           stationNumber,
+          'שנה':            r.year,
+          'תקופה':          i+1,
+          'קריאה קודמת':    running,
+          'קריאה נוכחית':   v,
+          'הפרש (קוב)':      cups,
+          'מחיר יחידה (₪)':  price ? Number(price.toFixed(2)) : 0,
+          'סכום (₪)':        Math.round(cups*price),
         });
-        firstRowOfReading = false;
+        running = v;
       });
-      // لو القراءة عندها إضافة لكن ما عندها أي فترة صالحة (قراءة واحدة فقط)، أضف صفاً خاصاً لها حتى ما تضيع من المجموع
-      if (firstRowOfReading && extraNet) {
+      if (extraNet !== 0) {
         rows.push({
-          'المزارع': farmer?.nameHeb || farmer?.name || '—',
-          'المحطة':  land?.stationNumber || r.stationNumber || '—',
-          'السنة':    r.year,
-          'الفترة':   '—',
-          'القراءة الأولى': '—', 'القراءة الثانية': '—',
-          'الفرق (أكواب) - خام': 0, 'الفرق المعتمد للمجموع': 0,
-          'السعر (قبل الضريبة)': 0, 'المبلغ قبل الضريبة': 0, 'المبلغ بعد الضريبة': 0,
-          'الإضافات (صافي)': Math.round(extraNet * 100) / 100,
+          'המזמינה': farmer?.nameHeb||farmer?.name||'—',
+          'עמדה': stationNumber, 'שנה': r.year, 'תקופה': ar?'إضافات':'תוספות',
+          'קריאה קודמת': '', 'קריאה נוכחית': '', 'הפרש (קוב)': '',
+          'מחיר יחידה (₪)': '', 'סכום (₪)': Math.round(extraNet),
         });
       }
     });
 
     const ws = XLSX.utils.json_to_sheet(rows);
-    // A            B        C     D       E              F               G                   H                        I                     J                    K                    L
-    // المزارع      المحطة   السنة الفترة  القراءة الأولى القراءة الثانية الفرق(خام)          الفرق المعتمد للمجموع    السعر(قبل الضريبة)   المبلغ قبل الضريبة  المبلغ بعد الضريبة  الإضافات(صافي)
-    ws['!cols'] = [{wch:20},{wch:10},{wch:8},{wch:10},{wch:14},{wch:14},{wch:14},{wch:16},{wch:16},{wch:16},{wch:16},{wch:16}];
-
-    // ✅ عمود H: معادلة MAX(0,...) حقيقية — نفس منطق cupsPositive المستخدم في كل حسابات التطبيق بالضبط
-    for (let idx = 0; idx < rows.length; idx++) {
-      const excelRow = idx + 2;
-      ws[`H${excelRow}`] = { t:'n', f:`MAX(0,G${excelRow})` };
-    }
-
-    // ✅ صف إجمالي بمعادلة SUM حقيقية (يعيد حسابها Excel نفسه)
-    const totalRow = rows.length + 2; // +1 للعنوان +1 لأن Excel 1-indexed
-    XLSX.utils.sheet_add_aoa(ws, [['الإجمالي']], { origin: `A${totalRow}` });
-    ['H','J','K','L'].forEach(col => {
-      ws[`${col}${totalRow}`] = { t:'n', f:`SUM(${col}2:${col}${totalRow-1})` };
-    });
-    // ✅ خلية توضيحية: الإجمالي الكلي المتوقع (يطابق "الإجمالي الكلي" في التطبيق)
-    ws[`N1`] = { t:'s', v: ar ? '← إجمالي الأكواب المتوقع (يطابق التطبيق)' : '← סה"כ קובים צפוי (תואם לאפליקציה)' };
+    ws['!cols'] = [{wch:20},{wch:8},{wch:8},{wch:10},{wch:14},{wch:14},{wch:12},{wch:14},{wch:12}];
+    const totalRow = rows.length + 2;
+    ws[`M1`] = { t:'s', v: ar ? '← إجمالي الأكواب المتوقع (يطابق التطبيق)' : '← סה"כ קובים צפוי (תואם לאפליקציה)' };
     ws[`N${totalRow}`] = { t:'n', f:`H${totalRow}` };
     ws[`O1`] = { t:'s', v: ar ? '← الإجمالي المالي الكلي المتوقع (بعد الضريبة + الإضافات)' : '← סה"כ כספי צפוי (אחרי מע"מ + תוספות)' };
     ws[`O${totalRow}`] = { t:'n', f:`K${totalRow}+L${totalRow}` };
@@ -482,70 +528,6 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'تدقيق القراءات');
     XLSX.writeFile(wb, `alshallala-audit-${new Date().toISOString().slice(0,10)}.xlsx`);
-  };
-
-
-  const missingSubscription = (() => {
-    if (!subName.trim()) return [];
-    const nameNorm = subName.trim().toLowerCase();
-
-    // من دفع: قراءة عليها الإضافة (مكتملة الدفع أو جزئية — يعني أُضيفت)
-    const hasSub = (r) => {
-      const exs = r.extras || [];
-      if (exs.length > 0) return exs.some(e => e.note?.toLowerCase().trim() === nameNorm);
-      return (r.extraNote || '').toLowerCase().trim() === nameNorm && (parseFloat(r.extra)||0) > 0;
-    };
-
-    // للأبد: يكفي أي قراءة عليها الاشتراك
-    // لفترة: يجب أن تكون قراءة السنة المحددة عليها الاشتراك
-    const paidFarmerLands = new Set(); // farmerId_landId
-    const targetReadings  = subType === 'yearly'
-      ? readings.filter(r => r.year === parseInt(subYear))
-      : readings;
-
-    if (subType === 'forever') {
-      readings.forEach(r => {
-        if (hasSub(r)) paidFarmerLands.add(`${r.farmerId}_${r.landId}`);
-      });
-    } else {
-      targetReadings.forEach(r => {
-        if (hasSub(r)) paidFarmerLands.add(`${r.farmerId}_${r.landId}`);
-      });
-    }
-
-    // العدادات النشطة (لها قراءات) ولم تدفع
-    return targetReadings.filter(r => !paidFarmerLands.has(`${r.farmerId}_${r.landId}`));
-  })();
-
-  // إضافة الاشتراك لكل المفقودين
-  const addSubToAll = async () => {
-    if (!subName.trim() || !subAmount || missingSubscription.length === 0) return;
-    if (!window.confirm(
-      (ar ? `إضافة "${subName}" (₪${subAmount}) على ${missingSubscription.length} قراءة؟`
-           : `הוסף "${subName}" (₪${subAmount}) ל-${missingSubscription.length} קריאות?`)
-    )) return;
-    setAddingAll(true); setAddedCount(null);
-    let count = 0;
-    for (const r of missingSubscription) {
-      try {
-        const existing = readings.find(x => x.id === r.id);
-        if (!existing) continue;
-        const newExtras = [
-          ...(existing.extras || []),
-          { note: subName.trim(), amount: parseFloat(subAmount)||0, paid: 0 },
-        ];
-        await adminAPI.updateReading(r.id, {
-          farmerId:  r.farmerId, landId: r.landId, year: r.year,
-          readings:  r.readings, note: r.note||'',
-          extras:    newExtras,
-          extra:     r.extra||0, extraPaid: r.extraPaid||0, extraNote: r.extraNote||'',
-        });
-        count++;
-      } catch(e) { console.error(e); }
-    }
-    setAddedCount(count);
-    setAddingAll(false);
-    load(); // إعادة تحميل
   };
 
   if (loading) return <div style={{textAlign:'center',padding:60}}><div className="spinner"/></div>;
@@ -567,34 +549,6 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
             📊 {ar?'التقارير':'דוחות'}
           </button>
           <button
-            onClick={()=>setActiveTab('extras')}
-            style={{
-              padding:'8px 18px', borderRadius:10, fontWeight:700, fontSize:14, cursor:'pointer', border:'none',
-              background: activeTab==='extras' ? '#92400e' : 'var(--surface-2)',
-              color: activeTab==='extras' ? '#fff' : 'var(--text-muted)',
-              position:'relative',
-            }}>
-            ➕ {ar?'إضافات غير مدفوعة':'תוספות שלא שולמו'}
-            {allExtraNotes.length > 0 && (
-              <span style={{
-                position:'absolute', top:-6, left:-6,
-                background:'#dc2626', color:'#fff',
-                borderRadius:'50%', width:20, height:20,
-                fontSize:11, fontWeight:900,
-                display:'flex', alignItems:'center', justifyContent:'center',
-              }}>{allExtraNotes.length}</span>
-            )}
-          </button>
-          <button
-            onClick={()=>setActiveTab('missing')}
-            style={{
-              padding:'8px 18px', borderRadius:10, fontWeight:700, fontSize:14, cursor:'pointer', border:'none',
-              background: activeTab==='missing' ? '#1d4ed8' : 'var(--surface-2)',
-              color: activeTab==='missing' ? '#fff' : 'var(--text-muted)',
-            }}>
-            🔍 {ar?'عدادات بدون اشتراك':'מונים ללא מנוי'}
-          </button>
-          <button
             onClick={()=>setActiveTab('audit')}
             style={{
               padding:'8px 18px', borderRadius:10, fontWeight:700, fontSize:14, cursor:'pointer', border:'none',
@@ -603,7 +557,7 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
               position:'relative',
             }}>
             🧪 {ar?'تدقيق البيانات':'ביקורת נתונים'}
-            {auditTotal > 0 && (
+            {(auditTotal + allExtraNotes.length) > 0 && (
               <span style={{
                 position:'absolute', top:-6, left:-6,
                 background:'#dc2626', color:'#fff',
@@ -611,7 +565,7 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
                 fontSize:11, fontWeight:900,
                 display:'flex', alignItems:'center', justifyContent:'center',
                 border:'2px solid #fff',
-              }}>{auditTotal}</span>
+              }}>{auditTotal + allExtraNotes.length}</span>
             )}
           </button>
         </div>
@@ -620,8 +574,8 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
             <button className="btn btn-outline" onClick={handleWatchmanExcel}>📋 {ar?'Excel للناطور':'Excel לשומר'}</button>
             <button className="btn btn-outline" onClick={handlePrint}>🖨️ {ar?'طباعة':'הדפסה'}</button>
           </>}
-          {!isViewer && activeTab==='extras' && extrasFiltered.length > 0 && (
-            <button className="btn btn-outline" onClick={handlePrintExtras}>🖨️ {ar?'طباعة':'הדפסה'}</button>
+          {!isViewer && activeTab==='audit' && !subName.trim() && extrasFiltered.length > 0 && (
+            <button className="btn btn-outline" onClick={handlePrintExtras}>🖨️ {ar?'طباعة الإضافات':'הדפסת תוספות'}</button>
           )}
           {!isViewer && activeTab==='audit' && (
             <button className="btn btn-primary" onClick={handleAuditExcel}>
@@ -743,151 +697,107 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
         </>
       )}
 
-      {/* ══ تبويب الإضافات غير المدفوعة ══ */}
-      {activeTab === 'extras' && (
+      {/* ══ تبويب تدقيق البيانات ══ */}
+      {activeTab === 'audit' && (
         <div>
-          {/* ── فلتر الإضافات ── */}
-          <div className="card mb-16" style={{borderRight:'4px solid #92400e'}}>
-            <div style={{marginBottom:14}}>
-              <label style={{fontSize:13,fontWeight:700,color:'#92400e',display:'block',marginBottom:8}}>
-                ➕ {ar?'فلترة حسب سبب الإضافة':'סינון לפי סיבת תוספת'}
-              </label>
-
-              {/* الإضافات الموجودة كأزرار سريعة */}
-              {allExtraNotes.length > 0 && (
-                <div style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:12}}>
-                  <button
-                    onClick={()=>{setFilterExtraNote('');setExtraNoteInput('');}}
-                    style={{
-                      padding:'5px 14px', borderRadius:20, fontSize:12, fontWeight:700, cursor:'pointer',
-                      border:`2px solid ${!filterExtraNote&&!extraNoteInput?'#92400e':'#d1d5db'}`,
-                      background:!filterExtraNote&&!extraNoteInput?'#92400e':'var(--surface-2)',
-                      color:!filterExtraNote&&!extraNoteInput?'#fff':'var(--text-muted)',
-                    }}>
-                    {ar?'الكل':'הכל'} ({extrasFiltered.length})
-                  </button>
-                  {allExtraNotes.map(note => {
-                    const count = readings.filter(r =>
-                      r.extraNote?.trim() === note &&
-                      parseFloat(r.extra) > 0 &&
-                      parseFloat(r.extraPaid||0) < parseFloat(r.extra)
-                    ).length;
-                    const isActive = filterExtraNote === note;
-                    return (
-                      <button key={note}
-                        onClick={()=>{setFilterExtraNote(isActive?'':note);setExtraNoteInput('');}}
-                        style={{
-                          padding:'5px 14px', borderRadius:20, fontSize:12, fontWeight:700, cursor:'pointer',
-                          border:`2px solid ${isActive?'#92400e':'#d1d5db'}`,
-                          background:isActive?'#92400e':'#fff7ed',
-                          color:isActive?'#fff':'#92400e',
-                          display:'flex', alignItems:'center', gap:6,
-                        }}>
-                        {note}
-                        <span style={{
-                          background:isActive?'rgba(255,255,255,0.3)':'#fed7aa',
-                          borderRadius:10, padding:'0 6px', fontSize:11,
-                        }}>{count}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* بحث حر */}
-              <input
-                value={extraNoteInput}
-                onChange={e=>{setExtraNoteInput(e.target.value);setFilterExtraNote('');}}
-                placeholder={ar?'🔍 بحث في سبب الإضافة...':'🔍 חיפוש בסיבת התוספת...'}
-                style={{width:'100%',maxWidth:360}}
-              />
-            </div>
-
-            {allExtraNotes.length === 0 && (
-              <div style={{textAlign:'center',padding:20,color:'var(--text-muted)',fontSize:13}}>
-                {ar?'لا توجد إضافات مسجلة في النظام':'אין תוספות רשומות במערכת'}
-              </div>
-            )}
+          <div className="card mb-16" style={{ borderRight:'4px solid #dc2626' }}>
+            <h3 className="mb-8" style={{ color:'#dc2626' }}>
+              🧪 {ar?'تدقيق البيانات':'ביקורת נתונים'}
+            </h3>
+            <p style={{ color:'var(--text-muted)', fontSize:13 }}>
+              {ar
+                ? 'فحص تلقائي لكل القراءات المسجّلة في النظام (بدون فلاتر) للكشف عن أي فرق سالب بين قراءتين متتاليتين، إعادة تصفير عداد، أو أرقام لم تؤخذ بعد.'
+                : 'סריקה אוטומטית של כל הקריאות במערכת (ללא סינון) לאיתור הפרש שלילי בין שתי קריאות רצופות, איפוס מונה, או ספרות שטרם נלקחו.'}
+            </p>
           </div>
 
-          {/* ── ملخص الإضافات ── */}
-          {extrasFiltered.length > 0 && (
-            <>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:10,marginBottom:16}}>
-                <div className="stat-card" style={{padding:'12px 16px',borderRight:'3px solid #92400e'}}>
-                  <div style={{fontSize:20,marginBottom:4}}>👥</div>
-                  <div style={{fontWeight:900,fontSize:'1.2rem',color:'#92400e'}}>{Object.keys(extrasGrouped).length}</div>
-                  <div style={{fontSize:11,color:'var(--text-muted)'}}>{ar?'مزارع مديون':'חקלאים חייבים'}</div>
+          {/* ══ قسم: تدقيق الإضافات غير المدفوعة — كل الإضافات، أو إضافة محددة (بما فيها "لم تُضَف إطلاقاً") ══ */}
+          <div className="card mb-16" style={{borderRight:'4px solid #1d4ed8'}}>
+            <div style={{marginBottom:16}}>
+              <label style={{fontSize:13,fontWeight:700,color:'#1d4ed8',display:'block',marginBottom:8}}>
+                🔍 {ar?'تدقيق الإضافات غير المدفوعة':'ביקורת תוספות שלא שולמו'}
+              </label>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:12,alignItems:'end'}}>
+                <div className="form-group" style={{marginBottom:0,position:'relative'}}>
+                  <label style={{fontSize:12}}>{ar?'اسم إضافة محددة (اختياري)':'שם תוספת מסוימת (אופציונלי)'}</label>
+                  <input value={subName} onChange={e=>setSubName(e.target.value)}
+                    list="sub-suggestions"
+                    placeholder={ar?'اتركه فارغاً لرؤية كل الإضافات...':'השאר ריק לצפייה בכל התוספות...'}
+                    style={{width:'100%'}}/>
+                  <datalist id="sub-suggestions">
+                    {allExtraNotes.map(n=><option key={n} value={n}/>)}
+                  </datalist>
                 </div>
-                <div className="stat-card" style={{padding:'12px 16px',borderRight:'3px solid #92400e'}}>
-                  <div style={{fontSize:20,marginBottom:4}}>📋</div>
-                  <div style={{fontWeight:900,fontSize:'1.2rem',color:'#92400e'}}>{extrasFiltered.length}</div>
-                  <div style={{fontSize:11,color:'var(--text-muted)'}}>{ar?'قراءة':'קריאות'}</div>
-                </div>
-                <div className="stat-card accent" style={{padding:'12px 16px',background:'#92400e'}}>
-                  <div style={{fontSize:20,marginBottom:4}}>💰</div>
-                  <div style={{fontWeight:900,fontSize:'1.2rem',color:'#fff'}}>₪{Math.round(extrasTotal).toLocaleString()}</div>
-                  <div style={{fontSize:11,color:'rgba(255,255,255,0.75)'}}>{ar?'إجمالي المتبقي':'סה"כ נותר'}</div>
+                {subName.trim() && (
+                  <div className="form-group" style={{marginBottom:0}}>
+                    <label style={{fontSize:12}}>₪ {ar?'المبلغ (لإضافتها لمن ينقصه)':'סכום (להוספה למי שחסר)'}</label>
+                    <input type="number" value={subAmount} onChange={e=>setSubAmount(e.target.value)}
+                      placeholder="0" min="0" style={{fontWeight:700,textAlign:'center'}}/>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div style={{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:8,padding:'8px 14px',fontSize:12,color:'#1d4ed8'}}>
+              {subName.trim()
+                ? (ar?`📌 يظهر من لم يُضف له "${subName}" إطلاقاً، أو أُضيف ولم يُدفع بالكامل بعد.`:`📌 מוצגים מי שלא נוסף להם "${subName}" כלל, או שנוסף וטרם שולם במלואו.`)
+                : (ar
+                    ? '📋 تُعرض هنا كل الإضافات غير المدفوعة (أو غير المسدَّدة بالكامل) في النظام. اكتب اسم إضافة أعلاه لتضييق النتائج على إضافة محددة فقط (بما في ذلك من لم تُضَف له إطلاقاً).'
+                    : '📋 מוצגות כל התוספות שלא שולמו (או לא שולמו במלואן) במערכת. הכנס שם תוספת למעלה כדי לצמצם לתוספת מסוימת בלבד (כולל מי שלא נוספה לו כלל).')}
+            </div>
+          </div>
+
+          {!subName.trim() ? (
+            /* ── عرض كل الإضافات غير المدفوعة بالنظام (بدون تحديد اسم) ── */
+            extrasRows.length === 0 ? (
+              <div className="card mb-16" style={{textAlign:'center',padding:32,color:'#16a34a'}}>
+                <div style={{fontSize:40,marginBottom:8}}>✅</div>
+                <div style={{fontWeight:700,fontSize:15}}>
+                  {ar?'جميع الإضافات مدفوعة بالكامل!':'כל התוספות שולמו במלואן!'}
                 </div>
               </div>
-
-              {/* ── جدول الإضافات ── */}
-              <div className="card" style={{padding:0}}>
+            ) : (
+              <div className="card mb-16" style={{padding:0}}>
                 <div className="tbl-wrap">
                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                   <thead>
-                    <tr style={{background:'#92400e'}}>
+                    <tr style={{background:'#1d4ed8'}}>
                       <th style={{padding:'10px 14px',textAlign:'right',color:'#fff',fontWeight:800}}>{ar?'المزارع':'חקלאי'}</th>
                       <th style={{padding:'10px 14px',textAlign:'center',color:'#fff',fontWeight:800}}>{ar?'المحطة':'עמדה'}</th>
-                      <th style={{padding:'10px 14px',textAlign:'right',color:'#fde68a',fontWeight:800}}>{ar?'سبب الإضافة':'סיבת התוספת'}</th>
-                      <th style={{padding:'10px 14px',textAlign:'center',color:'#fff',fontWeight:800}}>{ar?'السنة':'שנה'}</th>
-                      <th style={{padding:'10px 14px',textAlign:'center',color:'#a3e635',fontWeight:800}}>{ar?'المبلغ':'סכום'}</th>
-                      <th style={{padding:'10px 14px',textAlign:'center',color:'#fff',fontWeight:800}}>{ar?'المدفوع':'שולם'}</th>
+                      <th style={{padding:'10px 14px',textAlign:'right',color:'#bfdbfe',fontWeight:800}}>{ar?'سبب الإضافة':'סיבת התוספת'}</th>
+                      <th style={{padding:'10px 14px',textAlign:'center',color:'#bfdbfe',fontWeight:800}}>{ar?'السنة':'שנה'}</th>
+                      <th style={{padding:'10px 14px',textAlign:'center',color:'#bfdbfe',fontWeight:800}}>{ar?'المبلغ':'סכום'}</th>
+                      <th style={{padding:'10px 14px',textAlign:'center',color:'#bfdbfe',fontWeight:800}}>{ar?'المدفوع':'שולם'}</th>
                       <th style={{padding:'10px 14px',textAlign:'center',color:'#fca5a5',fontWeight:800}}>{ar?'المتبقي':'נותר'}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {extrasRows
-                      .sort((a,b) => farmerName(a.farmerId).localeCompare(farmerName(b.farmerId),'ar'))
-                      .map((row, i) => {
-                        const land = lands.find(l => String(l.id) === String(row.landId));
+                      .sort((a,b)=>farmerName(a.farmerId).localeCompare(farmerName(b.farmerId),'ar'))
+                      .map((row,i) => {
+                        const land = lands.find(l=>String(l.id)===String(row.landId));
                         return (
-                          <tr key={i} style={{borderBottom:'1px solid #f3f4f6',background:i%2===0?'#fff':'#fff7ed'}}>
-                            <td style={{padding:'10px 14px',fontFamily:'Heebo,sans-serif',fontWeight:700}}>
-                              {farmerName(row.farmerId)}
-                            </td>
+                          <tr key={`${row.readingId}-${i}`} style={{borderBottom:'1px solid #e5e7eb',background:i%2===0?'#fff':'#eff6ff'}}>
+                            <td style={{padding:'10px 14px',fontFamily:'Heebo,sans-serif',fontWeight:700}}>{farmerName(row.farmerId)}</td>
                             <td style={{padding:'10px 14px',textAlign:'center'}}>
                               {land?.stationNumber
-                                ? <code style={{background:'#f0fdf4',border:'1px solid #bbf7d0',padding:'2px 8px',borderRadius:5,fontWeight:900}}>{land.stationNumber}</code>
+                                ? <code style={{background:'#eff6ff',border:'1px solid #bfdbfe',padding:'2px 8px',borderRadius:5,fontWeight:900,color:'#1d4ed8'}}>{land.stationNumber}</code>
                                 : '—'}
                             </td>
-                            <td style={{padding:'10px 14px'}}>
-                              {row.note
-                                ? <span style={{background:'#fff7ed',border:'1px solid #fed7aa',color:'#92400e',padding:'2px 10px',borderRadius:6,fontSize:12,fontWeight:700}}>{row.note}</span>
-                                : <span style={{color:'var(--text-muted)',fontSize:12}}>—</span>}
-                            </td>
+                            <td style={{padding:'10px 14px',color:'#92400e',fontWeight:600}}>{row.note||'—'}</td>
                             <td style={{padding:'10px 14px',textAlign:'center',color:'var(--text-muted)'}}>{row.year}</td>
-                            <td style={{padding:'10px 14px',textAlign:'center',fontWeight:700,color:'#16a34a'}}>
-                              ₪{row.amount.toLocaleString()}
-                            </td>
-                            <td style={{padding:'10px 14px',textAlign:'center',color:'var(--text-muted)'}}>
-                              {row.paid > 0 ? `₪${row.paid.toLocaleString()}` : '—'}
-                            </td>
-                            <td style={{padding:'10px 14px',textAlign:'center'}}>
-                              <span style={{background:'#fff1f2',color:'#dc2626',fontWeight:900,padding:'3px 12px',borderRadius:6}}>
-                                ₪{row.rem.toLocaleString()}
-                              </span>
-                            </td>
+                            <td style={{padding:'10px 14px',textAlign:'center',fontWeight:700}}>₪{row.amount.toLocaleString()}</td>
+                            <td style={{padding:'10px 14px',textAlign:'center',color:'#16a34a',fontWeight:700}}>₪{row.paid.toLocaleString()}</td>
+                            <td style={{padding:'10px 14px',textAlign:'center',fontWeight:900,color:'#dc2626'}}>₪{row.rem.toLocaleString()}</td>
                           </tr>
                         );
                       })}
                   </tbody>
                   <tfoot>
-                    <tr style={{background:'#92400e'}}>
-                      <td colSpan={6} style={{padding:'10px 14px',color:'#fff',fontWeight:700}}>
-                        {ar?'الإجمالي':'סה"כ'} ({extrasFiltered.length})
+                    <tr style={{background:'#1e3a8a'}}>
+                      <td colSpan={6} style={{padding:'10px 14px',color:'#fff',fontWeight:800}}>
+                        {ar?'إجمالي المتبقي':'סה"כ נותר'} ({extrasRows.length})
                       </td>
-                      <td style={{padding:'10px 14px',textAlign:'center',color:'#fca5a5',fontWeight:900,fontSize:16}}>
+                      <td style={{padding:'10px 14px',textAlign:'center',color:'#fde68a',fontWeight:900,fontSize:16}}>
                         ₪{Math.round(extrasTotal).toLocaleString()}
                       </td>
                     </tr>
@@ -895,107 +805,21 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
                 </table>
                 </div>
               </div>
-            </>
-          )}
-
-          {extrasFiltered.length === 0 && allExtraNotes.length > 0 && (
-            <div className="card" style={{textAlign:'center',padding:32,color:'#16a34a'}}>
-              <div style={{fontSize:40,marginBottom:8}}>✅</div>
-              <div style={{fontWeight:700,fontSize:15}}>
-                {ar?'جميع الإضافات مدفوعة!':'כל התוספות שולמו!'}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ══ تبويب اشتراكات مفقودة ══ */}
-      {activeTab === 'missing' && (
-        <div>
-          {/* ── إعدادات الاشتراك ── */}
-          <div className="card mb-16" style={{borderRight:'4px solid #1d4ed8'}}>
-            <div style={{marginBottom:16}}>
-              <label style={{fontSize:13,fontWeight:700,color:'#1d4ed8',display:'block',marginBottom:8}}>
-                🔍 {ar?'البحث عن عدادات بدون اشتراك معين':'חיפוש מונים ללא מנוי מסוים'}
-              </label>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:12,alignItems:'end'}}>
-
-                {/* اسم الاشتراك مع autocomplete */}
-                <div className="form-group" style={{marginBottom:0,position:'relative'}}>
-                  <label style={{fontSize:12}}>{ar?'اسم الاشتراك':'שם המנוי'} *</label>
-                  <input value={subName} onChange={e=>setSubName(e.target.value)}
-                    list="sub-suggestions"
-                    placeholder={ar?'مثال: اشتراك خط جديد...':'לדוג׳: מנוי קו חדש...'}
-                    style={{width:'100%'}}/>
-                  <datalist id="sub-suggestions">
-                    {allExtraNotes.map(n=><option key={n} value={n}/>)}
-                  </datalist>
-                </div>
-
-                {/* المبلغ */}
-                <div className="form-group" style={{marginBottom:0}}>
-                  <label style={{fontSize:12}}>₪ {ar?'المبلغ':'סכום'}</label>
-                  <input type="number" value={subAmount} onChange={e=>setSubAmount(e.target.value)}
-                    placeholder="0" min="0" style={{fontWeight:700,textAlign:'center'}}/>
-                </div>
-
-                {/* نوع الاشتراك */}
-                <div className="form-group" style={{marginBottom:0}}>
-                  <label style={{fontSize:12}}>{ar?'نوع الاشتراك':'סוג מנוי'}</label>
-                  <select value={subType} onChange={e=>setSubType(e.target.value)}>
-                    <option value="forever">{ar?'مدفوع مرة واحدة (للأبد)':'תשלום חד פעמי (לצמיתות)'}</option>
-                    <option value="yearly">{ar?'سنوي (كل سنة)':'שנתי'}</option>
-                  </select>
-                </div>
-
-                {/* السنة — فقط للسنوي */}
-                {subType === 'yearly' && (
-                  <div className="form-group" style={{marginBottom:0}}>
-                    <label style={{fontSize:12}}>{ar?'السنة':'שנה'}</label>
-                    <select value={subYear} onChange={e=>setSubYear(e.target.value)}>
-                      {years.map(y=><option key={y} value={y}>{y}</option>)}
-                    </select>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* شرح المنطق */}
-            <div style={{background:subType==='forever'?'#eff6ff':'#f0fdf4',border:`1px solid ${subType==='forever'?'#bfdbfe':'#bbf7d0'}`,borderRadius:8,padding:'8px 14px',fontSize:12,color:subType==='forever'?'#1d4ed8':'#15803d'}}>
-              {subType==='forever'
-                ? (ar?'📌 من دفع هذا الاشتراك مرة واحدة في أي سنة = معفى. يظهر فقط من لم يدفعه أبداً ولديه قراءات.':'📌 מי ששילם מנוי זה פעם אחת בכל שנה = פטור. יוצגו רק מי שמעולם לא שילמו ויש להם קריאות.')
-                : (ar?`📅 يظهر من لديه قراءات في ${subYear} ولم يدفع الاشتراك في ${subYear}.`:`📅 יוצגו מי שיש להם קריאות ב-${subYear} ולא שילמו מנוי ב-${subYear}.`)}
-            </div>
-          </div>
-
-          {/* ── نتائج ── */}
-          {!subName.trim() ? (
-            <div className="card" style={{textAlign:'center',padding:32,color:'var(--text-muted)'}}>
-              <div style={{fontSize:32,marginBottom:8}}>🔍</div>
-              <div style={{fontSize:14}}>{ar?'اكتب اسم الاشتراك للبحث':'הכנס שם מנוי לחיפוש'}</div>
-            </div>
+            )
           ) : missingSubscription.length === 0 ? (
-            <div className="card" style={{textAlign:'center',padding:32,color:'#16a34a'}}>
+            <div className="card mb-16" style={{textAlign:'center',padding:32,color:'#16a34a'}}>
               <div style={{fontSize:40,marginBottom:8}}>✅</div>
               <div style={{fontWeight:700,fontSize:15}}>
-                {ar?'جميع العدادات النشطة دفعت هذا الاشتراك!':'כל המונים הפעילים שילמו מנוי זה!'}
+                {ar?'جميع العدادات النشطة دفعت هذا الاشتراك بالكامل!':'כל המונים הפעילים שילמו מנוי זה במלואו!'}
               </div>
             </div>
           ) : (
-            <div>
-              {/* ملخص */}
+            <div className="mb-16">
               <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:10,marginBottom:16}}>
                 <div className="stat-card" style={{padding:'12px 16px',borderRight:'3px solid #dc2626'}}>
                   <div style={{fontSize:20,marginBottom:4}}>⚠️</div>
                   <div style={{fontWeight:900,fontSize:'1.4rem',color:'#dc2626'}}>{missingSubscription.length}</div>
-                  <div style={{fontSize:11,color:'var(--text-muted)'}}>{ar?'قراءة بدون اشتراك':'קריאות ללא מנוי'}</div>
-                </div>
-                <div className="stat-card" style={{padding:'12px 16px',borderRight:'3px solid #1d4ed8'}}>
-                  <div style={{fontSize:20,marginBottom:4}}>👥</div>
-                  <div style={{fontWeight:900,fontSize:'1.4rem',color:'#1d4ed8'}}>
-                    {new Set(missingSubscription.map(r=>r.farmerId)).size}
-                  </div>
-                  <div style={{fontSize:11,color:'var(--text-muted)'}}>{ar?'مزارع':'חקלאים'}</div>
+                  <div style={{fontSize:11,color:'var(--text-muted)'}}>{ar?'أرض بدون اشتراك':'קרקעות ללא מנוי'}</div>
                 </div>
                 {subAmount && (
                   <div className="stat-card accent" style={{padding:'12px 16px'}}>
@@ -1008,7 +832,6 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
                 )}
               </div>
 
-              {/* نتيجة الإضافة */}
               {addedCount !== null && (
                 <div style={{background:'#f0fdf4',border:'1.5px solid #86efac',borderRadius:10,padding:'12px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:12}}>
                   <span style={{fontSize:24}}>✅</span>
@@ -1018,7 +841,6 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
                 </div>
               )}
 
-              {/* زر الإضافة الجماعية */}
               {!isViewer && subAmount && (
                 <div style={{marginBottom:16,display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
                   <button
@@ -1027,7 +849,7 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
                     style={{padding:'10px 24px',borderRadius:10,background:addingAll?'#d1d5db':'#1d4ed8',color:'#fff',border:'none',cursor:addingAll?'wait':'pointer',fontWeight:700,fontSize:14,display:'flex',alignItems:'center',gap:8}}>
                     {addingAll
                       ? `⏳ ${ar?'جاري الإضافة...':'מוסיף...'}`
-                      : `➕ ${ar?`إضافة "${subName}" (₪${subAmount}) على ${missingSubscription.length} قراءة`:`הוסף "${subName}" (₪${subAmount}) ל-${missingSubscription.length} קריאות`}`}
+                      : `➕ ${ar?`إضافة "${subName}" (₪${subAmount}) على ${missingSubscription.length} أرض`:`הוסף "${subName}" (₪${subAmount}) ל-${missingSubscription.length} קרקעות`}`}
                   </button>
                   <span style={{fontSize:12,color:'var(--text-muted)'}}>
                     ⚠️ {ar?'سيُضاف الاشتراك على كل من لم يدفعه دفعة واحدة':'יתווסף המנוי לכל מי שלא שילמו בפעולה אחת'}
@@ -1035,7 +857,6 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
                 </div>
               )}
 
-              {/* جدول المفقودين */}
               <div className="card" style={{padding:0}}>
                 <div className="tbl-wrap">
                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
@@ -1044,7 +865,9 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
                       <th style={{padding:'10px 14px',textAlign:'right',color:'#fff',fontWeight:800}}>{ar?'المزارع':'חקלאי'}</th>
                       <th style={{padding:'10px 14px',textAlign:'center',color:'#fff',fontWeight:800}}>{ar?'المحطة':'עמדה'}</th>
                       <th style={{padding:'10px 14px',textAlign:'center',color:'#bfdbfe',fontWeight:800}}>{ar?'السنة':'שנה'}</th>
-                      <th style={{padding:'10px 14px',textAlign:'center',color:'#bfdbfe',fontWeight:800}}>{ar?'آخر قراءة':'קריאה אחרונה'}</th>
+                      <th style={{padding:'10px 14px',textAlign:'center',color:'#bfdbfe',fontWeight:800}}>
+                        {ar?`أكواب ${currentYear}`:`קוב ${currentYear}`}
+                      </th>
                       <th style={{padding:'10px 14px',textAlign:'center',color:'#fca5a5',fontWeight:800}}>{ar?'الحالة':'סטטוס'}</th>
                     </tr>
                   </thead>
@@ -1053,7 +876,7 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
                       .sort((a,b)=>farmerName(a.farmerId).localeCompare(farmerName(b.farmerId),'ar'))
                       .map((r,i) => {
                         const land = lands.find(l=>String(l.id)===String(r.landId));
-                        const lastVal = r.readings ? r.readings.filter(v=>v!=null&&v!=='').pop() : null;
+                        const cupsYear = cupsThisYearForLand(r.landId);
                         return (
                           <tr key={r.id||i} style={{borderBottom:'1px solid #e5e7eb',background:i%2===0?'#fff':'#eff6ff'}}>
                             <td style={{padding:'10px 14px',fontFamily:'Heebo,sans-serif',fontWeight:700}}>
@@ -1066,7 +889,7 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
                             </td>
                             <td style={{padding:'10px 14px',textAlign:'center',color:'var(--text-muted)'}}>{r.year}</td>
                             <td style={{padding:'10px 14px',textAlign:'center',fontWeight:700}}>
-                              {lastVal != null ? lastVal.toLocaleString() : '—'}
+                              {cupsYear != null ? Math.round(cupsYear).toLocaleString() : '—'}
                             </td>
                             <td style={{padding:'10px 14px',textAlign:'center'}}>
                               <span style={{background:'#fff1f2',color:'#dc2626',fontWeight:700,padding:'2px 10px',borderRadius:6,fontSize:12}}>
@@ -1082,23 +905,8 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
               </div>
             </div>
           )}
-        </div>
-      )}
 
-      {/* ══ تبويب تدقيق البيانات ══ */}
-      {activeTab === 'audit' && (
-        <div>
-          <div className="card mb-16" style={{ borderRight:'4px solid #dc2626' }}>
-            <h3 className="mb-8" style={{ color:'#dc2626' }}>
-              🧪 {ar?'تدقيق البيانات':'ביקורת נתונים'}
-            </h3>
-            <p style={{ color:'var(--text-muted)', fontSize:13 }}>
-              {ar
-                ? 'فحص تلقائي لكل القراءات المسجّلة في النظام (بدون فلاتر) للكشف عن أي فرق سالب بين قراءتين متتاليتين، إعادة تصفير عداد، أو أرقام لم تؤخذ بعد.'
-                : 'סריקה אוטומטית של כל הקריאות במערכת (ללא סינון) לאיתור הפרש שלילי בין שתי קריאות רצופות, איפוס מונה, או ספרות שטרם נלקחו.'}
-            </p>
-          </div>
-
+          {/* ── فروق سالبة / إعادة تصفير / قراءات ناقصة (بدون أي تغيير عن السابق) ── */}
           {auditTotal === 0 ? (
             <div className="card" style={{ textAlign:'center', padding:32, color:'#16a34a' }}>
               <div style={{ fontSize:40, marginBottom:8 }}>✅</div>
@@ -1243,13 +1051,13 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
                             <td style={{ padding:'8px 12px', fontFamily:'Heebo,sans-serif', fontWeight:700 }}>{farmerName(row.farmerId)}</td>
                             <td style={{ padding:'8px 12px', textAlign:'center' }}>
                               {land?.stationNumber
-                                ? <code style={{ background:'#fffbeb', border:'1px solid #fde68a', padding:'2px 8px', borderRadius:5, fontWeight:900 }}>{land.stationNumber}</code>
+                                ? <code style={{ background:'#fffbeb', border:'1px solid #fde047', padding:'2px 8px', borderRadius:5, fontWeight:900 }}>{land.stationNumber}</code>
                                 : '—'}
                             </td>
                             <td style={{ padding:'8px 12px', textAlign:'center', color:'var(--text-muted)' }}>{row.year}</td>
-                            <td style={{ padding:'8px 12px', textAlign:'center' }}>{row.period}←{row.period+1}</td>
+                            <td style={{ padding:'8px 12px', textAlign:'center' }}>{ar?`${row.period}←${row.period+1}`:`${row.period}←${row.period+1}`}</td>
                             <td style={{ padding:'8px 12px', textAlign:'center', fontWeight:700 }}>{row.from.toLocaleString()}</td>
-                            <td style={{ padding:'8px 12px', textAlign:'center', fontWeight:700, color:'#d97706' }}>{row.to.toLocaleString()}</td>
+                            <td style={{ padding:'8px 12px', textAlign:'center', fontWeight:900, color:'#d97706' }}>{row.to.toLocaleString()}</td>
                           </tr>
                         );
                       })}

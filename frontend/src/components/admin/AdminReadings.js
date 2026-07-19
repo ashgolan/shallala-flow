@@ -134,8 +134,11 @@ function BulkExtraModal({ farmers, lands, regions, readings, onClose, onApplied,
   // ✅ checkbox ثابت الحجم صراحة — حتى لا يتأثر بستايل input العام بالمشروع
   const cbStyle = { width:16, height:16, minWidth:16, flexShrink:0, accentColor:'#7c3aed', cursor:'pointer' };
 
-  const farmerName = id => farmers.find(f=>String(f.id)===String(id))?.nameHeb
-                        || farmers.find(f=>String(f.id)===String(id))?.name || '—';
+  const farmerName = id => {
+    const f = farmers.find(x=>String(x.id)===String(id));
+    if (!f) return '—';
+    return `${f.lastName||''} ${f.firstName||''}`.trim() || f.nameHeb || f.name || '—';
+  };
 
   // ✅ اسم الأرض/المنطقة المعروض بجانب رقم المحطة
   const landLabel = (land) => {
@@ -599,8 +602,11 @@ export default function AdminReadings({ adminRole='admin' }) {
     setExtrasSuggestions(notes);
   };
 
-  const farmerName = id => farmers.find(f => String(f.id) === String(id))?.nameHeb
-                        || farmers.find(f => String(f.id) === String(id))?.name || '—';
+  const farmerName = id => {
+    const f = farmers.find(x => String(x.id) === String(id));
+    if (!f) return '—';
+    return `${f.lastName||''} ${f.firstName||''}`.trim() || f.nameHeb || f.name || '—';
+  };
 
   const landName = id => {
     const land = lands.find(l => String(l.id) === String(id));
