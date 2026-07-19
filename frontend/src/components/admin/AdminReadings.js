@@ -549,7 +549,7 @@ export default function AdminReadings({ adminRole='admin' }) {
 
   const [showRForm, setShowRForm] = useState(false);
   const [editR,     setEditR]     = useState(null);
-  const rFormRef = useRef(null); // ✅ للتمرير التلقائي عند فتح نموذج التعديل/الإضافة
+  const rFormBackdropMouseDown = useRef(false); // ✅ لتفادي إغلاق المودال عند السحب (تحديد نص) من الداخل للخارج
   const [rForm,     setRForm]     = useState(EMPTY_FORM);
   const [extrasSuggestions, setExtrasSuggestions] = useState([]); // ✅ اقتراحات
 
@@ -649,20 +649,12 @@ export default function AdminReadings({ adminRole='admin' }) {
     return map;
   })();
 
-  // ✅ يمرر الصفحة تلقائياً لأعلى نموذج القراءة (مهم عند التعديل من أسفل جدول طويل)
-  const scrollToRForm = () => {
-    setTimeout(() => {
-      rFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 50);
-  };
-
   const openAddR = () => {
     setEditR(null);
     setRForm(EMPTY_FORM);
     setFormFarmerSearch('');
     gatherSuggestions(readings);
     setError(''); setShowRForm(true);
-    scrollToRForm();
   };
 
   const openEditR = r => {
@@ -684,7 +676,6 @@ export default function AdminReadings({ adminRole='admin' }) {
     });
     gatherSuggestions(readings);
     setError(''); setShowRForm(true);
-    scrollToRForm();
   };
 
   const submitR = async e => {
@@ -1081,12 +1072,24 @@ export default function AdminReadings({ adminRole='admin' }) {
 
       {error && <div className="alert alert-error mb-16">{error}</div>}
 
-      {/* ══ نموذج القراءة ══ */}
+      {/* ══ نموذج القراءة — مودال مركّز بمنتصف الشاشة بدل بطاقة تدفع الصفحة لفوق ══ */}
       {showRForm && (
-        <div ref={rFormRef} className="card mb-16 fade-in-fast" style={{ border:'2px solid var(--primary)', scrollMarginTop: 16 }}>
-          <h3 className="mb-16">
-            {editR ? `✏️ ${ar ? 'تعديل قراءة' : 'עריכת קריאה'}` : `+ ${ar ? 'إضافة قراءة' : 'הוסף קריאה'}`}
-          </h3>
+        <div
+          onMouseDown={(e) => { rFormBackdropMouseDown.current = (e.target === e.currentTarget); }}
+          onClick={(e) => {
+            if (rFormBackdropMouseDown.current && e.target === e.currentTarget) setShowRForm(false);
+            rFormBackdropMouseDown.current = false;
+          }}
+          style={{ position:'fixed', inset:0, zIndex:9999, background:'rgba(0,0,0,0.6)', display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+          <div onClick={e => e.stopPropagation()} className="fade-in-fast"
+            style={{ background:'#fff', borderRadius:20, border:'2px solid var(--primary)', padding:'20px 24px', width:'100%', maxWidth:820, maxHeight:'92vh', overflowY:'auto', boxShadow:'0 20px 60px rgba(0,0,0,0.35)' }}>
+          <div className="flex-between mb-16">
+            <h3 style={{ margin:0 }}>
+              {editR ? `✏️ ${ar ? 'تعديل قراءة' : 'עריכת קריאה'}` : `+ ${ar ? 'إضافة قراءة' : 'הוסף קריאה'}`}
+            </h3>
+            <button type="button" onClick={() => setShowRForm(false)}
+              style={{ background:'var(--surface-2)', border:'none', color:'var(--text-muted)', width:30, height:30, borderRadius:'50%', cursor:'pointer', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
+          </div>
           <form onSubmit={submitR}>
             <div className="grid-3">
               <div className="form-group" style={{position:'relative'}}>
@@ -1318,6 +1321,7 @@ export default function AdminReadings({ adminRole='admin' }) {
               </button>
             </div>
           </form>
+          </div>
         </div>
       )}
 
