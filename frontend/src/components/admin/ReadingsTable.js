@@ -56,7 +56,7 @@ export default function ReadingsTable({
   const [editNoteId, setEditNoteId] = useState(null);
   const [noteText,   setNoteText]   = useState('');
   const [savingNote, setSavingNote] = useState(false);
-  const [sortKey,    setSortKey]    = useState(null);
+  const [sortKey,    setSortKey]    = useState('farmer'); // ✅ الترتيب الافتراضي عند الدخول: أبجدي حسب اسم المزارع (العائلة أولاً)
   const [sortDir,    setSortDir]    = useState('asc');
   const [mapModal,   setMapModal]   = useState(null);
   const ar = lang === 'ar';
