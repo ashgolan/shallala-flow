@@ -173,10 +173,22 @@ const updateMember = async (req, res) => {
     if (!project) return res.status(404).json({ error: 'غير موجود' });
     const member = project.members.id(req.params.memberId);
     if (!member) return res.status(404).json({ error: 'المشترك غير موجود' });
+
+    // ✅ تعديل الاسم الحر (customMembers فقط) — نمنع إنشاء اسم مكرر بنفس المشروع عبر التعديل أيضاً
+    if (memberName !== undefined && project.customMembers) {
+      const trimmed = (memberName||'').trim();
+      if (trimmed) {
+        const dup = project.members.find(m =>
+          m._id.toString() !== member._id.toString() &&
+          (m.memberName||'').trim().toLowerCase() === trimmed.toLowerCase()
+        );
+        if (dup) return res.status(409).json({ error: 'يوجد مشترك آخر بنفس الاسم في هذا المشروع' });
+        member.memberName = trimmed;
+      }
+    }
     // ✅ بمشاريع customMembers نتجاهل تعديل amount الفردي (الهدف عام لكامل المشروع فقط)
     if (amount !== undefined && !project.customMembers) member.amount = parseAmountOrNull(amount);
     if (invoiced !== undefined) member.invoiced = !!invoiced;
-    if (memberName !== undefined) member.memberName = (memberName||'').trim();
     // ✅ stationNumber: undefined = لا تغيير، '' = مسح (يرجع لمحطة المشروع العامة إن وُجدت)
     if (stationNumber !== undefined) member.stationNumber = (stationNumber || '').trim();
     await project.save();
@@ -222,6 +234,37 @@ const addPayment = async (req, res) => {
   } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
 
+// PUT /admin/projects/:projectId/members/:memberId/payments/:paymentId
+// ✅ تعديل دفعة موجودة (تصحيح مبلغ/تاريخ/رقم وصل/رقم دفتر خاطئ) بدل حذفها وإعادة إضافتها،
+//    حتى يبقى نفس الـ id ولا نفقد أي تتبع مرتبط بها.
+const updatePayment = async (req, res) => {
+  try {
+    if (!canManageProject(req, req.params.projectId))
+      return res.status(403).json({ error: 'غير مصرح لك بإدارة هذا المشروع' });
+
+    const { amount, date, note, receiptNumber, bookNumber } = req.body;
+    const project = await Project.findById(req.params.projectId);
+    if (!project) return res.status(404).json({ error: 'غير موجود' });
+    const member = project.members.id(req.params.memberId);
+    if (!member) return res.status(404).json({ error: 'المشترك غير موجود' });
+    const payment = member.payments.id(req.params.paymentId);
+    if (!payment) return res.status(404).json({ error: 'الدفعة غير موجودة' });
+
+    if (amount !== undefined) {
+      const f = parseFloat(amount);
+      if (isNaN(f) || f <= 0) return res.status(400).json({ error: 'المبلغ غير صالح' });
+      payment.amount = f;
+    }
+    if (date !== undefined) payment.date = date ? new Date(date) : payment.date;
+    if (note !== undefined) payment.note = note || '';
+    if (receiptNumber !== undefined) payment.receiptNumber = receiptNumber || '';
+    if (bookNumber !== undefined) payment.bookNumber = bookNumber || '';
+
+    await project.save();
+    return res.json({ success: true });
+  } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
+};
+
 // DELETE /admin/projects/:projectId/members/:memberId/payments/:paymentId
 const deletePayment = async (req, res) => {
   try {
@@ -241,5 +284,5 @@ const deletePayment = async (req, res) => {
 module.exports = {
   getProjects, createProject, updateProject, deleteProject,
   addMember, updateMember, deleteMember,
-  addPayment, deletePayment,
+  addPayment, updatePayment, deletePayment,
 };

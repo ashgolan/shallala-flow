@@ -113,6 +113,8 @@ export const adminAPI = {
   updateProjectMember:  (id, mid, d) => req(`/admin/projects/${id}/members/${mid}`, { method: 'PUT', body: JSON.stringify(d) }),
   deleteProjectMember:  (id, mid)    => req(`/admin/projects/${id}/members/${mid}`, { method: 'DELETE' }),
   addProjectPayment:    (id, mid, d) => req(`/admin/projects/${id}/members/${mid}/payments`, { method: 'POST', body: JSON.stringify(d) }),
+  // ✅ تعديل دفعة موجودة (بدل حذف/إعادة إنشاء) — يحافظ على الـ id والبيانات المرتبطة بها
+  updateProjectPayment: (id, mid, pid, d) => req(`/admin/projects/${id}/members/${mid}/payments/${pid}`, { method: 'PUT', body: JSON.stringify(d) }),
   deleteProjectPayment: (id, mid, pid) => req(`/admin/projects/${id}/members/${mid}/payments/${pid}`, { method: 'DELETE' }),
 };
 

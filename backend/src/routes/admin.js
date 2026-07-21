@@ -281,6 +281,8 @@ router.put   ('/projects/:projectId/members/:memberId',                       pr
 router.delete('/projects/:projectId/members/:memberId',                       projectCtrl.deleteMember);
 // Payments
 router.post  ('/projects/:projectId/members/:memberId/payments',              projectCtrl.addPayment);
+// ✅ تعديل دفعة موجودة — تصحيح مبلغ/تاريخ/رقم وصل أو دفتر خاطئ بدون حذف وإعادة إضافة
+router.put   ('/projects/:projectId/members/:memberId/payments/:paymentId',   projectCtrl.updatePayment);
 router.delete('/projects/:projectId/members/:memberId/payments/:paymentId',   projectCtrl.deletePayment);
 
 module.exports = router;
