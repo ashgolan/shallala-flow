@@ -18,8 +18,8 @@ const parseGoogleCoords = (raw) => {
   const s = raw.trim();
   const decMatch = s.match(/^(-?\d{1,3}\.\d+)[,\s]+(-?\d{1,3}\.\d+)$/);
   if (decMatch) return { lat: parseFloat(decMatch[1]), lng: parseFloat(decMatch[2]) };
-  const dmsPattern  = /(\d{1,3})[°\u00b0]\s*(\d{1,2})['\'\u2032]\s*(\d{1,2}(?:\.\d+)?)["\"\u2033]?\s*([NS])/i;
-  const dmsPattern2 = /(\d{1,3})[°\u00b0]\s*(\d{1,2})['\'\u2032]\s*(\d{1,2}(?:\.\d+)?)["\"\u2033]?\s*([EW])/i;
+  const dmsPattern  = /(\d{1,3})[°°]\s*(\d{1,2})['\'′]\s*(\d{1,2}(?:\.\d+)?)["\"″]?\s*([NS])/i;
+  const dmsPattern2 = /(\d{1,3})[°°]\s*(\d{1,2})['\'′]\s*(\d{1,2}(?:\.\d+)?)["\"″]?\s*([EW])/i;
   const latM = s.match(dmsPattern);
   const lngM = s.match(dmsPattern2);
   if (latM && lngM) return {
@@ -559,6 +559,8 @@ export default function AdminReadings({ adminRole='admin' }) {
   const [filterF,        setFilterF]        = useState('');
   const [filterY,        setFilterY]        = useState('');
   const [filterR,        setFilterR]        = useState('');
+  // ✅ فلترة حسب رقم محطة محدد (مثلاً K7) — نص مطابَق مباشرة مع reading.stationNumber
+  const [filterStation,  setFilterStation]  = useState('');
   const [filterPaid,     setFilterPaid]     = useState('');
   const [farmerSearch,   setFarmerSearch]   = useState('');
   const [showFarmerList, setShowFarmerList] = useState(false);
@@ -632,6 +634,18 @@ export default function AdminReadings({ adminRole='admin' }) {
   };
   const years = [...new Set(readings.map(r => r.year))].sort((a,b) => b-a);
   const farmerLands = rForm.farmerId ? lands.filter(l => String(l.farmerId) === String(rForm.farmerId)) : lands;
+
+  // ✅ قائمة محطات بدون تكرار — لفلتر "المحطة" أسفل. نفس منطق التنظيف المستخدم بصفحتي
+  // المزارعين والمشاريع: نجمع الأراضي حسب رقم المحطة (نص) ونمثّل كل مجموعة بسجل واحد،
+  // بدل عرض نفس رقم المحطة عدة مرات (لو أكثر من مزارع/ساعة مسجّلين عليها).
+  const uniqueStations = (() => {
+    const groups = {};
+    lands.filter(l => l.stationNumber).forEach(l => {
+      const key = l.stationNumber.trim();
+      if (!groups[key]) groups[key] = l;
+    });
+    return Object.values(groups).sort((a,b) => (a.stationNumber||'').localeCompare(b.stationNumber||''));
+  })();
 
   // ✅ مزارعون لم يكملوا دفعهم لمشروع/مشاريع معينة — Map: farmerId -> [{ projectName, remaining, stationNumber }]
   // ✅ stationNumber هنا (نص) هو مفتاح المطابقة الفعلي مع reading.stationNumber، وهذا يتجاوز
@@ -764,6 +778,9 @@ export default function AdminReadings({ adminRole='admin' }) {
       const land = lands.find(l => String(l.id) === String(r.landId));
       if (!land || String(land.regionId) !== String(filterR)) return false;
     }
+    // ✅ فلترة حسب رقم محطة محدد — مطابقة نصية مباشرة مع reading.stationNumber
+    // (نفس مبدأ المطابقة المعتمد بكل مكان آخر بالمشروع؛ يتجاوز مشكلة الأراضي المكررة)
+    if (filterStation && String(r.stationNumber||'').trim() !== filterStation) return false;
     if (filterPaid === 'paid'   && !r.paid) return false;
     if (filterPaid === 'unpaid' &&  r.paid) return false;
     return true;
@@ -971,6 +988,7 @@ export default function AdminReadings({ adminRole='admin' }) {
           <h3 style={{ margin:0 }}>
             🥤 {ar ? 'إجمالي الأكواب' : 'סה"כ קובים'}
             {filterY && <span style={{ color:'var(--text-muted)', fontWeight:600, fontSize:14 }}> — {filterY}</span>}
+            {filterStation && <span style={{ color:'var(--text-muted)', fontWeight:600, fontSize:14, fontFamily:'monospace' }}> — 📍 {filterStation}</span>}
           </h3>
           <div style={{ fontSize:24, fontWeight:900, color:'var(--primary)' }}>
             {Math.round(cupsBreakdown.total).toLocaleString()}
@@ -1005,8 +1023,8 @@ export default function AdminReadings({ adminRole='admin' }) {
       </div>
 
       {/* ── شريط الفلاتر ── */}
-      <div className="flex-between mb-16" style={{ flexWrap:'wrap', gap:12 }}>
-        <div className="flex-gap gap-8" style={{ flexWrap:'wrap' }}>
+      <div className="mb-16">
+        <div className="flex-gap gap-8 mb-12" style={{ flexWrap:'wrap' }}>
 
           <div style={{ position:'relative' }}>
             <input type="text" value={farmerSearch}
@@ -1016,7 +1034,7 @@ export default function AdminReadings({ adminRole='admin' }) {
               placeholder={filterF
                 ? (farmers.find(f=>f.id===filterF)?.nameHeb || farmers.find(f=>f.id===filterF)?.name || '')
                 : (ar ? '🔍 اختر مزارعاً...' : '🔍 חפש חקלאי...')}
-              style={{ width:190, paddingLeft:8 }} />
+              style={{ width:300, paddingLeft:8 }} />
             {filterF && (
               <button onClick={() => { setFilterF(''); setFarmerSearch(''); }}
                 style={{ position:'absolute', left:6, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'var(--text-muted)', fontSize:14, lineHeight:1 }}>✕</button>
@@ -1041,23 +1059,32 @@ export default function AdminReadings({ adminRole='admin' }) {
               </div>
             )}
           </div>
-          <select value={filterR} onChange={e => setFilterR(e.target.value)} style={{ width:160 }}>
+          <select value={filterR} onChange={e => setFilterR(e.target.value)} style={{ width:200 }}>
             <option value="">{t('allRegions', lang)}</option>
             {regions.map(r => (
               <option key={r.id} value={r.id}>{r.name}{r.nameHeb && r.nameHeb !== r.name ? ` — ${r.nameHeb}` : ''}</option>
             ))}
           </select>
-          <select value={filterY} onChange={e => setFilterY(e.target.value)} style={{ width:130 }}>
+          {/* ✅ فلتر محطة محددة (مثلاً K7) — يعرض فقط قراءات هذه المحطة بالذات */}
+          <select value={filterStation} onChange={e => setFilterStation(e.target.value)}
+            style={{ width:190, fontFamily:'monospace', fontWeight:700 }}>
+            <option value="">{ar ? '— كل المحطات —' : '— כל התחנות —'}</option>
+            {uniqueStations.map(l => (
+              <option key={l.id} value={l.stationNumber}>📍 {l.stationNumber}</option>
+            ))}
+          </select>
+          <select value={filterY} onChange={e => setFilterY(e.target.value)} style={{ width:160 }}>
             <option value="">{t('allYears', lang)}</option>
             {years.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
-          <select value={filterPaid} onChange={e => setFilterPaid(e.target.value)} style={{ width:150 }}>
+          <select value={filterPaid} onChange={e => setFilterPaid(e.target.value)} style={{ width:180 }}>
             <option value="">{ar ? 'الكل' : 'הכל'}</option>
             <option value="paid">{ar ? '✅ مدفوع فقط' : '✅ שולם בלבד'}</option>
             <option value="unpaid">{ar ? '❌ غير مدفوع' : '❌ לא שולם'}</option>
           </select>
         </div>
-        <div className="flex-gap gap-8">
+        {/* ✅ صف أزرار الإجراءات — يظهر بمنتصف الشاشة أفقياً (طباعة / واتساب / إضافة جماعية / إضافة قراءة) */}
+        <div className="flex-gap gap-8" style={{ flexWrap:'wrap', justifyContent:'center' }}>
           <button className="btn btn-outline btn-sm" onClick={() => window.print()}>🖨️</button>
           <button className="btn btn-outline btn-sm" onClick={sendWhatsAppStatement}
             title={ar ? 'إرسال كشف واتساب للمزارع (فلتر بمزارع واحد أولاً)' : 'שלח דו"ח בוואטסאפ (סנן חקלאי אחד קודם)'}
