@@ -18,8 +18,8 @@ const parseGoogleCoords = (raw) => {
   const s = raw.trim();
   const decMatch = s.match(/^(-?\d{1,3}\.\d+)[,\s]+(-?\d{1,3}\.\d+)$/);
   if (decMatch) return { lat: parseFloat(decMatch[1]), lng: parseFloat(decMatch[2]) };
-  const dmsP1 = /(\d{1,3})[°\u00b0]\s*(\d{1,2})['\u2032]\s*(\d{1,2}(?:\.\d+)?)["\u2033]?\s*([NS])/i;
-  const dmsP2 = /(\d{1,3})[°\u00b0]\s*(\d{1,2})['\u2032]\s*(\d{1,2}(?:\.\d+)?)["\u2033]?\s*([EW])/i;
+  const dmsP1 = /(\d{1,3})[°°]\s*(\d{1,2})['′]\s*(\d{1,2}(?:\.\d+)?)["″]?\s*([NS])/i;
+  const dmsP2 = /(\d{1,3})[°°]\s*(\d{1,2})['′]\s*(\d{1,2}(?:\.\d+)?)["″]?\s*([EW])/i;
   const latM = s.match(dmsP1);
   const lngM = s.match(dmsP2);
   if (latM && lngM) return {
@@ -601,10 +601,8 @@ export default function AdminFarmers({ adminRole='admin' }) {
     try {
       const res = await adminAPI.applyReadingsImport({ items: importPreview.items });
       alert(ar
-        ? `✅ تم تطبيق ${res.applied} قراءة${res.created ? ` وإنشاء ${res.created} جديد` : ''}${res.errors?.length ? `
-⚠️ أخطاء: ${res.errors.join(', ')}` : ''}`
-        : `✅ עודכנו ${res.applied} קריאות${res.created ? ` ונוצרו ${res.created} חדשות` : ''}${res.errors?.length ? `
-⚠️ שגיאות: ${res.errors.join(', ')}` : ''}`
+        ? `✅ تم تطبيق ${res.applied} قراءة${res.created ? ` وإنشاء ${res.created} جديد` : ''}${res.errors?.length ? `\n⚠️ أخطاء: ${res.errors.join(', ')}` : ''}`
+        : `✅ עודכנו ${res.applied} קריאות${res.created ? ` ונוצרו ${res.created} חדשות` : ''}${res.errors?.length ? `\n⚠️ שגיאות: ${res.errors.join(', ')}` : ''}`
       );
       setImportPreview(null);
       load(); // إعادة تحميل البيانات
@@ -1079,11 +1077,19 @@ export default function AdminFarmers({ adminRole='admin' }) {
                                           <option value="">{editLand ? (landFormData.stationNumber||ar?'— اختر —':'— בחר —') : (ar?`— اختر (${pendingLands.length} في القائمة) —`:`— בחר (${pendingLands.length} בתור) —`)}</option>
                                           {(() => {
                                             const available = allLands.filter(l => l.stationNumber);
-                                            const grouped = available.reduce((acc,l)=>{ const code=l.stationNumber?.match(/^([A-Za-z]+)/)?.[1]?.toUpperCase()||'?'; if(!acc[code])acc[code]=[]; acc[code].push(l); return acc; },{});
+                                            // ✅ إزالة التكرار: كل رقم محطة يظهر مرة واحدة فقط في القائمة
+                                            // (نفس المحطة قد يكون لها أكثر من سجل أرض بسبب وجود أكثر من مزارع/ساعة عليها)
+                                            const uniqueByStation = Object.values(
+                                              available.reduce((acc, l) => {
+                                                if (!acc[l.stationNumber]) acc[l.stationNumber] = l;
+                                                return acc;
+                                              }, {})
+                                            );
+                                            const grouped = uniqueByStation.reduce((acc,l)=>{ const code=l.stationNumber?.match(/^([A-Za-z]+)/)?.[1]?.toUpperCase()||'?'; if(!acc[code])acc[code]=[]; acc[code].push(l); return acc; },{});
                                             return Object.entries(grouped).sort(([a],[b])=>a.localeCompare(b)).map(([code,lands])=>(
                                               <optgroup key={code} label={`── ${code} ──`}>
                                                 {lands.map(l=>{ const reg=regions.find(r=>r.id===l.regionId); return (
-                                                  <option key={l.id} value={l.stationNumber}>
+                                                  <option key={l.stationNumber} value={l.stationNumber}>
                                                     {l.stationNumber}{reg?.nameHeb&&reg.nameHeb!==reg.name?` (${reg.nameHeb})`:reg?.name?` (${reg.name})`:''}{l.stationLat?' 📍':''}
                                                   </option>
                                                 );})}

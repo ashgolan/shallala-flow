@@ -1,6 +1,7 @@
 const Land       = require('../models/Land');
 const Reading    = require('../models/Reading');
 const FarmerNote = require('../models/FarmerNote');
+const Project    = require('../models/Project'); // ✅ لعرض المشاريع المرتبطة بالمزارع بلوحة تحكمه
 const { Prices, Region } = require('../models/Settings');
 
 // ✅ نفس منطق استنتاج اسم المنطقة المستخدم في صفحة التقارير للإدارة:
@@ -19,6 +20,43 @@ const resolveRegionName = (land, regions) => {
   return { name: '', nameHeb: '' };
 };
 
+// ✅ يبني بيانات المشاريع التي يظهر فيها هذا المزارع كمشترك (عبر farmerId داخل members)
+// نفس منطق الحساب المستخدم بلوحة الإدارة (AdminProjects: calcProject/calcMember) للحفاظ
+// على تطابق الأرقام بين واجهة المزارع والإدارة
+const getMyProjects = async (farmerId) => {
+  const projects = await Project.find({ 'members.farmerId': farmerId }).lean();
+  return projects.map(p => {
+    const members = p.members || [];
+    const totalPaid = members.reduce((s, m) =>
+      s + (m.payments || []).reduce((ss, pay) => ss + (pay.amount || 0), 0), 0);
+    const totalRequired = p.customMembers
+      ? (p.targetAmount || 0)
+      : members.reduce((s, m) => s + (m.amount || 0), 0);
+
+    const myMember = members.find(m => m.farmerId && m.farmerId.toString() === farmerId.toString());
+    const myPaid = myMember ? (myMember.payments || []).reduce((s, pay) => s + (pay.amount || 0), 0) : 0;
+    const myRequired = p.customMembers ? null : (myMember?.amount ?? null);
+    const myRemaining = myRequired != null ? myRequired - myPaid : null;
+
+    return {
+      id:            p._id.toString(),
+      name:          p.name,
+      description:   p.description || '',
+      date:          p.date,
+      status:        p.status,
+      stationNumber: p.stationNumber || '',
+      customMembers: !!p.customMembers,
+      targetAmount:  p.targetAmount ?? null,
+      myRequired,
+      myPaid,
+      myRemaining,
+      totalRequired,
+      totalPaid,
+      totalRemaining: totalRequired - totalPaid,
+    };
+  });
+};
+
 // ─── My Data ───────────────────────────────────────────────────
 const getMyData = async (req, res) => {
   try {
@@ -29,10 +67,11 @@ const getMyData = async (req, res) => {
 
     // 2. الأراضي من القراءات
     const landIds = [...new Set(readings.map(r => r.landId?.toString()).filter(Boolean))];
-    const [lands, pricesDoc, regions] = await Promise.all([
+    const [lands, pricesDoc, regions, myProjects] = await Promise.all([
       landIds.length > 0 ? Land.find({ _id: { $in: landIds } }).lean() : Promise.resolve([]),
       Prices.findOne({ key: 'prices' }).lean(),
       Region.find({}).lean(),
+      getMyProjects(farmerId), // ✅ مشاريع المزارع (إن وُجدت)
     ]);
 
     // ✅ Mixed type — لا نستخدم Object.fromEntries
@@ -65,6 +104,7 @@ const getMyData = async (req, res) => {
         paid:          r.paid || false,
       })),
       prices,
+      projects: myProjects, // ✅ مشاريع المزارع — تُعرض بلوحة التحكم إن وُجدت
     });
   } catch (err) {
     console.error('getMyData error:', err.message);

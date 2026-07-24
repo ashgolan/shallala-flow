@@ -11,6 +11,7 @@ import { LangToggleLight } from '../components/shared/LangToggle';
 import AnnouncementBanner from '../components/shared/AnnouncementBanner';
 import { getPrice } from '../utils/pricing'; // ✅ سعر موحّد شامل الضريبة (מע"מ)
 import { cupsDiff, cupsPositive } from '../utils/cups'; // ✅ فرق أكواب موحّد
+import { getExtrasList } from '../utils/extras'; // ✅ قائمة الإضافات (تفاصيل كل إضافة: سبب/مبلغ/مدفوع)
 import useElementWidth from '../hooks/useElementWidth'; // ✅ قياس عرض موحّد للرسوم البيانية
 
 // ── رسم بياني الأكواب السنوي (مكوّن مستقل — يقيس نفسه عند ظهوره فعلياً) ──
@@ -140,6 +141,13 @@ const StatusBadge = ({ status, ar }) => {
 // شارة مرتبطة مباشرة بقراءة واحدة (اختصار لـ StatusBadge)
 const PayStatusBadge = ({ r, ar }) => <StatusBadge status={getPayStatus(r)} ar={ar}/>;
 
+// ✅ شارة حالة المشروع (نشط/منتهي/ملغى) — تُستخدم ببطاقة "مشاريعي"
+const projectStatusConfig = (status, ar) => ({
+  active:    { bg:'#eff6ff', color:'#1d4ed8', label: ar?'نشط':'פעיל' },
+  done:      { bg:'#f0fdf4', color:'#15803d', label: ar?'منتهي':'הסתיים' },
+  cancelled: { bg:'#fff1f2', color:'#dc2626', label: ar?'ملغى':'בוטל' },
+}[status] || { bg:'#f3f4f6', color:'#6b7280', label: status });
+
 // ── أيقونة KPI ملونة ──
 const KpiIcon = ({ icon, bg, border }) => (
   <div style={{
@@ -185,6 +193,128 @@ const KpiCard = ({ icon, bg, border, value, label, footer, footerVal, trend, tre
   </div>
 );
 
+// ── بطاقة مشروع مرتبط بالمزارع (تظهر أعلى الصفحة الافتتاحية إن وُجد) ──
+const ProjectCard = ({ p, ar, delay }) => {
+  const isCustom  = p.customMembers;
+  // بمشاريع customMembers: الهدف عام لكامل المشروع، ومساهمة المزارع فردية بدون مبلغ مطلوب محدد له
+  const required  = isCustom ? p.totalRequired : p.myRequired;
+  const paid       = p.myPaid;
+  const remaining  = isCustom ? p.totalRemaining : p.myRemaining;
+  const pct = required > 0 ? Math.min(100, Math.round((paid / required) * 100)) : 0;
+  const statusCfg = projectStatusConfig(p.status, ar);
+
+  return (
+    <div className="fd-card" style={{
+      background:'#fff', borderRadius:16, border:'1.5px solid #e5e7eb',
+      borderInlineStart:'4px solid #7c3aed', padding:16, animationDelay:`${delay}s`,
+    }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10, flexWrap:'wrap', marginBottom:12 }}>
+        <div>
+          <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+            <span style={{ fontSize:16 }}>🏗️</span>
+            <div style={{ fontSize:15, fontWeight:900, color:'#111827' }}>{p.name}</div>
+            <span style={{ background:statusCfg.bg, color:statusCfg.color, borderRadius:8, padding:'2px 9px', fontSize:10, fontWeight:800 }}>{statusCfg.label}</span>
+          </div>
+          {p.description && <div style={{ fontSize:12, color:'#6b7280', marginTop:5 }}>{p.description}</div>}
+          {p.stationNumber && <div style={{ fontSize:11, color:'#9ca3af', marginTop:4, fontWeight:700 }}>📍 {p.stationNumber}</div>}
+        </div>
+        {p.date && (
+          <div style={{ fontSize:10, color:'#9ca3af', fontWeight:600, whiteSpace:'nowrap' }}>
+            {new Date(p.date).toLocaleDateString(ar?'ar-EG-u-nu-latn':'he-IL')}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(110px,1fr))', gap:10, marginBottom: required > 0 ? 10 : 0 }}>
+        <div style={{ background:'#f5f3ff', borderRadius:10, padding:'8px 12px', textAlign:'center' }}>
+          <div style={{ fontSize:10, color:'#7c3aed', fontWeight:700 }}>{isCustom ? (ar?'هدف المشروع':'יעד הפרויקט') : (ar?'المبلغ المطلوب':'סכום נדרש')}</div>
+          <div style={{ fontSize:16, fontWeight:900, color:'#111827' }}>{required != null ? `₪${Math.round(required).toLocaleString()}` : '—'}</div>
+        </div>
+        <div style={{ background:'#f0fdf4', borderRadius:10, padding:'8px 12px', textAlign:'center' }}>
+          <div style={{ fontSize:10, color:'#15803d', fontWeight:700 }}>{isCustom ? (ar?'مساهمتك':'התרומה שלך') : (ar?'المدفوع':'שולם')}</div>
+          <div style={{ fontSize:16, fontWeight:900, color:'#111827' }}>₪{Math.round(paid).toLocaleString()}</div>
+        </div>
+        {remaining != null && (
+          <div style={{ background: remaining>0?'#fff1f2':'#f0fdf4', borderRadius:10, padding:'8px 12px', textAlign:'center' }}>
+            <div style={{ fontSize:10, color: remaining>0?'#dc2626':'#15803d', fontWeight:700 }}>{isCustom ? (ar?'المتبقي إجمالاً':'יתרה כוללת') : (ar?'المتبقي':'יתרה')}</div>
+            <div style={{ fontSize:16, fontWeight:900, color:'#111827' }}>₪{Math.round(Math.max(remaining,0)).toLocaleString()}</div>
+          </div>
+        )}
+      </div>
+
+      {required > 0 && (
+        <div style={{ height:6, background:'#f3f4f6', borderRadius:3, overflow:'hidden' }}>
+          <div style={{ height:'100%', width:`${pct}%`, background:'linear-gradient(90deg,#7c3aed,#a78bfa)', borderRadius:3 }}/>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── شريط مستحقات مختصر (أكواب / مشاريع / إضافات) — يظهر فقط إذا في شيء غير مدفوع ──
+// ✅ مقصود يكون خفيف وهادئ: صف واحد رفيع بشارات صغيرة، يختفي تلقائياً إذا كل شيء مدفوع
+const DuesSummary = ({ cups, projects, extras, extrasList, ar }) => {
+  const [showExtras, setShowExtras] = useState(false);
+  const hasExtrasDetail = extras > 0.01 && extrasList && extrasList.length > 0;
+
+  const items = [
+    { key:'cups',     icon:'💧', label: ar?'الأكواب':'קוב',        value: cups,     color:'#0891b2', bg:'#ecfeff', border:'#a5f3fc' },
+    { key:'projects', icon:'🏗️', label: ar?'المشاريع':'פרויקטים', value: projects, color:'#7c3aed', bg:'#f5f3ff', border:'#ddd6fe' },
+    { key:'extras',   icon:'➕', label: ar?'إضافات':'תוספות',      value: extras,   color:'#d97706', bg:'#fffbeb', border:'#fde68a' },
+  ].filter(it => it.value > 0.01);
+
+  if (items.length === 0) return null;
+  const total = items.reduce((s, it) => s + it.value, 0);
+
+  return (
+    <div className="fd-card" style={{
+      background:'#fff', borderRadius:14, border:'1.5px solid #fecaca',
+      padding:'10px 16px', marginBottom:18, display:'flex', flexDirection:'column', gap:0,
+      animationDelay:'0.02s',
+    }}>
+      <div style={{ display:'flex', alignItems:'center', flexWrap:'wrap', gap:10 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, fontWeight:800, color:'#dc2626', whiteSpace:'nowrap' }}>
+          <span style={{ fontSize:14 }}>🔔</span>
+          {ar?'مستحقات غير مدفوعة':'חובות פתוחים'}
+        </div>
+        <div style={{ display:'flex', gap:7, flexWrap:'wrap', flex:1 }}>
+          {items.map(it => {
+            const clickable = it.key === 'extras' && hasExtrasDetail;
+            return (
+              <span key={it.key}
+                onClick={clickable ? () => setShowExtras(s => !s) : undefined}
+                style={{
+                  display:'inline-flex', alignItems:'center', gap:5,
+                  background:it.bg, color:it.color, border:`1px solid ${it.border}`,
+                  borderRadius:9, padding:'3px 10px', fontSize:11, fontWeight:800,
+                  cursor: clickable ? 'pointer' : 'default',
+                }}>
+                {it.icon} {it.label}: ₪{Math.round(it.value).toLocaleString()}
+                {clickable && <span style={{ fontSize:9 }}>{showExtras ? '▲' : '▼'}</span>}
+              </span>
+            );
+          })}
+        </div>
+        <div style={{ fontSize:12, fontWeight:900, color:'#dc2626', whiteSpace:'nowrap' }}>
+          {ar?'الإجمالي':'סה"כ'} ₪{Math.round(total).toLocaleString()}
+        </div>
+      </div>
+
+      {/* ✅ تفاصيل الإضافات — سبب كل إضافة غير مدفوعة، تظهر فقط عند الضغط على الشارة */}
+      {showExtras && hasExtrasDetail && (
+        <div style={{ marginTop:10, paddingTop:10, borderTop:'1px dashed #fde68a', display:'flex', flexDirection:'column', gap:6 }}>
+          {extrasList.map((e, i) => (
+            <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:10, fontSize:11.5, color:'#78350f' }}>
+              <span>📌 {e.note || (ar?'إضافة بدون سبب مذكور':'תוספת ללא סיבה מצוינת')}{e.landLabel ? ` — ${e.landLabel}` : ''}{e.year ? ` (${e.year})` : ''}</span>
+              <strong style={{ color:'#d97706', whiteSpace:'nowrap' }}>₪{Math.round(e.remaining).toLocaleString()}</strong>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
   const stored = localStorage.getItem('shl_farmer');
   const farmer = farmerProp || (() => {
@@ -195,7 +325,7 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
   const { lang } = useLang();
   const ar = lang === 'ar';
   const [tab, setTab]     = useState('overview');
-  const [data, setData]   = useState({ lands: [], readings: [], prices: {} });
+  const [data, setData]   = useState({ lands: [], readings: [], prices: {}, projects: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selYear, setSelYear] = useState(null);
@@ -221,7 +351,7 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
     </div>
   );
 
-  const { lands, readings, prices } = data;
+  const { lands, readings, prices, projects: myProjects = [] } = data;
 
   const byYear = {};
   readings.forEach(r => {
@@ -240,6 +370,16 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
   // ✅ حالة الدفع الإجمالية عبر كل القراءات — لبطاقة "إجمالي المبلغ"
   const overallPayStatus = getOverallPayStatus(readings);
 
+  // ✅ مبلغ الأكواب غير المدفوع — مجموع فترات القراءات غير المدفوعة فقط (paidPeriods)
+  const cupsUnpaid = readings.reduce((total, r) => {
+    const pp = r.paidPeriods || [];
+    return total + calcConsumption(r, prices).reduce((s, c) => s + (pp[c.idx - 1] ? 0 : c.amount), 0);
+  }, 0);
+
+  // ✅ مبلغ المشاريع غير المدفوع — فقط المشاريع ذات المبلغ الفردي (وليست أهداف مشتركة)
+  const projectsUnpaid = myProjects.reduce((s, p) =>
+    s + (p.customMembers ? 0 : Math.max(p.myRemaining || 0, 0)), 0);
+
   // ✅ اسم المنطقة (تلقائياً من صفحة المناطق) مع رقم المحطة بين قوسين
   // ملاحظة: نفس قاعدة صفحة التقارير بالإدارة — nameHeb هو الاسم الحقيقي المُدخَل
   // غالباً، فنفضّله دائماً بغض النظر عن لغة الواجهة (name غالباً رمز مطابقة فقط)
@@ -255,6 +395,19 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
   const filteredLands = lands.filter(l =>
     !search || l.name.includes(search) || (l.nameHeb || '').includes(search)
   );
+
+  // ✅ قائمة تفصيلية بكل إضافة غير مدفوعة (السبب/الأرض/السنة/المبلغ المتبقي) — تُستخدم بشريط المستحقات
+  const extrasUnpaidList = readings.flatMap(r =>
+    getExtrasList(r)
+      .map(e => ({
+        note:      (e.note || '').trim(),
+        remaining: (parseFloat(e.amount) || 0) - (parseFloat(e.paid) || 0),
+        year:      r.year,
+        landLabel: landName(r.landId),
+      }))
+      .filter(e => e.remaining > 0.01)
+  );
+  const extrasUnpaid = extrasUnpaidList.reduce((s, e) => s + e.remaining, 0);
 
   // بيانات توزيع الأراضي للـ Pie chart
   const landPie = lands.map((l, i) => {
@@ -370,6 +523,18 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
                 📅 {new Date().toLocaleDateString(ar?'ar-SA':'he-IL', { month:'long', year:'numeric' })}
               </div>
             </div>
+
+            {/* ✅ شريط مستحقات مختصر (أكواب/مشاريع/إضافات) — يختفي تلقائياً إذا كل شيء مدفوع */}
+            <DuesSummary cups={cupsUnpaid} projects={projectsUnpaid} extras={extrasUnpaid} extrasList={extrasUnpaidList} ar={ar}/>
+
+            {/* ✅ المشاريع المرتبطة بالمزارع (إن وُجدت) — تظهر المبلغ المطلوب/المدفوع/المتبقي وتفاصيل المشروع */}
+            {myProjects.length > 0 && (
+              <div style={{ marginBottom:20, display:'flex', flexDirection:'column', gap:12 }}>
+                {myProjects.map((p, i) => (
+                  <ProjectCard key={p.id} p={p} ar={ar} delay={0.05 + i * 0.05}/>
+                ))}
+              </div>
+            )}
 
             {/* KPI Grid */}
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:10, marginBottom:20 }}>

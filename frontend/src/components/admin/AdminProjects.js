@@ -964,7 +964,7 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
             <div className="form-group">
               <label>{ar?'ملاحظة':'הערה'}</label>
               <input value={payForm.note} onChange={e=>setPayForm({...payForm,note:e.target.value})}
-                placeholder={ar?'اختياري...':'אופציونלי...'}/>
+                placeholder={ar?'اختياري...':'אופציונלי...'}/>
             </div>
             <div className="flex-gap gap-12">
               <button className="btn btn-primary" onClick={submitPayment} disabled={!payForm.amount||addingPay}>
@@ -1133,7 +1133,11 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
                       /* ══════════════════════════════════════════════════
                          ✅ جدول مبسّط لمشاريع customMembers: بدون أعمدة
                          "مطلوب/متبقي" فردية — فقط اسم + مجموع مدفوع + دفعات
+                         ✅ ملفوف بـ tbl-wrap لتفعيل التمرير الأفقي باللمس على الموبايل
+                         (بدونه، overflow:hidden على بطاقة المشروع كان يقصّ الجدول
+                         بدون أي طريقة للوصول للأعمدة/الأزرار المخفية بالشاشات الضيقة)
                          ══════════════════════════════════════════════════ */
+                      <div className="tbl-wrap">
                       <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                         <thead>
                           <tr style={{background:'#e8f5e9'}}>
@@ -1260,10 +1264,14 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
                           </tfoot>
                         )}
                       </table>
+                      </div>
                     ) : (
                       /* ══════════════════════════════════════════════════
-                         الجدول العادي (المشاريع المرتبطة بالمزارعين) — بدون أي تغيير
+                         الجدول العادي (المشاريع المرتبطة بالمزارعين)
+                         ✅ ملفوف بـ tbl-wrap لنفس سبب الجدول أعلاه — تمرير أفقي
+                         باللمس على الموبايل بدل تقصّ الأعمدة بلا طريقة للوصول لها
                          ══════════════════════════════════════════════════ */
+                      <div className="tbl-wrap">
                       <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                         <thead>
                           <tr style={{background:'#e8f5e9'}}>
@@ -1444,6 +1452,7 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
                           </tfoot>
                         )}
                       </table>
+                      </div>
                     )}
                   </div>
                 )}
