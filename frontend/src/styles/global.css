@@ -149,6 +149,25 @@ textarea { resize: vertical; min-height: 90px; }
 @media (max-width: 900px) { .grid-4 { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 640px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
 
+/* ── شبكة فلاتر صفحة القراءات: بحث المزارع + 4 قوائم ──
+   الشاشات الكبيرة: صف واحد يضم الكل (بحث المزارع أعرض قليلاً من بقية العناصر).
+   الشاشات الصغيرة (موبايل): بحث المزارع يمتد بعرض كامل بصف مستقل،
+   وبقية العناصر الأربعة تتوزّع بشبكة عمودين متساويين تحته. */
+.readings-filters-grid { display: grid; grid-template-columns: 1.4fr repeat(4, 1fr); gap: 8px; }
+@media (max-width: 900px) {
+  .readings-filters-grid { grid-template-columns: repeat(2, 1fr); }
+  .readings-farmer-search { grid-column: 1 / -1; }
+}
+
+/* ── صف أزرار إجراءات صفحة القراءات (طباعة / واتساب / إضافة جماعية / إضافة قراءة) ──
+   الشاشات الكبيرة: صف أفقي واحد في المنتصف. الموبايل: شبكة 2×2 متساوية العرض
+   بدل التفاف عشوائي غير متناسق بين الأزرار المختلفة الطول. */
+.readings-actions-row { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 900px) {
+  .readings-actions-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .readings-actions-row .btn { width: 100%; justify-content: center; }
+}
+
 /* ── Table ── */
 .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius); }
 table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 500px; }

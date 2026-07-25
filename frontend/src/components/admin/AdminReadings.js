@@ -1022,44 +1022,48 @@ export default function AdminReadings({ adminRole='admin' }) {
         )}
       </div>
 
-      {/* ── شريط الفلاتر ── */}
+      {/* ── شريط الفلاتر ──
+          ✅ شبكة موحّدة (readings-filters-grid معرّفة بـ global.css): على الشاشات الكبيرة
+          يظهر بحث المزارع بجانب بقية العناصر بصف واحد، وعلى الموبايل يمتد بحث المزارع
+          بعرض كامل بصف مستقل وتتوزّع الأربعة الباقية بشبكة عمودين تحته. */}
       <div className="mb-16">
-        <div className="flex-gap gap-8 mb-12" style={{ flexWrap:'wrap' }}>
-
-          <div style={{ position:'relative' }}>
-            <input type="text" value={farmerSearch}
-              onChange={e => { setFarmerSearch(e.target.value); setShowFarmerList(true); }}
-              onFocus={() => setShowFarmerList(true)}
-              onBlur={() => setTimeout(() => setShowFarmerList(false), 150)}
-              placeholder={filterF
-                ? (farmers.find(f=>f.id===filterF)?.nameHeb || farmers.find(f=>f.id===filterF)?.name || '')
-                : (ar ? '🔍 اختر مزارعاً...' : '🔍 חפש חקלאי...')}
-              style={{ width:300, paddingLeft:8 }} />
-            {filterF && (
-              <button onClick={() => { setFilterF(''); setFarmerSearch(''); }}
-                style={{ position:'absolute', left:6, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'var(--text-muted)', fontSize:14, lineHeight:1 }}>✕</button>
-            )}
-            {showFarmerList && (
-              <div style={{ position:'absolute', top:'100%', right:0, zIndex:100, background:'#fff', border:'1.5px solid var(--border)', borderRadius:8, boxShadow:'0 4px 16px rgba(0,0,0,0.12)', maxHeight:220, overflowY:'auto', minWidth:220 }}>
-                <div onMouseDown={() => { setFilterF(''); setFarmerSearch(''); setShowFarmerList(false); }}
-                  style={{ padding:'8px 12px', fontSize:13, color:'var(--text-muted)', cursor:'pointer', borderBottom:'1px solid var(--border)' }}
-                  onMouseEnter={e=>e.currentTarget.style.background='#f0fdf4'}
-                  onMouseLeave={e=>e.currentTarget.style.background=''}>
-                  {ar ? '— الكل —' : '— הכל —'}
-                </div>
-                {farmers.filter(f => { const q = farmerSearch.toLowerCase(); return !q || (f.nameHeb||f.name||'').toLowerCase().includes(q); })
-                  .map(f => (
-                    <div key={f.id} onMouseDown={() => { setFilterF(f.id); setFarmerSearch(''); setShowFarmerList(false); }}
-                      style={{ padding:'8px 12px', fontSize:13, cursor:'pointer', fontFamily:'Heebo,sans-serif', fontWeight:600, background: filterF===f.id ? '#f0fdf4' : '' }}
-                      onMouseEnter={e=>e.currentTarget.style.background='#f0fdf4'}
-                      onMouseLeave={e=>e.currentTarget.style.background=filterF===f.id?'#f0fdf4':''}>
-                      {f.nameHeb || f.name}
-                    </div>
-                  ))}
+        <div className="readings-filters-grid" style={{ marginBottom:12 }}>
+          {/* بحث المزارع */}
+          <div className="readings-farmer-search" style={{ position:'relative' }}>
+          <input type="text" value={farmerSearch}
+            onChange={e => { setFarmerSearch(e.target.value); setShowFarmerList(true); }}
+            onFocus={() => setShowFarmerList(true)}
+            onBlur={() => setTimeout(() => setShowFarmerList(false), 150)}
+            placeholder={filterF
+              ? (farmers.find(f=>f.id===filterF)?.nameHeb || farmers.find(f=>f.id===filterF)?.name || '')
+              : (ar ? '🔍 اختر مزارعاً...' : '🔍 חפש חקלאי...')}
+            style={{ width:'100%', paddingLeft:8 }} />
+          {filterF && (
+            <button onClick={() => { setFilterF(''); setFarmerSearch(''); }}
+              style={{ position:'absolute', left:6, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'var(--text-muted)', fontSize:14, lineHeight:1 }}>✕</button>
+          )}
+          {showFarmerList && (
+            <div style={{ position:'absolute', top:'100%', right:0, zIndex:100, background:'#fff', border:'1.5px solid var(--border)', borderRadius:8, boxShadow:'0 4px 16px rgba(0,0,0,0.12)', maxHeight:220, overflowY:'auto', minWidth:220, width:'100%' }}>
+              <div onMouseDown={() => { setFilterF(''); setFarmerSearch(''); setShowFarmerList(false); }}
+                style={{ padding:'8px 12px', fontSize:13, color:'var(--text-muted)', cursor:'pointer', borderBottom:'1px solid var(--border)' }}
+                onMouseEnter={e=>e.currentTarget.style.background='#f0fdf4'}
+                onMouseLeave={e=>e.currentTarget.style.background=''}>
+                {ar ? '— الكل —' : '— הכל —'}
               </div>
-            )}
+              {farmers.filter(f => { const q = farmerSearch.toLowerCase(); return !q || (f.nameHeb||f.name||'').toLowerCase().includes(q); })
+                .map(f => (
+                  <div key={f.id} onMouseDown={() => { setFilterF(f.id); setFarmerSearch(''); setShowFarmerList(false); }}
+                    style={{ padding:'8px 12px', fontSize:13, cursor:'pointer', fontFamily:'Heebo,sans-serif', fontWeight:600, background: filterF===f.id ? '#f0fdf4' : '' }}
+                    onMouseEnter={e=>e.currentTarget.style.background='#f0fdf4'}
+                    onMouseLeave={e=>e.currentTarget.style.background=filterF===f.id?'#f0fdf4':''}>
+                    {f.nameHeb || f.name}
+                  </div>
+                ))}
+            </div>
+          )}
           </div>
-          <select value={filterR} onChange={e => setFilterR(e.target.value)} style={{ width:200 }}>
+
+          <select value={filterR} onChange={e => setFilterR(e.target.value)} style={{ width:'100%' }}>
             <option value="">{t('allRegions', lang)}</option>
             {regions.map(r => (
               <option key={r.id} value={r.id}>{r.name}{r.nameHeb && r.nameHeb !== r.name ? ` — ${r.nameHeb}` : ''}</option>
@@ -1067,31 +1071,36 @@ export default function AdminReadings({ adminRole='admin' }) {
           </select>
           {/* ✅ فلتر محطة محددة (مثلاً K7) — يعرض فقط قراءات هذه المحطة بالذات */}
           <select value={filterStation} onChange={e => setFilterStation(e.target.value)}
-            style={{ width:190, fontFamily:'monospace', fontWeight:700 }}>
+            style={{ width:'100%', fontFamily:'monospace', fontWeight:700 }}>
             <option value="">{ar ? '— كل المحطات —' : '— כל התחנות —'}</option>
             {uniqueStations.map(l => (
               <option key={l.id} value={l.stationNumber}>📍 {l.stationNumber}</option>
             ))}
           </select>
-          <select value={filterY} onChange={e => setFilterY(e.target.value)} style={{ width:160 }}>
+          <select value={filterY} onChange={e => setFilterY(e.target.value)} style={{ width:'100%' }}>
             <option value="">{t('allYears', lang)}</option>
             {years.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
-          <select value={filterPaid} onChange={e => setFilterPaid(e.target.value)} style={{ width:180 }}>
+          <select value={filterPaid} onChange={e => setFilterPaid(e.target.value)} style={{ width:'100%' }}>
             <option value="">{ar ? 'الكل' : 'הכל'}</option>
             <option value="paid">{ar ? '✅ مدفوع فقط' : '✅ שולם בלבד'}</option>
             <option value="unpaid">{ar ? '❌ غير مدفوع' : '❌ לא שולם'}</option>
           </select>
         </div>
-        {/* ✅ صف أزرار الإجراءات — يظهر بمنتصف الشاشة أفقياً (طباعة / واتساب / إضافة جماعية / إضافة قراءة) */}
-        <div className="flex-gap gap-8" style={{ flexWrap:'wrap', justifyContent:'center' }}>
-          <button className="btn btn-outline btn-sm" onClick={() => window.print()}>🖨️</button>
-          <button className="btn btn-outline btn-sm" onClick={sendWhatsAppStatement}
+        {/* ✅ صف أزرار الإجراءات — صف أفقي بمنتصف الشاشة على الحاسوب، وشبكة 2×2 متناسقة على الموبايل
+            (readings-actions-row معرّفة بـ global.css) */}
+        <div className="readings-actions-row">
+          {/* ✅ موحّدة الحجم والشكل مع بقية أزرار الصف (نفس فئة btn وارتفاع/حشو موحّد) */}
+          <button className="btn btn-outline" onClick={() => window.print()}>
+            🖨️ {ar ? 'طباعة' : 'הדפסה'}
+          </button>
+          <button className="btn" onClick={sendWhatsAppStatement}
             title={ar ? 'إرسال كشف واتساب للمزارع (فلتر بمزارع واحد أولاً)' : 'שלח דו"ח בוואטסאפ (סנן חקלאי אחד קודם)'}
-            style={{ color:'#25D366', borderColor:'#25D366', display:'inline-flex', alignItems:'center', justifyContent:'center' }}>
-            <svg viewBox="0 0 32 32" width="18" height="18" fill="currentColor" aria-hidden="true">
+            style={{ background:'#25D366', color:'#fff', border:'1.5px solid #25D366', display:'inline-flex', alignItems:'center', gap:6 }}>
+            <svg viewBox="0 0 32 32" width="16" height="16" fill="currentColor" aria-hidden="true">
               <path d="M16.004 3C9.377 3 4 8.373 4 15c0 2.24.615 4.42 1.78 6.32L4 29l7.86-1.75A11.94 11.94 0 0 0 16.004 27C22.63 27 28 21.627 28 15S22.63 3 16.004 3Zm0 21.8c-1.93 0-3.82-.52-5.47-1.5l-.39-.23-4.66 1.04 1.02-4.54-.25-.4A9.77 9.77 0 0 1 5.2 15c0-5.96 4.85-10.8 10.8-10.8 5.96 0 10.8 4.84 10.8 10.8 0 5.96-4.84 10.8-10.8 10.8Zm5.93-8.1c-.32-.16-1.9-.94-2.2-1.04-.3-.11-.51-.16-.73.16-.21.32-.84 1.04-1.03 1.25-.19.21-.38.24-.7.08-.32-.16-1.35-.5-2.57-1.6-.95-.85-1.6-1.9-1.78-2.22-.19-.32-.02-.49.14-.65.14-.14.32-.38.48-.56.16-.19.21-.32.32-.53.11-.21.05-.4-.03-.56-.08-.16-.73-1.76-1-2.41-.26-.63-.53-.55-.73-.56-.19-.01-.4-.01-.62-.01-.21 0-.56.08-.86.4-.3.32-1.13 1.1-1.13 2.7 0 1.6 1.16 3.14 1.32 3.36.16.21 2.28 3.48 5.53 4.88.77.33 1.37.53 1.84.68.77.24 1.47.21 2.02.13.62-.09 1.9-.78 2.17-1.53.27-.75.27-1.4.19-1.53-.08-.13-.29-.21-.61-.37Z"/>
             </svg>
+            {ar ? 'واتساب' : 'וואטסאפ'}
           </button>
           {!isViewer && (
             <button className="btn" style={{background:'#4c1d95',color:'#fff',border:'1.5px solid #4c1d95'}}
