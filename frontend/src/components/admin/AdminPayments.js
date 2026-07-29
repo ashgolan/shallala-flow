@@ -2,13 +2,15 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { paymentsAPI } from '../../api';
 import { useLang } from '../../contexts/LangContext';
 
+// ✅ لكل تصنيف لون مميز (accent) + لون خلفية فاتح (bg) + أيقونة — تُستخدم لتلوين
+// بطاقات الملخص وشارة التصنيف بالجدول بدل اللون الموحّد الرمادي/الأزرق السابق
 export const CATEGORIES = [
-  { key:'contractor', ar:'مقاول', he:'קבלן' },
-  { key:'company',    ar:'شركة',  he:'חברה' },
-  { key:'committee',  ar:'لجنة',  he:'ועדה' },
-  { key:'maintenance',ar:'صيانة', he:'תחזוקה' },
-  { key:'water',      ar:'مياه',  he:'מים' },
-  { key:'general',    ar:'عام',   he:'כללי' },
+  { key:'contractor', ar:'مقاول', he:'קבלן',    color:'#ea580c', bg:'#fff7ed', icon:'🏗️' },
+  { key:'company',    ar:'شركة',  he:'חברה',    color:'#2563eb', bg:'#eff6ff', icon:'🏢' },
+  { key:'committee',  ar:'لجنة',  he:'ועדה',    color:'#7c3aed', bg:'#f5f3ff', icon:'🏛️' },
+  { key:'maintenance',ar:'صيانة', he:'תחזוקה',  color:'#db2777', bg:'#fdf2f8', icon:'🔧' },
+  { key:'water',      ar:'مياه',  he:'מים',     color:'#0891b2', bg:'#ecfeff', icon:'💧' },
+  { key:'general',    ar:'عام',   he:'כללי',    color:'#65a30d', bg:'#f7fee7', icon:'📋' },
 ];
 
 const EMPTY = { date:'', recipient:'', amount:'', checkNumber:'', invoiceNumber:'', description:'', category:'general', notes:'' };
@@ -46,6 +48,10 @@ export default function AdminPayments({ adminRole='admin' }) {
     const c = CATEGORIES.find(x => x.key === key);
     return c ? c[ar?'ar':'he'] : key;
   };
+  // ✅ مساعدات لون/أيقونة التصنيف — قيمة افتراضية رمادية للتصنيفات غير المعروفة
+  const catColor = key => CATEGORIES.find(c => c.key === key)?.color || '#6b7280';
+  const catBg    = key => CATEGORIES.find(c => c.key === key)?.bg    || '#f3f4f6';
+  const catIcon  = key => CATEGORIES.find(c => c.key === key)?.icon  || '📋';
 
   const openAdd = () => { setEdit(null); setForm({ ...EMPTY, date: new Date().toISOString().split('T')[0] }); setError(''); setShowForm(true); };
   const openEdit = p => { setEdit(p); setForm({ date:p.date, recipient:p.recipient, amount:p.amount, checkNumber:p.checkNumber||'', invoiceNumber:p.invoiceNumber||'', description:p.description, category:p.category||'general', notes:p.notes||'' }); setError(''); setShowForm(true); };
@@ -103,12 +109,25 @@ export default function AdminPayments({ adminRole='admin' }) {
     </th>
   );
 
+  // ✅ بطاقة ملخص بحركة "رفع" لطيفة عند المرور بالماوس (تُستخدم لكل البطاقات أدناه)
+  const liftIn  = e => { e.currentTarget.style.transform='translateY(-3px)'; e.currentTarget.style.boxShadow='var(--shadow-md)'; };
+  const liftOut = e => { e.currentTarget.style.transform='translateY(0)';    e.currentTarget.style.boxShadow=''; };
+
   return (
     <div>
+      {/* ✅ حركات وتأثيرات بسيطة (نبضة الأيقونة + توهّج متحرك لصف الإجمالي) — محصورة بهذه الصفحة فقط */}
+      <style>{`
+        @keyframes paymentsPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.18) rotate(-4deg); } }
+        .payments-icon-pulse { display:inline-block; animation: paymentsPulse 2.4s ease-in-out infinite; }
+        @keyframes paymentsShimmer { 0% { background-position:0% 50%; } 50% { background-position:100% 50%; } 100% { background-position:0% 50%; } }
+        .payments-total-glow { background-size:200% 200% !important; animation: paymentsShimmer 4s ease infinite; }
+        .payments-stat-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+      `}</style>
+
       {/* Header */}
       <div className="flex-between mb-20" style={{flexWrap:'wrap',gap:12}}>
         <div>
-          <h2 className="mb-4">💸 {ar?'سجل المدفوعات':'סגל תשלומים'}</h2>
+          <h2 className="mb-4"><span className="payments-icon-pulse">💸</span> {ar?'سجل المدفوعات':'סגל תשלומים'}</h2>
           <p style={{color:'var(--text-muted)',fontSize:13}}>
             {ar?'مدفوعات اللجنة للمقاولين والشركات':'תשלומי הוועדה לקבלנים וחברות'}
           </p>
@@ -160,7 +179,7 @@ export default function AdminPayments({ adminRole='admin' }) {
               <div className="form-group">
                 <label>{ar?'التصنيف':'קטגוריה'}</label>
                 <select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}>
-                  {CATEGORIES.map(c => <option key={c.key} value={c.key}>{ar?c.ar:c.he}</option>)}
+                  {CATEGORIES.map(c => <option key={c.key} value={c.key}>{c.icon} {ar?c.ar:c.he}</option>)}
                 </select>
               </div>
             </div>
@@ -189,23 +208,25 @@ export default function AdminPayments({ adminRole='admin' }) {
       {/* Summary cards */}
       {filtered.length > 0 && (
         <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:10, marginBottom:16}}>
-          {/* ✅ بطاقة "إجمالي المدفوعات" — نفس بنية وارتفاع باقي البطاقات بالضبط (سطر تسمية + سطر رقم)،
-              وتميّزها فقط عبر حد جانبي أخضر + أيقونة 💰 داخل نص التسمية نفسه (بدون سطر إضافي يكبّر ارتفاع البطاقة) */}
-          <div className="stat-card" style={{padding:'12px 16px', borderRight:'3px solid var(--primary)'}}>
+          {/* ✅ بطاقة "إجمالي المدفوعات" — خلفية متدرّجة فاتحة تميّزها + حد جانبي أخضر */}
+          <div className="stat-card payments-stat-card" onMouseEnter={liftIn} onMouseLeave={liftOut}
+            style={{padding:'12px 16px', borderRight:'3px solid var(--primary)', background:'linear-gradient(135deg,#f0fdf4,#dcfce7)'}}>
             <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:4}}>💰 {ar?'إجمالي المدفوعات':'סה"כ תשלומים'}</div>
             <div style={{fontSize:'1.4rem',fontWeight:900,color:'var(--primary)'}}>₪{grandTotal.toLocaleString()}</div>
           </div>
-          <div className="stat-card" style={{padding:'12px 16px'}}>
-            <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:4}}>{ar?'عدد الدفعات':'מספר תשלומים'}</div>
-            <div style={{fontSize:'1.4rem',fontWeight:900,color:'var(--primary)'}}>{filtered.length}</div>
+          <div className="stat-card payments-stat-card" onMouseEnter={liftIn} onMouseLeave={liftOut}
+            style={{padding:'12px 16px', borderRight:'3px solid #2563eb', background:'linear-gradient(135deg,#eff6ff,#dbeafe)'}}>
+            <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:4}}>🧾 {ar?'عدد الدفعات':'מספר תשלומים'}</div>
+            <div style={{fontSize:'1.4rem',fontWeight:900,color:'#2563eb'}}>{filtered.length}</div>
           </div>
-          {/* by category */}
+          {/* by category — كل بطاقة بلون وأيقونة تصنيفها الخاص بدل اللون الموحّد */}
           {CATEGORIES.filter(cat => filtered.some(p=>p.category===cat.key)).map(cat => {
             const total = filtered.filter(p=>p.category===cat.key).reduce((s,p)=>s+(parseFloat(p.amount)||0),0);
             return (
-              <div key={cat.key} className="stat-card" style={{padding:'12px 16px'}}>
-                <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:4}}>{ar?cat.ar:cat.he}</div>
-                <div style={{fontSize:'1.1rem',fontWeight:800,color:'var(--primary)'}}>₪{total.toLocaleString()}</div>
+              <div key={cat.key} className="stat-card payments-stat-card" onMouseEnter={liftIn} onMouseLeave={liftOut}
+                style={{padding:'12px 16px', borderRight:`3px solid ${cat.color}`, background:cat.bg}}>
+                <div style={{fontSize:11,color:cat.color,marginBottom:4,fontWeight:700}}>{cat.icon} {ar?cat.ar:cat.he}</div>
+                <div style={{fontSize:'1.1rem',fontWeight:800,color:cat.color}}>₪{total.toLocaleString()}</div>
               </div>
             );
           })}
@@ -229,14 +250,14 @@ export default function AdminPayments({ adminRole='admin' }) {
                   <STh col="description" style={{minWidth:160}}>{ar?'طبيعة العمل':'תיאור'}</STh>
                   <STh col="category"    style={{minWidth:90}}>{ar?'التصنيف':'קטגוריה'}</STh>
                   <th style={{minWidth:100, fontFamily:'monospace'}}>{ar?'رقم الشيك':'צ\'ק'}</th>
-                  <th style={{minWidth:100, fontFamily:'monospace', fontFamily:'Heebo,sans-serif'}}>{ar?'رقم החשبونية':'חשבונית'}</th>
+                  <th style={{minWidth:100, fontFamily:'monospace', fontFamily:'Heebo,sans-serif'}}>{ar?'رقم החשבונית':'חשבונית'}</th>
                   <STh col="amount"      style={{minWidth:100, textAlign:'center', background:'#fef9c3', color:'#854d0e'}}>💰 {ar?'المبلغ':'סכום'}</STh>
                   <th style={{minWidth:70}}></th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map(p => (
-                  <tr key={p.id}>
+                  <tr key={p.id} style={{borderRight:`3px solid ${catColor(p.category)}`}}>
                     <td style={{fontWeight:600, whiteSpace:'nowrap'}}>{p.date}</td>
                     <td><strong>{p.recipient}</strong></td>
                     <td style={{fontSize:13}}>
@@ -244,7 +265,15 @@ export default function AdminPayments({ adminRole='admin' }) {
                       {p.notes && <div style={{fontSize:11,color:'var(--text-muted)'}}>{p.notes}</div>}
                     </td>
                     <td>
-                      <span className="badge badge-blue" style={{fontSize:11}}>{catLabel(p.category)}</span>
+                      {/* ✅ شارة ملوّنة بحسب التصنيف بدل اللون الأزرق الموحّد السابق */}
+                      <span style={{
+                        fontSize:11, fontWeight:700, padding:'3px 9px', borderRadius:20,
+                        background:catBg(p.category), color:catColor(p.category),
+                        border:`1px solid ${catColor(p.category)}`,
+                        display:'inline-flex', alignItems:'center', gap:4,
+                      }}>
+                        {catIcon(p.category)} {catLabel(p.category)}
+                      </span>
                     </td>
                     <td style={{fontFamily:'monospace',fontSize:13}}>{p.checkNumber||'—'}</td>
                     <td style={{fontFamily:'monospace',fontSize:13}}>{p.invoiceNumber||'—'}</td>
@@ -272,7 +301,8 @@ export default function AdminPayments({ adminRole='admin' }) {
               </tbody>
               {filtered.length > 1 && (
                 <tfoot>
-                  <tr style={{background:'linear-gradient(90deg,#14532d,#166534)'}}>
+                  {/* ✅ صف الإجمالي بتوهّج متحرك خفيف (شيمر) بدل التدرّج الثابت الجامد */}
+                  <tr className="payments-total-glow" style={{background:'linear-gradient(120deg,#14532d,#166534,#15803d,#166534,#14532d)'}}>
                     <td colSpan={6} style={{fontWeight:900,color:'#fff',fontSize:14,padding:'11px 14px'}}>
                       ⚡ {ar?'الإجمالي الكلي':'סה"כ כללי'}
                     </td>
