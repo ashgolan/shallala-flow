@@ -74,13 +74,12 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
   // ✅ اسم مكرر عند إضافة مشترك جديد بمشروع customMembers — { member } أو null
   const [dupConfirm, setDupConfirm] = useState(null);
 
-  // تعديل المبلغ المطلوب لمشترك موجود (بالضغط على الرقم بالجدول) — للمشاريع العادية فقط
-  const [editAmountId,    setEditAmountId]    = useState(null); // memberId الجاري تعديله
-  const [editAmountVal,   setEditAmountVal]   = useState('');
-
-  // ✅ تعديل محطة مشترك موجود (بالضغط على شارة المحطة بالجدول) — للمشاريع العادية فقط
-  const [editStationId,   setEditStationId]   = useState(null); // memberId الجاري تعديله
-  const [editStationVal,  setEditStationVal]  = useState('');
+  // ✅ تعديل مشترك موجود (المبلغ المطلوب + المحطة معاً) — بمودال واحد شبيه بمودال "إضافة مشترك"
+  // بدل تعديل كل حقل لحاله بمكانه بالجدول — للمشاريع العادية فقط
+  const [editMemberModal,  setEditMemberModal]  = useState(null); // { proj, member }
+  const [editMemberForm,   setEditMemberForm]   = useState({ amount:'', stationNumber:'' });
+  const [savingEditMember, setSavingEditMember] = useState(false);
+  const [editMemberErr,    setEditMemberErr]    = useState('');
 
   // ✅ تعديل اسم مشترك موجود (بالضغط على اسمه بالجدول) — لمشاريع customMembers فقط
   const [editNameId,  setEditNameId]  = useState(null); // memberId الجاري تعديله
@@ -348,50 +347,44 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
     setOpenProj((updated.projects||[]).find(p=>p.id===openProj.id)||null);
   };
 
-  // تعديل مبلغ مشترك — للمشاريع العادية فقط (customMembers لا تملك مبلغ فردي)
-  const startEditAmount = (m, proj) => {
+  // ✅ فتح مودال تعديل مشترك موجود (المبلغ المطلوب + المحطة معاً) — للمشاريع العادية فقط
+  // نفس شكل مودال "إضافة مشترك" لكن بوضع تعديل، بدل تعديل كل حقل لحاله بالجدول
+  const openEditMemberModal = (m, proj) => {
     if (!canManageMembers(proj) || proj.customMembers) return;
-    setEditAmountId(m.id);
-    setEditAmountVal(m.amount === null || m.amount === undefined ? '' : String(m.amount));
+    setEditMemberModal({ proj, member: m });
+    setEditMemberForm({
+      amount: m.amount === null || m.amount === undefined ? '' : String(m.amount),
+      stationNumber: m.stationNumber || '',
+    });
+    setEditMemberErr('');
   };
 
-  const cancelEditAmount = () => {
-    setEditAmountId(null);
-    setEditAmountVal('');
+  const closeEditMemberModal = () => {
+    setEditMemberModal(null);
+    setEditMemberForm({ amount:'', stationNumber:'' });
+    setEditMemberErr('');
   };
 
-  const saveEditAmount = async (memberId) => {
-    const trimmed = editAmountVal.trim();
-    const payload = trimmed === '' ? null : parseFloat(trimmed);
+  const saveEditMember = async () => {
+    if (!editMemberModal) return;
+    const { proj, member } = editMemberModal;
+    setSavingEditMember(true);
+    setEditMemberErr('');
     try {
-      await adminAPI.updateProjectMember(openProj.id, memberId, { amount: payload });
+      const trimmedAmount = editMemberForm.amount.trim();
+      await adminAPI.updateProjectMember(proj.id, member.id, {
+        amount: trimmedAmount === '' ? null : parseFloat(trimmedAmount),
+        stationNumber: editMemberForm.stationNumber || '',
+      });
       const updated = await adminAPI.getProjects();
       setProjects(updated.projects||[]);
-      setOpenProj((updated.projects||[]).find(p=>p.id===openProj.id)||null);
-    } catch(e) { alert(e.message); }
-    finally { cancelEditAmount(); }
-  };
-
-  // ✅ تعديل محطة مشترك موجود — للمشاريع العادية فقط (customMembers لا تملك محطة فردية)
-  const startEditStation = (m, proj) => {
-    if (!canManageMembers(proj) || proj.customMembers) return;
-    setEditStationId(m.id);
-    setEditStationVal(m.stationNumber || '');
-  };
-
-  const cancelEditStation = () => {
-    setEditStationId(null);
-    setEditStationVal('');
-  };
-
-  const saveEditStation = async (memberId) => {
-    try {
-      await adminAPI.updateProjectMember(openProj.id, memberId, { stationNumber: editStationVal.trim() });
-      const updated = await adminAPI.getProjects();
-      setProjects(updated.projects||[]);
-      setOpenProj((updated.projects||[]).find(p=>p.id===openProj.id)||null);
-    } catch(e) { alert(e.message); }
-    finally { cancelEditStation(); }
+      setOpenProj((updated.projects||[]).find(p=>p.id===proj.id)||null);
+      closeEditMemberModal();
+    } catch(e) {
+      setEditMemberErr(e.message);
+    } finally {
+      setSavingEditMember(false);
+    }
   };
 
   // ✅ تعديل اسم مشترك موجود — لمشاريع customMembers فقط
@@ -525,7 +518,7 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
     if (!mapModal) return null;
     const { lat, lng, name } = mapModal;
     const esriUrl  = `https://maps.google.com/maps?q=${lat},${lng}&z=18&t=k&output=embed&markers=${lat},${lng}`;
-    const earthUrl = `https://earth.google.com/web/@${lat},${lng},400a,800d,30y,0h,0t,0r/data=CgRCAggBMikKJwolCiExS0M0V193eFlWeTQ2UFR6RW81VkFtVVlvMDNHemUtUHQgAToDCgEwQgIIAEoICIXm6fQFEAE?hl=ar`;
+    const earthUrl = `https://earth.google.com/web/@${lat},${lng},400a,800d,30y,0h,0t,0r/data=CgRCAggBMikKJwolCiExS0M0V194WVZ5NDZQVHpFbzVWQW1VWW8wM0d6ZS1QdCA6AzoBMEICCABKCAiF5un0BRAB?hl=ar`;
     return (
       <div onClick={()=>setMapModal(null)} style={{position:'fixed',inset:0,zIndex:99999,background:'rgba(0,0,0,0.65)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
         <div onClick={e=>e.stopPropagation()} style={{background:'#fff',borderRadius:16,overflow:'hidden',width:'100%',maxWidth:600,boxShadow:'0 20px 60px rgba(0,0,0,0.4)'}}>
@@ -927,6 +920,59 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
         </div>
       )}
 
+      {/* ── Modal: تعديل مشترك ── نفس شكل مودال "إضافة مشترك" لكن بوضع تعديل (المبلغ المطلوب + المحطة معاً) — للمشاريع العادية فقط */}
+      {editMemberModal && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div style={{background:'#fff',borderRadius:18,padding:28,maxWidth:420,width:'100%',maxHeight:'90vh',overflowY:'auto',boxShadow:'0 12px 50px rgba(0,0,0,0.25)'}}>
+            <h3 style={{margin:'0 0 16px',color:'var(--primary)'}}>✏️ {ar?'تعديل مشترك':'עריכת משתתף'}</h3>
+
+            <div style={{background:'#f0fdf4',border:'1.5px solid #bbf7d0',borderRadius:10,padding:'8px 12px',marginBottom:14,fontSize:13,display:'flex',alignItems:'center',gap:8}}>
+              <span style={{fontSize:16}}>👤</span>
+              <span style={{fontFamily:'Heebo,sans-serif',fontWeight:700}}>
+                {memberDisplayName(editMemberModal.member)}
+              </span>
+            </div>
+
+            {/* محطة هذا المشترك (اختياري) — نفس حقل مودال الإضافة */}
+            <div className="form-group">
+              <label>{ar?'محطة هذا المشترك (اختياري)':'עמדה של משתתף זה (אופציונלי)'}</label>
+              <select value={editMemberForm.stationNumber}
+                onChange={e=>setEditMemberForm({...editMemberForm, stationNumber:e.target.value})}
+                style={{fontFamily:'monospace',fontWeight:700}}>
+                <option value="">
+                  {editMemberModal.proj.stationNumber
+                    ? (ar?`— نفس محطة المشروع (${editMemberModal.proj.stationNumber}) —`:`— אותה עמדה של הפרויקט (${editMemberModal.proj.stationNumber}) —`)
+                    : (ar?'— بدون تحديد (كل أراضي المزارع) —':'— ללא ציון (כל הקרקעות של החקלאי) —')}
+                </option>
+                {uniqueStations.map(l => (
+                  <option key={l.id} value={l.stationNumber}>{l.stationNumber}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* المبلغ المطلوب — نفس حقل مودال الإضافة */}
+            <div className="form-group">
+              <label>{ar?'المبلغ المطلوب (₪)':'סכום נדרש (₪)'}</label>
+              <input type="number" value={editMemberForm.amount}
+                onChange={e=>setEditMemberForm({...editMemberForm, amount:e.target.value})}
+                placeholder={ar?'اتركه فارغاً إن لم تعرفه بعد':'השאר ריק אם עדיין לא ידוע'} min="0"
+                style={{fontSize:18,fontWeight:700,textAlign:'center'}} autoFocus/>
+            </div>
+
+            {editMemberErr && <div className="alert alert-error mb-8" style={{marginTop:12}}>{editMemberErr}</div>}
+
+            <div className="flex-gap gap-12" style={{marginTop:16}}>
+              <button className="btn btn-primary" onClick={saveEditMember} disabled={savingEditMember}>
+                {savingEditMember?'⏳':`💾 ${ar?'حفظ':'שמור'}`}
+              </button>
+              <button className="btn btn-outline" onClick={closeEditMemberModal}>
+                {ar?'إلغاء':'ביטול'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Modal: إضافة/تعديل دفعة ── (نفس المودال يُستخدم للحالتين حسب payModal.paymentId) */}
       {payModal && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
@@ -1295,63 +1341,53 @@ export default function AdminProjects({ adminRole='admin', allowedProjectIds=[] 
                                   <td style={{padding:'10px 12px',fontFamily:'Heebo,sans-serif',fontWeight:700,fontSize:14}}>
                                     {memberDisplayName(m)}
                                   </td>
-                                  {/* ✅ عمود المحطة الخاصة بهذا المشترك — قابل للتعديل بالضغط عليه */}
+                                  {/* ✅ عمود المحطة الخاصة بهذا المشترك — يفتح مودال التعديل الموحّد */}
                                   <td style={{padding:'10px 12px',textAlign:'center'}}>
-                                    {editStationId === m.id ? (
-                                      <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
-                                        <select autoFocus value={editStationVal} onChange={e=>setEditStationVal(e.target.value)}
-                                          style={{fontSize:12,padding:'3px 4px',fontWeight:700}}>
-                                          <option value="">{proj.stationNumber ? `— ${proj.stationNumber} —` : (ar?'بدون تحديد':'ללא ציון')}</option>
-                                          {uniqueStations.map(l => (
-                                            <option key={l.id} value={l.stationNumber}>{l.stationNumber}</option>
-                                          ))}
-                                        </select>
-                                        <button onClick={()=>saveEditStation(m.id)} title={ar?'حفظ':'שמור'}
-                                          style={{background:'none',border:'none',color:'#16a34a',cursor:'pointer',fontSize:16,padding:0}}>✓</button>
-                                        <button onClick={cancelEditStation} title={ar?'إلغاء':'ביטול'}
-                                          style={{background:'none',border:'none',color:'#dc2626',cursor:'pointer',fontSize:14,padding:0}}>✕</button>
-                                      </div>
-                                    ) : m.stationNumber ? (
-                                      <span onClick={()=>startEditStation(m, proj)}
+                                    {m.stationNumber ? (
+                                      <span onClick={()=>openEditMemberModal(m, proj)}
                                         style={{cursor:canManage?'pointer':'default',background:'#dcfce7',color:'var(--primary)',padding:'3px 10px',borderRadius:8,fontSize:12,fontWeight:800,fontFamily:'monospace',display:'inline-block'}}
                                         title={canManage?(ar?'اضغط للتعديل':'לחץ לעריכה'):''}>
                                         📍 {m.stationNumber}
                                       </span>
                                     ) : (
-                                      <span onClick={()=>startEditStation(m, proj)}
+                                      <span onClick={()=>openEditMemberModal(m, proj)}
                                         style={{cursor:canManage?'pointer':'default',color:'var(--text-muted)',fontSize:11}}
                                         title={canManage?(ar?'اضغط لتحديد محطة خاصة':'לחץ לבחירת עמדה'):''}>
                                         {proj.stationNumber ? `(${proj.stationNumber})` : (ar?'—':'—')}
                                       </span>
                                     )}
                                   </td>
+                                  {/* ══════════════════════════════════════════════════
+                                     ✅ إصلاح: عمود "المطلوب" — أضفنا زر ✏️ صريح وواضح
+                                     بدل الاعتماد فقط على الضغط على النص (كان غير واضح
+                                     للمستخدم أنه قابل للتعديل، فبدا وكأن الميزة غير موجودة).
+                                     الزر يظهر فقط لمن يملك صلاحية الإدارة (canManage).
+                                     ══════════════════════════════════════════════════ */}
                                   <td style={{padding:'10px 12px',textAlign:'center',fontWeight:700}}>
-                                    {editAmountId === m.id ? (
-                                      <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
-                                        <input
-                                          type="number" autoFocus value={editAmountVal}
-                                          onChange={e=>setEditAmountVal(e.target.value)}
-                                          onKeyDown={e=>{ if(e.key==='Enter') saveEditAmount(m.id); if(e.key==='Escape') cancelEditAmount(); }}
-                                          placeholder={ar?'غير محدد':'לא ידוע'}
-                                          style={{width:72,textAlign:'center',fontWeight:700,padding:'3px 4px',fontSize:13}}
-                                        />
-                                        <button onClick={()=>saveEditAmount(m.id)} title={ar?'حفظ':'שמור'}
-                                          style={{background:'none',border:'none',color:'#16a34a',cursor:'pointer',fontSize:16,padding:0}}>✓</button>
-                                        <button onClick={cancelEditAmount} title={ar?'إلغاء':'ביטול'}
-                                          style={{background:'none',border:'none',color:'#dc2626',cursor:'pointer',fontSize:14,padding:0}}>✕</button>
+                                    {hasAmount(m) ? (
+                                      <div style={{display:'inline-flex',alignItems:'center',gap:6,justifyContent:'center'}}>
+                                        <span>₪{(m.amount||0).toLocaleString()}</span>
+                                        {canManage && (
+                                          <button onClick={()=>openEditMemberModal(m, proj)}
+                                            title={ar?'تعديل المبلغ المطلوب':'ערוך סכום נדרש'}
+                                            style={{background:'none',border:'none',color:'var(--primary)',cursor:'pointer',fontSize:13,padding:0,lineHeight:1}}>
+                                            ✏️
+                                          </button>
+                                        )}
                                       </div>
-                                    ) : hasAmount(m) ? (
-                                      <span onClick={()=>startEditAmount(m, proj)}
-                                        style={{cursor:canManage?'pointer':'default'}}
-                                        title={canManage?(ar?'اضغط للتعديل':'לחץ לעריכה'):''}>
-                                        ₪{(m.amount||0).toLocaleString()}
-                                      </span>
                                     ) : (
-                                      <span onClick={()=>startEditAmount(m, proj)}
-                                        style={{cursor:canManage?'pointer':'default',background:'#fef3c7',color:'#92400e',padding:'3px 10px',borderRadius:8,fontSize:12,fontWeight:700,display:'inline-block'}}
-                                        title={canManage?(ar?'اضغط لتحديد المبلغ':'לחץ לקביעת סכום'):''}>
-                                        ⏳ {ar?'غير محدد':'לא ידוע'}
-                                      </span>
+                                      <div style={{display:'inline-flex',alignItems:'center',gap:6,justifyContent:'center'}}>
+                                        <span style={{background:'#fef3c7',color:'#92400e',padding:'3px 10px',borderRadius:8,fontSize:12,fontWeight:700,display:'inline-block'}}>
+                                          ⏳ {ar?'غير محدد':'לא ידוע'}
+                                        </span>
+                                        {canManage && (
+                                          <button onClick={()=>openEditMemberModal(m, proj)}
+                                            title={ar?'تحديد المبلغ المطلوب':'קבע סכום נדרש'}
+                                            style={{background:'none',border:'none',color:'var(--primary)',cursor:'pointer',fontSize:13,padding:0,lineHeight:1}}>
+                                            ✏️
+                                          </button>
+                                        )}
+                                      </div>
                                     )}
                                   </td>
                                   <td style={{padding:'10px 12px',textAlign:'center',fontWeight:700,color:'#16a34a'}}>
