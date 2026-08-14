@@ -35,6 +35,9 @@ const requireAdmin = (req, res, next) => {
       if (decoded.role !== 'admin')
         return res.status(403).json({ error: 'غير مصرح - ليس مدير' });
       req.adminRole = 'admin';
+      // ✅ هوية حساب الأدمن (إن وُجدت بالتوكن — توكنات قديمة قبل هذا التحديث ما فيها userId)
+      req.adminId    = decoded.userId || null;
+      req.adminLabel = decoded.label  || '';
       return next();
     } catch (adminErr) {
       // ✅ إذا انتهت صلاحية token الأدمن → أرسل expired فوراً
@@ -75,7 +78,9 @@ const requireAdminOnly = (req, res, next) => {
     if (decoded.role !== 'admin')
       return res.status(403).json({ error: 'غير مصرح - ليس مدير رئيسي' });
 
-    req.adminRole = 'admin';
+    req.adminRole  = 'admin';
+    req.adminId    = decoded.userId || null;
+    req.adminLabel = decoded.label  || '';
     next();
   } catch (err) {
     if (err.name === 'TokenExpiredError')
@@ -95,7 +100,12 @@ const requireViewer = (req, res, next) => {
 
     try {
       const d = verifyAdminToken(token);
-      if (d.role === 'admin') { req.adminRole = 'admin'; return next(); }
+      if (d.role === 'admin') {
+        req.adminRole  = 'admin';
+        req.adminId    = d.userId || null;
+        req.adminLabel = d.label  || '';
+        return next();
+      }
     } catch (e) {
       if (e.name === 'TokenExpiredError')
         return res.status(401).json({ error: 'انتهت صلاحية الجلسة', expired: true });

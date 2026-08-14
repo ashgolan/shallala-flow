@@ -7,15 +7,20 @@ import AdminRegions  from '../components/admin/AdminRegions';
 import AdminProjects from '../components/admin/AdminProjects';
 import { AdminPrices, AdminGallery, AdminSettings, AdminReports } from '../components/admin/AdminComponents';
 import AdminPayments      from '../components/admin/AdminPayments';
+import AdminTasks         from '../components/admin/AdminTasks';
 import AdminDashboardPage from '../components/admin/AdminDashboardPage';
 import LangToggle         from '../components/shared/LangToggle';
 import AnnouncementBanner from '../components/shared/AnnouncementBanner';
+import TasksBell          from '../components/shared/TasksBell';
 
 export default function AdminDashboard({ onLogout, adminRole='admin', allowedProjectIds=[] }) {
   const { lang }        = useLang();
   const ar              = lang === 'ar';
   const [tab, setTab]   = useState('farmers');
   const [sideOpen, setSideOpen] = useState(false);
+  // ✅ يتغيّر بعد أي إنشاء/تعليم "تم التنفيذ" بصفحة المهام حتى يتحدّث رقم الجرس فوراً
+  const [taskRefreshKey, setTaskRefreshKey] = useState(0);
+  const bumpTaskRefresh = () => setTaskRefreshKey(k => k + 1);
 
   const handleLogout = () => { onLogout && onLogout(); onLogout(); };
 
@@ -32,13 +37,15 @@ export default function AdminDashboard({ onLogout, adminRole='admin', allowedPro
     { key:'payments',  icon:'💸', label: ar?'المدفوعات':'תשלומים' },
     { key:'projects',  icon:'🏗️', label: ar?'المشاريع':'פרויקטים' },
     { key:'dashboard', icon:'📊', label: ar?'لوحة التحكم':'לוח בקרה' },
+    { key:'tasks',     icon:'📨', label: ar?'المهام والاستفسارات':'משימות ופניות' },
     ...(adminRole === 'admin' ? [{ key:'settings', icon:'⚙️', label: t('settingsTab', lang) }] : []),
   ];
 
   // ✅ التبويبات المتاحة للمراقب العادي كما هي؛ تبويب المشاريع دايماً ظاهر (بما إن المراقب
   // العادي أصلاً يشوفه بوضع قراءة فقط، والمراقب المُصرّح له بمشروع يشوفه بصلاحيات كاملة عليه)
+  // ✅ تبويب "المهام والاستفسارات" متاح دايماً للمراقب — هو أصلاً وسيلة التواصل معه
   const TABS = adminRole === 'viewer'
-    ? allTabs.filter(t => ['reports','payments','projects','dashboard'].includes(t.key))
+    ? allTabs.filter(t => ['reports','payments','projects','dashboard','tasks'].includes(t.key))
     : allTabs;
 
   const current = TABS.find(tb => tb.key === tab);
@@ -120,10 +127,13 @@ export default function AdminDashboard({ onLogout, adminRole='admin', allowedPro
               {current?.icon} {current?.label}
             </h2>
           </div>
-          <LangToggle style={{
-            background:'var(--surface-2)', border:'1.5px solid var(--border)',
-            color:'var(--primary)',
-          }} />
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <TasksBell onClick={() => setTab('tasks')} refreshKey={taskRefreshKey} />
+            <LangToggle style={{
+              background:'var(--surface-2)', border:'1.5px solid var(--border)',
+              color:'var(--primary)',
+            }} />
+          </div>
         </div>
 
         <AnnouncementBanner lang={lang} />
@@ -138,6 +148,7 @@ export default function AdminDashboard({ onLogout, adminRole='admin', allowedPro
           {tab === 'payments'  && <AdminPayments  adminRole={adminRole} />}
           {tab === 'projects'  && <AdminProjects  adminRole={adminRole} allowedProjectIds={allowedProjectIds} />}
           {tab === 'dashboard' && <AdminDashboardPage adminRole={adminRole} />}
+          {tab === 'tasks'     && <AdminTasks adminRole={adminRole} onChanged={bumpTaskRefresh} />}
           {tab === 'settings'  && adminRole === 'admin' && <AdminSettings />}
         </div>
 

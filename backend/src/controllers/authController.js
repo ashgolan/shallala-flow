@@ -157,9 +157,14 @@ const adminLogin = async (req, res) => {
     recordSuccess(req);
 
     // ✅ للمراقب: نحقن الصلاحيات الخاصة (allowedProjectIds) داخل التوكن نفسه
+    // ✅ للأدمن أيضاً: نحقن هويته (userId/label) حتى نقدر نميّزه عن باقي حسابات الأدمن
+    //    (تُستخدم مثلاً بميزة "المهام والاستفسارات" لمعرفة مين أرسل/أنجز الطلب بالضبط)
     const allowedProjectIds = privilegedUser.allowedProjectIds || [];
     const token = privilegedUser.role === 'admin'
-      ? generateAdminToken()
+      ? generateAdminToken({
+          userId: privilegedUser._id.toString(),
+          label:  privilegedUser.label || '',
+        })
       : generateViewerToken({
           userId: privilegedUser._id.toString(),
           allowedProjectIds,

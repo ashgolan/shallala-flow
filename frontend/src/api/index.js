@@ -140,6 +140,16 @@ export const privilegedAPI = {
   remove: id => req(`/admin/privileged/${id}`, { method: 'DELETE' }),
 };
 
+// ── Tasks API (المهام والاستفسارات) ────────────────────────────
+export const tasksAPI = {
+  getAll:          params => req('/tasks' + (params ? '?' + new URLSearchParams(params) : '')),
+  getPendingCount: () => req('/tasks/pending-count'),
+  create:          d  => req('/tasks', { method: 'POST', body: JSON.stringify(d) }),
+  markDone:        id => req(`/tasks/${id}/done`,   { method: 'PUT' }),
+  reopen:          id => req(`/tasks/${id}/reopen`, { method: 'PUT' }),
+  uploadImage:     file => upload('/tasks/upload-image', file),
+};
+
 // ── Payments API ───────────────────────────────────────────────
 export const paymentsAPI = {
   getAll: year => req(`/payments${year ? '?year=' + year : ''}`),

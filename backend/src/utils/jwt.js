@@ -7,8 +7,10 @@ const VIEWER_SECRET = process.env.VIEWER_JWT_SECRET || process.env.ADMIN_JWT_SEC
 const generateFarmerToken = (payload) =>
   jwt.sign(payload, FARMER_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '8h' });
 
-const generateAdminToken = () =>
-  jwt.sign({ role: 'admin' }, ADMIN_SECRET, { expiresIn: '8h' });
+// ✅ يقبل الآن حمولة إضافية اختيارية: { userId, label } — لتمييز حساب أدمن عن آخر
+//    (لأجل ميزات مثل "المهام والاستفسارات" التي تحتاج تعرف مين بالضبط أرسل/أنجز الطلب)
+const generateAdminToken = (payload = {}) =>
+  jwt.sign({ role: 'admin', ...payload }, ADMIN_SECRET, { expiresIn: '8h' });
 
 // ✅ يقبل الآن حمولة إضافية اختيارية: { userId, allowedProjectIds }
 const generateViewerToken = (payload = {}) =>
