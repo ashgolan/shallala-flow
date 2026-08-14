@@ -781,28 +781,77 @@ export default function AdminReadings({ adminRole='admin' }) {
     // ✅ فلترة حسب رقم محطة محدد — مطابقة نصية مباشرة مع reading.stationNumber
     // (نفس مبدأ المطابقة المعتمد بكل مكان آخر بالمشروع؛ يتجاوز مشكلة الأراضي المكررة)
     if (filterStation && String(r.stationNumber||'').trim() !== filterStation) return false;
-    if (filterPaid === 'paid'   && !r.paid) return false;
-    if (filterPaid === 'unpaid' &&  r.paid) return false;
+    // ✅ فلتر الدفع — فترة فترة (paidPeriods)، بنفس تعريف "الفترة النشطة" المستخدم
+    // بالضبط بدالة getPayStatus في ReadingsTable.js (وجود قراءة بداية vals[i] فقط —
+    // بدون شرط أن يكون الاستهلاك محسوباً >0). هيك الفلتر بيطابق تماماً شارات ✅/⚠️/❌
+    // فوق الجدول، وتظهر القراءات "دفع جزئي" ضمن "مدفوع" (فيها فترات مدفوعة) وضمن
+    // "غير مدفوع" (فيها فترات لسا) بدل ما تختفي بالكامل من الفلترتين.
+    if (filterPaid === 'paid' || filterPaid === 'unpaid') {
+      const vals = r.readings || [];
+      const periodsCount = Math.max(0, vals.length - 1);
+      let hasPaid = false, hasUnpaid = false;
+      for (let i = 0; i < periodsCount; i++) {
+        if (vals[i] == null || vals[i] === '') continue; // فترة لم تبدأ بعد — مش "نشطة"
+        if (r.paidPeriods && r.paidPeriods[i]) hasPaid = true;
+        else hasUnpaid = true;
+      }
+      if (filterPaid === 'paid'   && !hasPaid)   return false;
+      if (filterPaid === 'unpaid' && !hasUnpaid) return false;
+    }
     return true;
   });
 
   // ✅ إجمالي المبالغ (قبل / بعد الضريبة) للقراءات المعروضة حالياً حسب الفلاتر
   // (تبديل العداد يُدمج داخل نفس رقم فترته تلقائياً عبر cupsPositive — لا حاجة لأي معالجة إضافية هنا)
+  // ✅ عند فلتر "مدفوع فقط" / "غير مدفوع" — نحسب فقط الفترات المطابقة لحالة الدفع المطلوبة
+  // (مو كل فترات القراءة)، حتى تتناغم هاي الأرقام تماماً مع شريط "نسبة الدفع" بالأسفل.
   const grandBeforeVat = filtered.reduce((sum, r) => {
     const vals = r.readings || [];
     const changes = r.meterChanges || [];
     return sum + vals.slice(1).reduce((s, _, i) => {
-      return s + cupsPositive(vals, i, changes) * getBasePrice(prices, r.year, r.landId, i+1);
+      const cups = cupsPositive(vals, i, changes);
+      if (cups <= 0) return s;
+      const isPaid = !!(r.paidPeriods && r.paidPeriods[i]);
+      if (filterPaid === 'paid'   && !isPaid) return s;
+      if (filterPaid === 'unpaid' &&  isPaid) return s;
+      return s + cups * getBasePrice(prices, r.year, r.landId, i+1);
     }, 0);
   }, 0);
   const grandAfterVat = filtered.reduce((sum, r) => {
     const vals = r.readings || [];
     const changes = r.meterChanges || [];
     return sum + vals.slice(1).reduce((s, _, i) => {
-      return s + cupsPositive(vals, i, changes) * getPrice(prices, r.year, r.landId, i+1);
+      const cups = cupsPositive(vals, i, changes);
+      if (cups <= 0) return s;
+      const isPaid = !!(r.paidPeriods && r.paidPeriods[i]);
+      if (filterPaid === 'paid'   && !isPaid) return s;
+      if (filterPaid === 'unpaid' &&  isPaid) return s;
+      return s + cups * getPrice(prices, r.year, r.landId, i+1);
     }, 0);
   }, 0);
   const vatPercentLabel = (getVatRate(prices) * 100).toFixed(1).replace(/\.0$/, '');
+
+  // ✅ نسبة الدفع (₪) — أكواب فقط (بدون إضافات)، بنفس منطق ✅/⚠️/❌ بجدول القراءات:
+  // فترة فترة حسب paidPeriods (وليس r.paid العام للقراءة كلها، لأنه بيضخّم النسبة عند الدفع الجزئي)
+  // ✅ total هنا دايماً بيشمل كل فترات القراءات المفلترة (مدفوعة وغير مدفوعة) — عكس
+  // grandBeforeVat/grandAfterVat يلي بيتقيّدوا بحالة الدفع تبع الفلتر، عشان الشريط يفضل
+  // يعكس نسبة حقيقية (مش 100% دايماً لما يكون الفلتر "مدفوع فقط").
+  const paymentProgress = (() => {
+    let total = 0, paid = 0;
+    filtered.forEach(r => {
+      const vals = r.readings || [];
+      const changes = r.meterChanges || [];
+      vals.slice(1).forEach((_, i) => {
+        const cups = cupsPositive(vals, i, changes);
+        if (cups <= 0) return;
+        const amt = cups * getPrice(prices, r.year, r.landId, i + 1);
+        total += amt;
+        if (r.paidPeriods && r.paidPeriods[i]) paid += amt;
+      });
+    });
+    const pct = total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0;
+    return { total, paid, pct };
+  })();
 
   // ✅ إجمالي الأكواب + تفصيل كل دورة (قراءة) للقراءات المعروضة حالياً
   const cupsBreakdown = (() => {
@@ -979,6 +1028,26 @@ export default function AdminReadings({ adminRole='admin' }) {
           <div style={{ fontSize:20, fontWeight:900, color:'#854d0e' }}>
             ₪{Math.round(grandAfterVat).toLocaleString()}
           </div>
+        </div>
+      </div>
+
+      {/* ── شريط نسبة الدفع ── */}
+      <div className="card mb-16" style={{ padding:'14px 18px' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+          <span style={{ fontSize:13, fontWeight:800, color:'var(--text-secondary)' }}>
+            💳 {ar ? 'نسبة الدفع' : 'אחוז תשלום'}
+          </span>
+          <span style={{ fontSize:13, fontWeight:900, color: paymentProgress.pct>=100 ? '#16a34a' : '#dc2626' }}>
+            {paymentProgress.pct}% (₪{Math.round(paymentProgress.paid).toLocaleString()} / ₪{Math.round(paymentProgress.total).toLocaleString()})
+          </span>
+        </div>
+        <div style={{ height:10, borderRadius:6, background:'#fee2e2', overflow:'hidden' }}>
+          <div style={{
+            height:'100%', borderRadius:6,
+            width:`${paymentProgress.pct}%`,
+            background: paymentProgress.pct>=100 ? '#16a34a' : 'linear-gradient(90deg,#16a34a,#22c55e)',
+            transition:'width 0.6s ease',
+          }}/>
         </div>
       </div>
 
