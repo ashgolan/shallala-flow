@@ -150,6 +150,12 @@ export const tasksAPI = {
   uploadImage:     file => upload('/tasks/upload-image', file),
 };
 
+// ── Push Notifications API (إشعارات الهاتف) ────────────────────
+export const pushAPI = {
+  subscribe:   subscription => req('/push/subscribe',   { method: 'POST', body: JSON.stringify({ subscription }) }),
+  unsubscribe: endpoint     => req('/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint }) }),
+};
+
 // ── Payments API ───────────────────────────────────────────────
 export const paymentsAPI = {
   getAll: year => req(`/payments${year ? '?year=' + year : ''}`),

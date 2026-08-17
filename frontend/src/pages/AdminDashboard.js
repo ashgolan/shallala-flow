@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLang } from '../contexts/LangContext';
 import { t } from '../i18n/translations';
 import AdminFarmers  from '../components/admin/AdminFarmers';
@@ -21,6 +21,14 @@ export default function AdminDashboard({ onLogout, adminRole='admin', allowedPro
   // ✅ يتغيّر بعد أي إنشاء/تعليم "تم التنفيذ" بصفحة المهام حتى يتحدّث رقم الجرس فوراً
   const [taskRefreshKey, setTaskRefreshKey] = useState(0);
   const bumpTaskRefresh = () => setTaskRefreshKey(k => k + 1);
+
+  // ✅ فتح تبويب المهام تلقائياً لو دخل المستخدم من رابط إشعار هاتف (?openTasks=1)
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('openTasks') === '1') {
+      setTab('tasks');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   const handleLogout = () => { onLogout && onLogout(); onLogout(); };
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { tasksAPI, privilegedAPI } from '../../api';
 import { useLang } from '../../contexts/LangContext';
+import { isPushSupported, getPushPermission, subscribeToPush } from '../../utils/push';
 
 // ============================================================
 //  AdminTasks.js — صفحة "المهام والاستفسارات"
@@ -31,6 +32,22 @@ export default function AdminTasks({ adminRole = 'admin', onChanged }) {
   const [saving, setSaving]     = useState(false);
   const [formError, setFormError] = useState('');
   const [busyId, setBusyId]     = useState(null);
+
+  // ✅ حالة إشعارات الهاتف لهذا الجهاز — 'default' يعني لسا ما سألناه
+  const [pushPermission, setPushPermission] = useState(getPushPermission());
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState('');
+
+  const enablePush = async () => {
+    setPushBusy(true); setPushError('');
+    try {
+      await subscribeToPush();
+      setPushPermission(getPushPermission());
+    } catch (e) {
+      setPushError(e.message);
+      setPushPermission(getPushPermission());
+    } finally { setPushBusy(false); }
+  };
 
   const notifyChanged = () => { onChanged && onChanged(); };
 
@@ -180,6 +197,31 @@ export default function AdminTasks({ adminRole = 'admin', onChanged }) {
       {pendingForMe > 0 && (
         <div className="alert" style={{ background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', marginBottom: 16 }}>
           🔔 {ar ? `لديك ${pendingForMe} طلب بانتظار المتابعة` : `יש לך ${pendingForMe} פניות ממתינות`}
+        </div>
+      )}
+
+      {/* ✅ بانر تفعيل إشعارات الهاتف — يظهر فقط لو المتصفح يدعم ولسا ما انسأل الإذن */}
+      {isPushSupported() && pushPermission === 'default' && (
+        <div className="alert" style={{
+          background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e3a8a', marginBottom: 16,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
+        }}>
+          <span>🔔 {ar
+            ? 'فعّل إشعارات هذا الجهاز حتى توصلك الطلبات الجديدة فوراً حتى لو التطبيق مسكّر'
+            : 'הפעל התראות למכשיר זה כדי לקבל פניות חדשות מיידית גם כשהאפליקציה סגורה'}</span>
+          <button type="button" className="btn btn-primary btn-sm" onClick={enablePush} disabled={pushBusy}>
+            {pushBusy ? '⏳' : '🔔'} {ar ? 'تفعيل الإشعارات' : 'הפעל התראות'}
+          </button>
+        </div>
+      )}
+      {pushError && (
+        <div className="alert alert-error mb-16">{pushError}</div>
+      )}
+      {pushPermission === 'denied' && (
+        <div className="alert" style={{ background: '#fff1f2', border: '1px solid #fecaca', color: '#991b1b', marginBottom: 16, fontSize: 13 }}>
+          🔕 {ar
+            ? 'إشعارات هذا الجهاز مرفوضة من إعدادات المتصفح — فعّلها يدوياً من إعدادات الموقع بالمتصفح لو حبيت تستقبلها'
+            : 'התראות למכשיר זה חסומות בהגדרות הדפדפן — ניתן להפעיל ידנית מהגדרות האתר'}
         </div>
       )}
 

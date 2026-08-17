@@ -2,6 +2,7 @@ const busboy = require('busboy');
 const { Privileged } = require('../models/Settings');
 const Task = require('../models/Task');
 const { getStorage } = require('../../config/firebase');
+const { notifyTaskRecipients } = require('../services/pushNotify');
 
 // ✅ يجيب لقطة اسم (label) المستخدم المراقب الحالي من جدول Privileged — تُخزَّن مع الطلب
 //    حتى لو تغيّر الاسم أو انحذف المستخدم لاحقاً يبقى واضح مين كان المرسل/المستلم وقتها
@@ -75,6 +76,9 @@ const createTask = async (req, res) => {
       imageUrl:  imageUrl  || '',
       imagePath: imagePath || '',
     });
+
+    // ✅ إشعار هاتف فوري للمستلم — best-effort، ما توقف الرد ولا تفشّل الطلب لو فشل الإرسال
+    notifyTaskRecipients(task).catch(() => {});
 
     return res.status(201).json({ success: true, task: taskResponse(task) });
   } catch (err) {
