@@ -172,7 +172,7 @@ export default function AdminPayments({ adminRole='admin' }) {
                   placeholder="123456" style={{fontFamily:'monospace'}} />
               </div>
               <div className="form-group">
-                <label style={{fontFamily:'Heebo,sans-serif'}}>{ar?'رقم החשבونית':'מספר חשבונית'}</label>
+                <label style={{fontFamily:'Heebo,sans-serif'}}>{ar?'رقم الفاتوره':'מספר חשבונית'}</label>
                 <input value={form.invoiceNumber} onChange={e=>setForm({...form,invoiceNumber:e.target.value})}
                   placeholder="INV-001" style={{fontFamily:'monospace'}} />
               </div>
