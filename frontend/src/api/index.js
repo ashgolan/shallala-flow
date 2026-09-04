@@ -84,6 +84,11 @@ export const adminAPI = {
   createReading: d => req('/admin/readings', { method: 'POST', body: JSON.stringify(d) }),
   updateReading: (id, d) => req(`/admin/readings/${id}`, { method: 'PUT', body: JSON.stringify(d) }),
   deleteReading: id => req(`/admin/readings/${id}`, { method: 'DELETE' }),
+  // ✅ إضافات الأرض (land extras) — إضافات دائمة تتبع الأرض نفسها، مش القراءة/السنة
+  getLandExtras: landId => req('/admin/land-extras' + (landId ? '?landId=' + landId : '')),
+  createLandExtra: d => req('/admin/land-extras', { method: 'POST', body: JSON.stringify(d) }),
+  updateLandExtra: (id, d) => req(`/admin/land-extras/${id}`, { method: 'PUT', body: JSON.stringify(d) }),
+  deleteLandExtra: id => req(`/admin/land-extras/${id}`, { method: 'DELETE' }),
   // prices
   getPrices: () => req('/admin/prices'),
   updatePrices: d => req('/admin/prices', { method: 'POST', body: JSON.stringify(d) }),

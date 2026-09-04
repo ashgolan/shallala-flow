@@ -6,14 +6,14 @@ import ReadingsTable from './ReadingsTable';
 
 import { getPrice as getP, getBasePrice as getBaseP } from '../../utils/pricing'; // ✅ سعر موحّد شامل الضريبة (מע"מ)
 import { cupsDiff, cupsPositive } from '../../utils/cups'; // ✅ فرق أكواب موحّد
-import { getExtrasNet } from '../../utils/extras'; // ✅ إضافات موحّدة (تدعم extras[] + الحقول القديمة)
+import { getExtrasNet, getExtrasGross, groupExtrasByLand } from '../../utils/extras'; // ✅ إضافات موحّدة — الآن تابعة للأرض (landId) لا للقراءة
 
 export function AdminReports({ adminRole='admin' }) {
   const { lang } = useLang();
   const ar = lang === 'ar';
   const isViewer = adminRole === 'viewer';
 
-  const [data, setData]       = useState({ farmers:[], lands:[], readings:[], prices:{} });
+  const [data, setData]       = useState({ farmers:[], lands:[], readings:[], prices:{}, landExtras:[] });
   const [loading, setLoading] = useState(true);
   const [regions, setRegions] = useState([]);
   const [expanded, setExpanded] = useState(null);
@@ -50,7 +50,10 @@ export function AdminReports({ adminRole='admin' }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const { farmers, lands, readings, prices } = data;
+  const { farmers, lands, readings, prices, landExtras } = data;
+
+  // ✅ خريطة landId -> [extras] — الإضافات صارت تابعة للأرض نفسها، تُقرأ مرة واحدة هون وتُستخدم بكل مكان بالملف
+  const landExtrasByLand = groupExtrasByLand(landExtras);
 
   const farmerName = id => farmers.find(f=>String(f.id)===String(id))?.nameHeb
                         || farmers.find(f=>String(f.id)===String(id))?.name || '—';
@@ -78,6 +81,11 @@ export function AdminReports({ adminRole='admin' }) {
     return l?.regionId ? regionName(l.regionId) : '';
   };
 
+  // ✅ ملاحظة مهمة: الإضافات صارت تابعة للأرض (landId) وليست للقراءة/السنة. هون لسا
+  // منحسب extraNet لكل صف (سطر قراءة) لأغراض العرض فقط (نفس قيمة إضافات الأرض تظهر
+  // بجانب كل سنة لنفس الأرض — بالضبط متل ما طلب المستخدم). لكن أي إجمالي/مجموع كلي
+  // (grandTotal وغيره) لازم يحسب إضافات كل أرض مرة وحدة بس — مو مرة لكل قراءة/سنة —
+  // وإلا رح تتضاعف الأرقام لأي أرض إلها أكثر من قراءة (أكثر من سنة).
   const calcRow = r => {
     const vals = r.readings || [];
     const periods = vals.slice(1).map((v, i) => {
@@ -87,7 +95,7 @@ export function AdminReports({ adminRole='admin' }) {
     });
     const totalCups  = periods.reduce((s,p) => s + p.cups, 0);
     const cupsAmount = periods.reduce((s,p) => s + p.amount, 0);
-    const extraNet   = getExtrasNet(r); // ✅ يشمل extras[] الجديدة + الحقول القديمة معاً
+    const extraNet   = getExtrasNet(landExtrasByLand[String(r.landId)] || []); // ✅ رصيد إضافات هذه الأرض (معلوماتي لهذا الصف)
     const total      = cupsAmount + extraNet;
     return { periods, totalCups, cupsAmount, extraNet, total };
   };
@@ -153,12 +161,8 @@ export function AdminReports({ adminRole='admin' }) {
     return total;
   };
 
-  // ✅ جمع كل extraNotes الفريدة الموجودة في النظام
-  // ✅ جمع كل أسماء الإضافات من extras[] الجديدة + الحقول القديمة
-  const allExtraNotes = [...new Set([
-    ...readings.flatMap(r => (r.extras||[]).map(e=>e.note).filter(Boolean)),
-    ...readings.filter(r => r.extraNote && parseFloat(r.extra)>0).map(r=>r.extraNote),
-  ])].sort();
+  // ✅ جمع كل أسماء الإضافات الفريدة — مباشرة من landExtras (تابعة للأرض الآن، لا داعي لتفريغ readings)
+  const allExtraNotes = [...new Set(landExtras.map(e => e.note).filter(Boolean))].sort();
 
   const filtered = readings.filter(r => {
     if (filterYear   && r.year !== parseInt(filterYear)) return false;
@@ -181,117 +185,66 @@ export function AdminReports({ adminRole='admin' }) {
     return true;
   });
 
-  // ✅ فلترة الإضافات غير المدفوعة
+  // ✅ إجمالي الإضافات لهذا الفلتر — أراضي filtered فقط، وكل أرض تُحسب مرة وحدة (بدون تكرار عبر السنوات)
+  const filteredLandIds        = [...new Set(filtered.map(r => String(r.landId)))];
+  const extrasForFilteredLands = filteredLandIds.flatMap(lid => landExtrasByLand[lid] || []);
+  const filteredExtrasNet      = getExtrasNet(extrasForFilteredLands);
+
+  // ✅ فلترة الإضافات غير المدفوعة — الآن مباشرة من landExtras المسطّحة (سجل واحد لكل إضافة، تابع للأرض فقط)
   const searchNote = extraNoteInput.trim() || filterExtraNote;
-  // ✅ بناء قائمة موحدة من extras[] + الحقول القديمة
-  const extrasRows = readings.flatMap(r => {
-    const extras = r.extras || [];
-    const rows = [];
-    // extras الجديدة
-    extras.forEach(e => {
+  const extrasRows = landExtras
+    .map(e => {
       const amt  = parseFloat(e.amount)||0;
       const paid = parseFloat(e.paid)||0;
-      if (amt <= 0) return;
-      if (paid >= amt) return; // مدفوعة كاملاً
-      if (searchNote && !(e.note||'').toLowerCase().includes(searchNote.toLowerCase())) return;
-      rows.push({ readingId:r.id, farmerId:r.farmerId, landId:r.landId, year:r.year,
-                  note:e.note||'', amount:amt, paid, rem:amt-paid });
-    });
-    // الحقل القديم (للتوافق)
-    if (extras.length === 0) {
-      const extra     = parseFloat(r.extra)||0;
-      const extraPaid = parseFloat(r.extraPaid)||0;
-      if (extra > 0 && extraPaid < extra) {
-        if (!searchNote || (r.extraNote||'').toLowerCase().includes(searchNote.toLowerCase())) {
-          rows.push({ readingId:r.id, farmerId:r.farmerId, landId:r.landId, year:r.year,
-                      note:r.extraNote||'', amount:extra, paid:extraPaid, rem:extra-extraPaid });
-        }
-      }
-    }
-    return rows;
-  });
-
-  const extrasFiltered = readings.filter(r => {
-    const extras = r.extras||[];
-    if (extras.length > 0) {
-      return extras.some(e => {
-        const amt=parseFloat(e.amount)||0, paid=parseFloat(e.paid)||0;
-        if (amt<=0||paid>=amt) return false;
-        return !searchNote || (e.note||'').toLowerCase().includes(searchNote.toLowerCase());
-      });
-    }
-    const extra=parseFloat(r.extra)||0, extraPaid=parseFloat(r.extraPaid)||0;
-    if (extra<=0||extraPaid>=extra) return false;
-    return !searchNote || (r.extraNote||'').toLowerCase().includes(searchNote.toLowerCase());
-  });
-
-  const extrasGrouped = extrasFiltered.reduce((acc, r) => {
-    const fid = String(r.farmerId);
-    if (!acc[fid]) acc[fid] = { farmerId: fid, rows: [] };
-    acc[fid].rows.push(r);
-    return acc;
-  }, {});
+      const rem  = amt - paid;
+      if (amt <= 0 || rem <= 0.009) return null; // مدفوعة بالكامل
+      if (searchNote && !(e.note||'').toLowerCase().includes(searchNote.toLowerCase())) return null;
+      const land = lands.find(l => String(l.id) === String(e.landId));
+      return {
+        extraId: e.id, landId: e.landId, farmerId: land?.farmerId || '',
+        note: e.note || '', amount: amt, paid, rem, createdAt: e.createdAt,
+      };
+    })
+    .filter(Boolean);
 
   const extrasTotal = extrasRows.reduce((s,row) => s + row.rem, 0);
 
-  const grandTotal = filtered.reduce((s,r) => s + calcRow(r).total, 0);
-  const grandCups  = filtered.reduce((s,r) => s + calcRow(r).totalCups, 0);
-  const paidCount  = filtered.filter(r => r.paid).length;
+  const grandCupsAmount = filtered.reduce((s,r) => s + calcRow(r).cupsAmount, 0);
+  const grandCups       = filtered.reduce((s,r) => s + calcRow(r).totalCups, 0);
+  const grandTotal      = grandCupsAmount + filteredExtrasNet; // ✅ إضافات كل أرض تُحسب مرة وحدة بس
+  const paidCount       = filtered.filter(r => r.paid).length;
 
   // ✅ تدقيق اشتراك/إضافة محددة: من لم يُضف له الاشتراك إطلاقاً، أو أُضيف ولم يُدفع بالكامل
-  // (بدون خيار "مرة واحدة/سنوي" — كلها تُفحص كسداد كامل لمرة واحدة بغض النظر عن السنة)
+  // الآن الفحص على مستوى الأرض مباشرة (سطر واحد طبيعي لكل أرض، بدون حاجة لتجميع القراءات)
   const missingSubscription = (() => {
     if (!subName.trim()) return [];
     const nameNorm = subName.trim().toLowerCase();
-    const hasSub = (r) => {
-      const exs = r.extras || [];
-      if (exs.length > 0) {
-        return exs.some(e =>
-          e.note?.toLowerCase().trim() === nameNorm &&
-          (parseFloat(e.amount)||0) > 0 &&
-          (parseFloat(e.paid)||0) >= (parseFloat(e.amount)||0)
-        );
-      }
-      return (r.extraNote || '').toLowerCase().trim() === nameNorm
-        && (parseFloat(r.extra)||0) > 0
-        && (parseFloat(r.extraPaid)||0) >= (parseFloat(r.extra)||0);
-    };
-    const paidFarmerLands = new Set(); // farmerId_landId
-    readings.forEach(r => { if (hasSub(r)) paidFarmerLands.add(`${r.farmerId}_${r.landId}`); });
-
-    // ✅ سطر واحد لكل أرض (أحدث قراءة)، بدل تكرار نفس الأرض لكل سنة
-    const latestByLand = {};
-    readings.forEach(r => {
-      const key = `${r.farmerId}_${r.landId}`;
-      if (paidFarmerLands.has(key)) return;
-      if (!latestByLand[key] || r.year > latestByLand[key].year) latestByLand[key] = r;
-    });
-    return Object.values(latestByLand);
+    const hasSub = (landId) => (landExtrasByLand[String(landId)] || []).some(e =>
+      (e.note||'').toLowerCase().trim() === nameNorm &&
+      (parseFloat(e.amount)||0) > 0 &&
+      (parseFloat(e.paid)||0) >= (parseFloat(e.amount)||0)
+    );
+    // ✅ كل أرض مرتبطة فعلياً بمزارع (farmerId) ولم تدفع هذا الاشتراك بعد
+    return lands.filter(l => l.farmerId && !hasSub(l.id));
   })();
 
-  // إضافة الاشتراك لكل المفقودين
+  // إضافة الاشتراك لكل الأراضي الناقصة
   const addSubToAll = async () => {
     if (!subName.trim() || !subAmount || missingSubscription.length === 0) return;
     if (!window.confirm(
       (ar
-        ? `إضافة "${subName}" (₪${subAmount}) على ${missingSubscription.length} قراءة؟`
-        : `הוסף "${subName}" (₪${subAmount}) ל-${missingSubscription.length} קריאות?`)
+        ? `إضافة "${subName}" (₪${subAmount}) على ${missingSubscription.length} أرض؟`
+        : `הוסף "${subName}" (₪${subAmount}) ל-${missingSubscription.length} קרקעות?`)
     )) return;
     setAddingAll(true); setAddedCount(null);
     let count = 0;
-    for (const r of missingSubscription) {
+    for (const land of missingSubscription) {
       try {
-        const existing = readings.find(x => x.id === r.id);
-        if (!existing) continue;
-        const newExtras = [
-          ...(existing.extras || []),
-          { note: subName.trim(), amount: parseFloat(subAmount)||0, paid: 0 },
-        ];
-        await adminAPI.updateReading(r.id, {
-          farmerId:  r.farmerId, landId: r.landId, year: r.year,
-          readings:  r.readings, note: r.note||'',
-          extras:    newExtras,
-          extra:     r.extra||0, extraPaid: r.extraPaid||0, extraNote: r.extraNote||'',
+        await adminAPI.createLandExtra({
+          landId: land.id,
+          note:   subName.trim(),
+          amount: parseFloat(subAmount)||0,
+          paid:   0,
         });
         count++;
       } catch(e) { console.error(e); }
@@ -406,22 +359,20 @@ thead tr{background:#166534;color:white;}tfoot tr{background:#14532d;color:white
     setTimeout(() => win.print(), 500);
   };
 
-  // ── طباعة تقرير الإضافات ──
+  // ── طباعة تقرير الإضافات — الآن من extrasRows مباشرة (سجل واحد لكل إضافة تابعة لأرض) ──
   const handlePrintExtras = () => {
     const date = new Date().toLocaleDateString(ar?'ar-SA':'he-IL');
-    const rows = extrasFiltered.map(r => {
-      const extra     = parseFloat(r.extra) || 0;
-      const extraPaid = parseFloat(r.extraPaid) || 0;
-      const rem       = extra - extraPaid;
-      const land      = lands.find(l => String(l.id) === String(r.landId));
+    const rows = extrasRows.map(row => {
+      const land = lands.find(l => String(l.id) === String(row.landId));
+      const addedDate = row.createdAt ? new Date(row.createdAt).toLocaleDateString(ar?'ar-SA':'he-IL') : '—';
       return `<tr>
-        <td>${farmerName(r.farmerId)}</td>
+        <td>${farmerName(row.farmerId)}</td>
         <td style="text-align:center">${land?.stationNumber||'—'}</td>
-        <td>${r.extraNote||'—'}</td>
-        <td style="text-align:center">${r.year}</td>
-        <td style="text-align:center;color:#16a34a;font-weight:bold">₪${extra.toLocaleString()}</td>
-        <td style="text-align:center">₪${extraPaid.toLocaleString()}</td>
-        <td style="text-align:center;color:#dc2626;font-weight:bold">₪${rem.toLocaleString()}</td>
+        <td>${row.note||'—'}</td>
+        <td style="text-align:center">${addedDate}</td>
+        <td style="text-align:center;color:#16a34a;font-weight:bold">₪${row.amount.toLocaleString()}</td>
+        <td style="text-align:center">₪${row.paid.toLocaleString()}</td>
+        <td style="text-align:center;color:#dc2626;font-weight:bold">₪${row.rem.toLocaleString()}</td>
       </tr>`;
     }).join('');
 
@@ -435,12 +386,12 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
 <p>${ar?'تاريخ':'תאריך'}: ${date}${searchNote?' | '+searchNote:''}</p>
 <table><thead><tr>
   <th>${ar?'المزارع':'חקלאי'}</th><th>${ar?'المحطة':'עמדה'}</th>
-  <th>${ar?'سبب الإضافة':'סיבת התוספת'}</th><th>${ar?'السنة':'שנה'}</th>
+  <th>${ar?'سبب الإضافة':'סיבת התוספת'}</th><th>${ar?'تاريخ الإضافة':'תאריך הוספה'}</th>
   <th>${ar?'المبلغ':'סכום'}</th><th>${ar?'المدفوع':'שולם'}</th>
   <th>${ar?'المتبقي':'נותר'}</th>
 </tr></thead><tbody>${rows}</tbody>
 <tfoot><tr>
-  <td colspan="6" style="font-weight:bold">${ar?'إجمالي المتبقي':'סה"כ נותר'} (${extrasFiltered.length})</td>
+  <td colspan="6" style="font-weight:bold">${ar?'إجمالي المتبقي':'סה"כ נותר'} (${extrasRows.length})</td>
   <td style="text-align:center;font-weight:bold">₪${Math.round(extrasTotal).toLocaleString()}</td>
 </tr></tfoot></table></body></html>`;
 
@@ -487,7 +438,6 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
       const vals   = r.readings || [];
       const farmer = farmers.find(f => String(f.id) === String(r.farmerId));
       const land   = lands.find(l => String(l.id) === String(r.landId));
-      const extraNet = getExtrasNet(r); // ✅ صافي الإضافات (extras[] + الحقول القديمة) — مرة واحدة فقط
       const stationNumber = land?.stationNumber || r.stationNumber || '';
       let running = vals[0];
       vals.slice(1).forEach((v, i) => {
@@ -506,14 +456,21 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
         });
         running = v;
       });
-      if (extraNet !== 0) {
-        rows.push({
-          'המזמינה': farmer?.nameHeb||farmer?.name||'—',
-          'עמדה': stationNumber, 'שנה': r.year, 'תקופה': ar?'إضافات':'תוספות',
-          'קריאה קודמת': '', 'קריאה נוכחית': '', 'הפרש (קוב)': '',
-          'מחיר יחידה (₪)': '', 'סכום (₪)': Math.round(extraNet),
-        });
-      }
+    });
+
+    // ✅ إضافات الأراضي — سطر واحد لكل إضافة (وليس لكل قراءة/سنة) عشان ما تتكرر نفس
+    // القيمة عدة مرات بالإكسل ويصير الإجمالي المحسوب أسفل الورقة غلط
+    landExtras.forEach(e => {
+      const net = (parseFloat(e.amount)||0) - (parseFloat(e.paid)||0);
+      if (!net) return;
+      const land   = lands.find(l => String(l.id) === String(e.landId));
+      const farmer = farmers.find(f => String(f.id) === String(land?.farmerId));
+      rows.push({
+        'המזמינה': farmer?.nameHeb||farmer?.name||'—',
+        'עמדה': land?.stationNumber||'', 'שנה': '', 'תקופה': ar?'إضافات':'תוספות',
+        'קריאה קודמת': '', 'קריאה נוכחית': '', 'הפרש (קוב)': '',
+        'מחיר יחידה (₪)': '', 'סכום (₪)': Math.round(net),
+      });
     });
 
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -574,7 +531,7 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
             <button className="btn btn-outline" onClick={handleWatchmanExcel}>📋 {ar?'Excel للناطور':'Excel לשומר'}</button>
             <button className="btn btn-outline" onClick={handlePrint}>🖨️ {ar?'طباعة':'הדפסה'}</button>
           </>}
-          {!isViewer && activeTab==='audit' && !subName.trim() && extrasFiltered.length > 0 && (
+          {!isViewer && activeTab==='audit' && !subName.trim() && extrasRows.length > 0 && (
             <button className="btn btn-outline" onClick={handlePrintExtras}>🖨️ {ar?'طباعة الإضافات':'הדפסת תוספות'}</button>
           )}
           {!isViewer && activeTab==='audit' && (
@@ -693,6 +650,7 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
             isViewer={true}
             lands={lands}
             regions={regions}
+            landExtrasByLand={landExtrasByLand}
           />
         </>
       )}
@@ -764,7 +722,7 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
                       <th style={{padding:'10px 14px',textAlign:'right',color:'#fff',fontWeight:800}}>{ar?'المزارع':'חקלאי'}</th>
                       <th style={{padding:'10px 14px',textAlign:'center',color:'#fff',fontWeight:800}}>{ar?'المحطة':'עמדה'}</th>
                       <th style={{padding:'10px 14px',textAlign:'right',color:'#bfdbfe',fontWeight:800}}>{ar?'سبب الإضافة':'סיבת התוספת'}</th>
-                      <th style={{padding:'10px 14px',textAlign:'center',color:'#bfdbfe',fontWeight:800}}>{ar?'السنة':'שנה'}</th>
+                      <th style={{padding:'10px 14px',textAlign:'center',color:'#bfdbfe',fontWeight:800}}>{ar?'تاريخ الإضافة':'תאריך הוספה'}</th>
                       <th style={{padding:'10px 14px',textAlign:'center',color:'#bfdbfe',fontWeight:800}}>{ar?'المبلغ':'סכום'}</th>
                       <th style={{padding:'10px 14px',textAlign:'center',color:'#bfdbfe',fontWeight:800}}>{ar?'المدفوع':'שולם'}</th>
                       <th style={{padding:'10px 14px',textAlign:'center',color:'#fca5a5',fontWeight:800}}>{ar?'المتبقي':'נותר'}</th>
@@ -775,8 +733,9 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
                       .sort((a,b)=>farmerName(a.farmerId).localeCompare(farmerName(b.farmerId),'ar'))
                       .map((row,i) => {
                         const land = lands.find(l=>String(l.id)===String(row.landId));
+                        const addedDate = row.createdAt ? new Date(row.createdAt).toLocaleDateString(ar?'ar-SA':'he-IL') : '—';
                         return (
-                          <tr key={`${row.readingId}-${i}`} style={{borderBottom:'1px solid #e5e7eb',background:i%2===0?'#fff':'#eff6ff'}}>
+                          <tr key={row.extraId||i} style={{borderBottom:'1px solid #e5e7eb',background:i%2===0?'#fff':'#eff6ff'}}>
                             <td style={{padding:'10px 14px',fontFamily:'Heebo,sans-serif',fontWeight:700}}>{farmerName(row.farmerId)}</td>
                             <td style={{padding:'10px 14px',textAlign:'center'}}>
                               {land?.stationNumber
@@ -784,7 +743,7 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
                                 : '—'}
                             </td>
                             <td style={{padding:'10px 14px',color:'#92400e',fontWeight:600}}>{row.note||'—'}</td>
-                            <td style={{padding:'10px 14px',textAlign:'center',color:'var(--text-muted)'}}>{row.year}</td>
+                            <td style={{padding:'10px 14px',textAlign:'center',color:'var(--text-muted)'}}>{addedDate}</td>
                             <td style={{padding:'10px 14px',textAlign:'center',fontWeight:700}}>₪{row.amount.toLocaleString()}</td>
                             <td style={{padding:'10px 14px',textAlign:'center',color:'#16a34a',fontWeight:700}}>₪{row.paid.toLocaleString()}</td>
                             <td style={{padding:'10px 14px',textAlign:'center',fontWeight:900,color:'#dc2626'}}>₪{row.rem.toLocaleString()}</td>
@@ -810,7 +769,7 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
             <div className="card mb-16" style={{textAlign:'center',padding:32,color:'#16a34a'}}>
               <div style={{fontSize:40,marginBottom:8}}>✅</div>
               <div style={{fontWeight:700,fontSize:15}}>
-                {ar?'جميع العدادات النشطة دفعت هذا الاشتراك بالكامل!':'כל המונים הפעילים שילמו מנוי זה במלואו!'}
+                {ar?'جميع الأراضي النشطة دفعت هذا الاشتراك بالكامل!':'כל הקרקעות הפעילות שילמו מנוי זה במלואו!'}
               </div>
             </div>
           ) : (
@@ -836,7 +795,7 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
                 <div style={{background:'#f0fdf4',border:'1.5px solid #86efac',borderRadius:10,padding:'12px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:12}}>
                   <span style={{fontSize:24}}>✅</span>
                   <div style={{fontWeight:700}}>
-                    {ar?`تم إضافة "${subName}" على ${addedCount} قراءة!`:`"${subName}" נוסף ל-${addedCount} קריאות!`}
+                    {ar?`تم إضافة "${subName}" على ${addedCount} أرض!`:`"${subName}" נוסף ל-${addedCount} קרקעות!`}
                   </div>
                 </div>
               )}
@@ -864,7 +823,6 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
                     <tr style={{background:'#1d4ed8'}}>
                       <th style={{padding:'10px 14px',textAlign:'right',color:'#fff',fontWeight:800}}>{ar?'المزارع':'חקלאי'}</th>
                       <th style={{padding:'10px 14px',textAlign:'center',color:'#fff',fontWeight:800}}>{ar?'المحطة':'עמדה'}</th>
-                      <th style={{padding:'10px 14px',textAlign:'center',color:'#bfdbfe',fontWeight:800}}>{ar?'السنة':'שנה'}</th>
                       <th style={{padding:'10px 14px',textAlign:'center',color:'#bfdbfe',fontWeight:800}}>
                         {ar?`أكواب ${currentYear}`:`קוב ${currentYear}`}
                       </th>
@@ -874,20 +832,18 @@ thead tr{background:#92400e;color:white;}tfoot tr{background:#78350f;color:white
                   <tbody>
                     {missingSubscription
                       .sort((a,b)=>farmerName(a.farmerId).localeCompare(farmerName(b.farmerId),'ar'))
-                      .map((r,i) => {
-                        const land = lands.find(l=>String(l.id)===String(r.landId));
-                        const cupsYear = cupsThisYearForLand(r.landId);
+                      .map((l,i) => {
+                        const cupsYear = cupsThisYearForLand(l.id);
                         return (
-                          <tr key={r.id||i} style={{borderBottom:'1px solid #e5e7eb',background:i%2===0?'#fff':'#eff6ff'}}>
+                          <tr key={l.id||i} style={{borderBottom:'1px solid #e5e7eb',background:i%2===0?'#fff':'#eff6ff'}}>
                             <td style={{padding:'10px 14px',fontFamily:'Heebo,sans-serif',fontWeight:700}}>
-                              {farmerName(r.farmerId)}
+                              {farmerName(l.farmerId)}
                             </td>
                             <td style={{padding:'10px 14px',textAlign:'center'}}>
-                              {land?.stationNumber
-                                ? <code style={{background:'#eff6ff',border:'1px solid #bfdbfe',padding:'2px 8px',borderRadius:5,fontWeight:900,color:'#1d4ed8'}}>{land.stationNumber}</code>
+                              {l.stationNumber
+                                ? <code style={{background:'#eff6ff',border:'1px solid #bfdbfe',padding:'2px 8px',borderRadius:5,fontWeight:900,color:'#1d4ed8'}}>{l.stationNumber}</code>
                                 : '—'}
                             </td>
-                            <td style={{padding:'10px 14px',textAlign:'center',color:'var(--text-muted)'}}>{r.year}</td>
                             <td style={{padding:'10px 14px',textAlign:'center',fontWeight:700}}>
                               {cupsYear != null ? Math.round(cupsYear).toLocaleString() : '—'}
                             </td>

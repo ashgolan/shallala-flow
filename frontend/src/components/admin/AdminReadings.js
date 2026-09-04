@@ -5,7 +5,7 @@ import { t } from '../../i18n/translations';
 import ReadingsTable from './ReadingsTable';
 import { getPrice, getBasePrice, getVatRate } from '../../utils/pricing'; // ✅ سعر موحّد شامل الضريبة (מע"מ)
 import { cupsPositive } from '../../utils/cups'; // ✅ فرق أكواب موحّد (يدعم تبديل العداد ضمن نفس الفترة)
-import { getExtrasList as getExtras, getExtrasNet, getExtrasGross } from '../../utils/extras';
+import { getExtrasNet, getExtrasGross, groupExtrasByLand } from '../../utils/extras'; // ✅ إضافات تابعة للأرض (LandExtra)
 const dmsToDecimal = (deg, min, sec, dir) => {
   let dd = parseFloat(deg) + parseFloat(min) / 60 + parseFloat(sec) / 3600;
   if (/[SW]/i.test(dir)) dd = -dd;
@@ -31,29 +31,49 @@ const parseGoogleCoords = (raw) => {
 const EMPTY_FORM = {
   farmerId: '', landId: '', year: new Date().getFullYear(),
   readings: ['', ''],
-  extras: [], // ✅ مصفوفة الإضافات
+  // ✅ الإضافات ما عادت جزء من نموذج القراءة — صارت تابعة للأرض (landId) وتُدار
+  // مباشرة (تُحفظ فوراً بالسيرفر) بدل ما تنحفظ مع "حفظ" القراءة كاملة
   // ✅ تبديلات العداد: [{ period, oldFinal, newInitial }] — period = فهرس الفترة (0-based)
   // بين readings[period] و readings[period+1]. الاستهلاك يُدمج بنفس رقم هذه الفترة.
   meterChanges: [],
-  extra: '', extraPaid: '', extraNote: '',
 };
 
-// ✅ مكوّن إضافة واحدة مع autocomplete
-function ExtraRow({ idx, extra, onChange, onRemove, suggestions, ar }) {
+// ✅ مكوّن إضافة واحدة — الآن مربوطة مباشرة بالأرض (LandExtra) وتُحفظ فوراً
+// بالسيرفر عند فقدان التركيز (blur)، مش عند "حفظ" القراءة
+function ExtraRow({ extra, onSave, onRemove, suggestions, ar }) {
   const [showAc, setShowAc] = useState(false);
-  const filtered = suggestions.filter(s => s.toLowerCase().includes((extra.note || '').toLowerCase()) && s !== extra.note);
+  const [draft, setDraft] = useState({
+    note: extra.note || '', amount: String(extra.amount ?? ''), paid: String(extra.paid ?? ''),
+  });
+  const [saving, setSaving] = useState(false);
+
+  // ✅ لو تغيّر السجل من مصدر خارجي (إعادة تحميل مثلاً)، نزامن الحقول المحلية
+  useEffect(() => {
+    setDraft({ note: extra.note || '', amount: String(extra.amount ?? ''), paid: String(extra.paid ?? '') });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [extra.id]);
+
+  const filtered = suggestions.filter(s => s.toLowerCase().includes((draft.note || '').toLowerCase()) && s !== draft.note);
+
+  const commit = async (patch) => {
+    const merged = { ...draft, ...patch };
+    setDraft(merged);
+    setSaving(true);
+    try {
+      await onSave({ note: merged.note, amount: parseFloat(merged.amount) || 0, paid: parseFloat(merged.paid) || 0 });
+    } finally { setSaving(false); }
+  };
 
   return (
     <div style={{ background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: 10, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8, position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontWeight: 700, fontSize: 13, color: '#92400e', minWidth: 20 }}>#{idx + 1}</span>
         {/* سبب الإضافة مع autocomplete */}
         <div style={{ flex: 1, position: 'relative' }}>
           <input
-            value={extra.note || ''}
-            onChange={e => onChange({ ...extra, note: e.target.value })}
+            value={draft.note}
+            onChange={e => setDraft({ ...draft, note: e.target.value })}
             onFocus={() => setShowAc(true)}
-            onBlur={() => setTimeout(() => setShowAc(false), 150)}
+            onBlur={() => { setTimeout(() => setShowAc(false), 150); commit({}); }}
             placeholder={ar ? 'سبب الإضافة...' : 'סיבת התוספת...'}
             style={{ width: '100%', fontSize: 13 }}
           />
@@ -62,7 +82,7 @@ function ExtraRow({ idx, extra, onChange, onRemove, suggestions, ar }) {
             <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 200, background: '#fff', border: '1.5px solid #fed7aa', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.12)', minWidth: '100%', maxHeight: 160, overflowY: 'auto' }}>
               {filtered.map(s => (
                 <div key={s}
-                  onMouseDown={() => onChange({ ...extra, note: s })}
+                  onMouseDown={() => commit({ note: s })}
                   style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#92400e' }}
                   onMouseEnter={e => e.currentTarget.style.background = '#fff7ed'}
                   onMouseLeave={e => e.currentTarget.style.background = ''}>
@@ -72,6 +92,7 @@ function ExtraRow({ idx, extra, onChange, onRemove, suggestions, ar }) {
             </div>
           )}
         </div>
+        {saving && <span style={{ fontSize: 11, color: '#92400e', flexShrink: 0 }}>⏳</span>}
         <button type="button" onClick={onRemove}
           style={{ width: 26, height: 26, borderRadius: 6, border: '1.5px solid #fca5a5', background: '#fff1f2', color: '#dc2626', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0 }}>✕</button>
       </div>
@@ -79,8 +100,9 @@ function ExtraRow({ idx, extra, onChange, onRemove, suggestions, ar }) {
         <div>
           <label style={{ fontSize: 11, color: '#92400e', fontWeight: 700, display: 'block', marginBottom: 3 }}>₪ {ar ? 'المبلغ' : 'סכום'} *</label>
           <input type="number" min="0" step="any"
-            value={extra.amount || ''}
-            onChange={e => onChange({ ...extra, amount: e.target.value })}
+            value={draft.amount}
+            onChange={e => setDraft({ ...draft, amount: e.target.value })}
+            onBlur={() => commit({})}
             placeholder="0"
             style={{ width: '100%', fontSize: 15, fontWeight: 700, textAlign: 'center' }}
           />
@@ -88,23 +110,24 @@ function ExtraRow({ idx, extra, onChange, onRemove, suggestions, ar }) {
         <div>
           <label style={{ fontSize: 11, color: '#16a34a', fontWeight: 700, display: 'block', marginBottom: 3 }}>✅ {ar ? 'المدفوع' : 'שולם'}</label>
           <input type="number" min="0" step="any"
-            value={extra.paid || ''}
-            onChange={e => onChange({ ...extra, paid: e.target.value })}
+            value={draft.paid}
+            onChange={e => setDraft({ ...draft, paid: e.target.value })}
+            onBlur={() => commit({})}
             placeholder="0"
             style={{ width: '100%', fontSize: 15, fontWeight: 700, textAlign: 'center' }}
           />
         </div>
       </div>
       {/* شريط التقدم */}
-      {parseFloat(extra.amount) > 0 && (
+      {parseFloat(draft.amount) > 0 && (
         <div>
           <div style={{ height: 4, borderRadius: 2, background: '#fed7aa', overflow: 'hidden' }}>
-            <div style={{ height: '100%', borderRadius: 2, background: '#16a34a', width: `${Math.min(100, parseFloat(extra.paid || 0) / parseFloat(extra.amount) * 100)}%`, transition: 'width 0.3s' }} />
+            <div style={{ height: '100%', borderRadius: 2, background: '#16a34a', width: `${Math.min(100, parseFloat(draft.paid || 0) / parseFloat(draft.amount) * 100)}%`, transition: 'width 0.3s' }} />
           </div>
-          <div style={{ fontSize: 11, color: parseFloat(extra.paid || 0) >= parseFloat(extra.amount) ? '#16a34a' : '#dc2626', fontWeight: 700, marginTop: 2, textAlign: 'center' }}>
-            {parseFloat(extra.paid || 0) >= parseFloat(extra.amount)
+          <div style={{ fontSize: 11, color: parseFloat(draft.paid || 0) >= parseFloat(draft.amount) ? '#16a34a' : '#dc2626', fontWeight: 700, marginTop: 2, textAlign: 'center' }}>
+            {parseFloat(draft.paid || 0) >= parseFloat(draft.amount)
               ? (ar ? '✅ مدفوعة كاملاً' : '✅ שולם במלואו')
-              : `${ar ? 'متبقي' : 'נותר'}: ₪${(parseFloat(extra.amount) - parseFloat(extra.paid || 0)).toLocaleString()}`}
+              : `${ar ? 'متبقي' : 'נותר'}: ₪${(parseFloat(draft.amount) - parseFloat(draft.paid || 0)).toLocaleString()}`}
           </div>
         </div>
       )}
@@ -113,6 +136,8 @@ function ExtraRow({ idx, extra, onChange, onRemove, suggestions, ar }) {
 }
 
 // ✅ شباك الإضافة الجماعية على مجموعة كبيرة من المزارعين/الأراضي دفعة واحدة
+// ✅ بعد نقل الإضافات لتصير تابعة للأرض: ما عاد فيه شرط "لازم يكون في قراءة
+// مسجّلة عالأرض" — تقدر تضيف على أي أرض مباشرة بغض النظر عن وجود قراءات لها
 function BulkExtraModal({ farmers, lands, regions, readings, onClose, onApplied, ar }) {
   const [step, setStep] = useState(1);
   const [title, setTitle] = useState('');
@@ -196,24 +221,12 @@ function BulkExtraModal({ farmers, lands, regions, readings, onClose, onApplied,
 
   const clearAll = () => setSelected({});
 
-  // ✅ آخر قراءة مسجّلة لمزارع+أرض معينين (لإلحاق الإضافة بها)
-  const latestReadingFor = (farmerId, landId) => {
-    const matches = readings.filter(r => String(r.farmerId) === String(farmerId) && String(r.landId) === String(landId));
-    if (matches.length === 0) return null;
-    return matches.reduce((best, r) => (r.year > best.year ? r : best), matches[0]);
-  };
-
-  const previewRows = Object.keys(selected).filter(k => selected[k]).map(key => {
+  // ✅ كل صف مُحدَّد = مؤهّل للتطبيق مباشرة (ما عاد يعتمد على وجود قراءة مسجّلة)
+  const applyRows = Object.keys(selected).filter(k => selected[k] && !excluded[k]).map(key => {
     const [farmerId, landId] = key.split('_');
     const land = lands.find(l => String(l.id) === String(landId));
-    const reading = latestReadingFor(farmerId, landId);
-    return { key, farmerId, landId, land, reading };
+    return { key, farmerId, landId, land };
   });
-
-  // ✅ صفوف جاهزة للتطبيق (لها قراءة) — بعد استبعاد ما أزاله المستخدم يدوياً
-  const applyRows = previewRows.filter(r => r.reading && !excluded[r.key]);
-  // ✅ صفوف تحذيرية (بدون أي قراءة مسجّلة) — لن تُطبَّق عليها الإضافة أبداً
-  const warningRows = previewRows.filter(r => !r.reading && !excluded[r.key]);
 
   const applyBulk = async () => {
     if (applyRows.length === 0 || !title.trim() || !amount) return;
@@ -226,17 +239,11 @@ function BulkExtraModal({ farmers, lands, regions, readings, onClose, onApplied,
     let success = 0, fail = 0;
     for (const row of applyRows) {
       try {
-        const r = row.reading;
-        const newExtras = [
-          ...(r.extras || []),
-          { note: title.trim(), amount: parseFloat(amount) || 0, paid: paidFully ? (parseFloat(amount) || 0) : 0 },
-        ];
-        await adminAPI.updateReading(r.id, {
-          farmerId: r.farmerId, landId: r.landId, year: r.year,
-          readings: r.readings, note: r.note || '',
-          extras: newExtras,
-          meterChanges: r.meterChanges || [],
-          extra: r.extra || 0, extraPaid: r.extraPaid || 0, extraNote: r.extraNote || '',
+        await adminAPI.createLandExtra({
+          landId: row.landId,
+          note: title.trim(),
+          amount: parseFloat(amount) || 0,
+          paid: paidFully ? (parseFloat(amount) || 0) : 0,
         });
         success++;
       } catch (e) { console.error(e); fail++; }
@@ -438,14 +445,13 @@ function BulkExtraModal({ farmers, lands, regions, readings, onClose, onApplied,
                 <>
                   <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>
                     {ar ? `سيتم تطبيق "${title.trim()}" (₪${amount}) — ` : `תוחל "${title.trim()}" (₪${amount}) — `}
-                    <strong style={{ color: '#5b21b6' }}>{applyRows.length}</strong> {ar ? 'سطر' : 'שורות'}
+                    <strong style={{ color: '#5b21b6' }}>{applyRows.length}</strong> {ar ? 'أرض' : 'קרקעות'}
                   </div>
 
-                  {/* الصفوف الجاهزة للتطبيق */}
-                  <div style={{ border: '1.5px solid var(--border)', borderRadius: 10, maxHeight: 220, overflowY: 'auto', marginBottom: 14 }}>
+                  <div style={{ border: '1.5px solid var(--border)', borderRadius: 10, maxHeight: 320, overflowY: 'auto' }}>
                     {applyRows.length === 0 && (
                       <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                        {ar ? 'لا توجد أسطر جاهزة للتطبيق' : 'אין שורות מוכנות להחלה'}
+                        {ar ? 'لا توجد أراضٍ محدَّدة' : 'אין קרקעות שנבחרו'}
                       </div>
                     )}
                     {applyRows.map(row => (
@@ -471,29 +477,6 @@ function BulkExtraModal({ farmers, lands, regions, readings, onClose, onApplied,
                       </div>
                     ))}
                   </div>
-
-                  {/* تحذير: أراضٍ بدون أي قراءة مسجّلة */}
-                  {warningRows.length > 0 && (
-                    <div style={{ border: '1.5px solid #fde68a', borderRadius: 10, overflow: 'hidden' }}>
-                      <div style={{ background: '#fffbeb', padding: '8px 12px', fontSize: 12, fontWeight: 800, color: '#92400e' }}>
-                        ⚠️ {ar
-                          ? `${warningRows.length} أرض بدون أي قراءة — لن تُطبَّق عليها الإضافة`
-                          : `${warningRows.length} קרקעות ללא קריאה — התוספת לא תוחל עליהן`}
-                      </div>
-                      <div style={{ maxHeight: 140, overflowY: 'auto' }}>
-                        {warningRows.map(row => (
-                          <div key={row.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', borderTop: '1px solid #fef3c7' }}>
-                            <div style={{ fontSize: 12 }}>
-                              <span style={{ fontWeight: 700, fontFamily: 'Heebo,sans-serif' }}>{farmerName(row.farmerId)}</span>
-                              <span style={{ color: 'var(--text-muted)' }}> — {row.land?.stationNumber || '—'}</span>
-                            </div>
-                            <button type="button" onClick={() => setExcluded(prev => ({ ...prev, [row.key]: true }))}
-                              style={{ width: 20, height: 20, borderRadius: 6, border: '1.5px solid #fde68a', background: '#fff', color: '#92400e', cursor: 'pointer', fontSize: 10 }}>✕</button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
 
                   {applying && (
                     <div style={{ marginTop: 14 }}>
@@ -551,6 +534,8 @@ export default function AdminReadings({ adminRole = 'admin' }) {
   const [prices, setPrices] = useState({ globalPrice: 0, yearPrices: {}, landPrices: {} });
   // ✅ مشاريع اللجنة — تُستخدم فقط لحساب المزارعين المتأخرين بالدفع (تحذير ⚠️ بجدول القراءات)
   const [projects, setProjects] = useState([]);
+  // ✅ إضافات الأراضي (LandExtra) — مصفوفة مسطّحة لكل الإضافات بالنظام، تُجمَّع حسب landId عند الحاجة
+  const [landExtras, setLandExtras] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [showRForm, setShowRForm] = useState(false);
@@ -579,13 +564,14 @@ export default function AdminReadings({ adminRole = 'admin' }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [fd, ld, rd, rg, pr, pd] = await Promise.all([
+      const [fd, ld, rd, rg, pr, pd, ed] = await Promise.all([
         adminAPI.getFarmers(),
         adminAPI.getLands(),
         adminAPI.getReadings(),
         regionsAPI.getRegions(),
         adminAPI.getPrices(),
         adminAPI.getProjects(),
+        adminAPI.getLandExtras(), // ✅ كل إضافات الأراضي
       ]);
       setFarmers(fd.farmers || []);
       setLands(ld.lands || []);
@@ -593,17 +579,48 @@ export default function AdminReadings({ adminRole = 'admin' }) {
       setRegions(rg.regions || []);
       setPrices(pr || { globalPrice: 0, yearPrices: {}, landPrices: {} });
       setProjects(pd.projects || []);
+      setLandExtras(ed.extras || []);
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  // ✅ جمع أسماء الإضافات الموجودة للاقتراح
-  const gatherSuggestions = (rdgs) => {
-    const notes = [...new Set(
-      rdgs.filter(r => r.extras?.length).flatMap(r => r.extras.map(e => e.note)).filter(Boolean)
-    )];
+  // ✅ خريطة landId -> [إضافات] — تُبنى من المصفوفة المسطّحة عند كل تغيير
+  const landExtrasByLand = groupExtrasByLand(landExtras);
+
+  // ✅ إعادة تحميل الإضافات فقط (بعد إضافة/تعديل/حذف إضافة واحدة) — أخف من load() الكامل
+  const reloadLandExtras = async () => {
+    try { const ed = await adminAPI.getLandExtras(); setLandExtras(ed.extras || []); }
+    catch (e) { setError(e.message); }
+  };
+
+  const addLandExtraForCurrentLand = async () => {
+    if (!rForm.landId) return;
+    try {
+      await adminAPI.createLandExtra({ landId: rForm.landId, note: '', amount: 0, paid: 0 });
+      await reloadLandExtras();
+    } catch (e) { setError(e.message); }
+  };
+
+  const saveLandExtra = async (extraId, patch) => {
+    try {
+      await adminAPI.updateLandExtra(extraId, patch);
+      await reloadLandExtras();
+    } catch (e) { setError(e.message); }
+  };
+
+  const removeLandExtra = async (extraId) => {
+    if (!window.confirm(ar ? 'حذف هذه الإضافة نهائياً؟' : 'למחוק תוספת זו לצמיתות?')) return;
+    try {
+      await adminAPI.deleteLandExtra(extraId);
+      await reloadLandExtras();
+    } catch (e) { setError(e.message); }
+  };
+
+  // ✅ جمع أسماء الإضافات الموجودة للاقتراح — من إضافات الأراضي (LandExtra) مباشرة
+  const gatherSuggestions = (extrasFlat) => {
+    const notes = [...new Set((extrasFlat || []).map(e => e.note).filter(Boolean))];
     setExtrasSuggestions(notes);
   };
 
@@ -676,7 +693,7 @@ export default function AdminReadings({ adminRole = 'admin' }) {
     setEditR(null);
     setRForm(EMPTY_FORM);
     setFormFarmerSearch('');
-    gatherSuggestions(readings);
+    gatherSuggestions(landExtras);
     setError(''); setShowRForm(true);
   };
 
@@ -688,16 +705,14 @@ export default function AdminReadings({ adminRole = 'admin' }) {
     setRForm({
       farmerId: r.farmerId, landId: r.landId, year: r.year,
       readings: [...r.readings.map(String)],
-      extras: (r.extras || []).map(e => ({ note: e.note || '', amount: String(e.amount || ''), paid: String(e.paid || '') })),
       // ✅ تحميل تبديلات العداد المخزّنة مسبقاً (كنصوص قابلة للتعديل بالحقول)
       meterChanges: (r.meterChanges || []).map(m => ({
         period: m.period,
         oldFinal: String(m.oldFinal ?? ''),
         newInitial: String(m.newInitial ?? ''),
       })),
-      extra: r.extra || '', extraPaid: r.extraPaid || '', extraNote: r.extraNote || '',
     });
-    gatherSuggestions(readings);
+    gatherSuggestions(landExtras);
     setError(''); setShowRForm(true);
   };
 
@@ -709,9 +724,6 @@ export default function AdminReadings({ adminRole = 'admin' }) {
     try {
       const payload = {
         ...rForm,
-        extras: (rForm.extras || []).filter(e => e.note || parseFloat(e.amount) > 0).map(e => ({
-          note: e.note || '', amount: parseFloat(e.amount) || 0, paid: parseFloat(e.paid) || 0,
-        })),
         meterChanges: (rForm.meterChanges || []).map(m => ({
           period: m.period,
           oldFinal: parseFloat(m.oldFinal),
@@ -768,11 +780,6 @@ export default function AdminReadings({ adminRole = 'admin' }) {
       meterChanges: (prev.meterChanges || []).map(m => m.period === period ? { ...m, [field]: value } : m),
     }));
   };
-
-  // ✅ إضافة/تعديل/حذف إضافة
-  const addExtra = () => setRForm({ ...rForm, extras: [...(rForm.extras || []), { note: '', amount: '', paid: '' }] });
-  const updateExtra = (i, val) => { const ex = [...(rForm.extras || [])]; ex[i] = val; setRForm({ ...rForm, extras: ex }); };
-  const removeExtra = i => setRForm({ ...rForm, extras: (rForm.extras || []).filter((_, idx) => idx !== i) });
 
   const filtered = readings.filter(r => {
     if (filterF && String(r.farmerId) !== String(filterF)) return false;
@@ -855,9 +862,15 @@ export default function AdminReadings({ adminRole = 'admin' }) {
     const pct = total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0;
     return { total, paid, pct };
   })();
-  // ✅ إضافات: الكامل مقابل المدفوع، للقراءات المعروضة حالياً
-  const extrasGrossTotal = filtered.reduce((sum, r) => sum + getExtrasGross(r), 0);
-  const extrasPaidTotal = extrasGrossTotal - filtered.reduce((sum, r) => sum + getExtrasNet(r), 0);
+
+  // ✅ إضافات: الكامل مقابل المدفوع — للأراضي التي تظهر قراءاتها حالياً بالجدول (حسب الفلاتر)
+  // ⚠️ مهم: الإضافات تابعة للأرض وليست للقراءة — إذا كان لنفس الأرض عدة قراءات (سنوات) ظاهرة
+  // بالجدول حالياً، لازم نحسب إضافات تلك الأرض "مرة واحدة فقط" مش مرة لكل سنة (تفادياً لمضاعفة
+  // المبلغ المطلوب فعلياً)
+  const filteredLandIds = [...new Set(filtered.map(r => String(r.landId)))];
+  const extrasForFilteredLands = filteredLandIds.flatMap(lid => landExtrasByLand[lid] || []);
+  const extrasGrossTotal = getExtrasGross(extrasForFilteredLands);
+  const extrasPaidTotal = extrasGrossTotal - getExtrasNet(extrasForFilteredLands);
 
   // ✅ مشاريع: مجموع (الكامل + المدفوع) لكل مزارع — Map: farmerId → { required, paid }
   const projectsTotalsByFarmer = (() => {
@@ -924,8 +937,10 @@ export default function AdminReadings({ adminRole = 'admin' }) {
     return total + (cups > 0 ? cups * price : 0);
   }, 0);
 
-  // إجمالي الإضافات في النموذج
-  const extrasTotal = (rForm.extras || []).reduce((s, e) => (s + (parseFloat(e.amount) || 0) - (parseFloat(e.paid) || 0)), 0);
+  // ✅ إضافات الأرض المختارة حالياً بالنموذج (تابعة لـ landId، بغض النظر عن السنة)
+  const currentLandExtras = rForm.landId ? (landExtrasByLand[rForm.landId] || []) : [];
+  // إجمالي الإضافات المتبقية لهذه الأرض
+  const extrasTotal = getExtrasNet(currentLandExtras);
 
   // ✅ تحويل رقم الهاتف لصيغة دولية يفهمها رابط واتساب (wa.me) — افتراض إسرائيل (972+)
   const normalizePhone = (phone) => {
@@ -936,10 +951,12 @@ export default function AdminReadings({ adminRole = 'admin' }) {
     return digits;
   };
 
-  // ✅ يبني نص كشف واتساب لمزارع واحد: تفصيل كل أرض/فترة + المبلغ الإجمالي غير المدفوع
+  // ✅ يبني نص كشف واتساب لمزارع واحد: تفصيل كل أرض/فترة + الإضافات غير المدفوعة (مرة واحدة
+  // لكل أرض، مش لكل سنة) + المبلغ الإجمالي غير المدفوع
   const buildFarmerStatement = (farmer, readingsForFarmer) => {
     let grandTotal = 0;
     const landBlocks = [];
+    const extrasShownForLand = new Set(); // ✅ نمنع تكرار إضافات نفس الأرض لو عندها أكثر من قراءة/سنة بالكشف
 
     readingsForFarmer.forEach(r => {
       const land = lands.find(l => String(l.id) === String(r.landId));
@@ -947,7 +964,7 @@ export default function AdminReadings({ adminRole = 'admin' }) {
       // ✅ اسم الأرض الوصفي (منطقة/اسم خاص) — يُعرض بجانب رقم المحطة لأن بعض
       // المزارعين لا يعرفون رقم محطتهم، بينما اسم الأرض/المنطقة مألوف لهم
       const landDisplay = landName(r.landId);
-      const landLabel = (stationLabel && landDisplay && landDisplay !== stationLabel)
+      const landLabelStr = (stationLabel && landDisplay && landDisplay !== stationLabel)
         ? `${stationLabel} — ${landDisplay}`
         : (stationLabel || landDisplay || '');
 
@@ -968,20 +985,24 @@ export default function AdminReadings({ adminRole = 'admin' }) {
         if (!isPaid) { landTotal += amt; grandTotal += amt; }
       });
 
-      // ✅ الإضافات غير المدفوعة لهذه الأرض
-      getExtras(r).forEach(ex => {
-        const amt = parseFloat(ex.amount) || 0;
-        const paidAmt = parseFloat(ex.paid) || 0;
-        const rem = amt - paidAmt;
-        if (rem > 0.01) {
-          periodLines.push(`   - ${ex.note || (ar ? 'إضافة' : 'תוספת')}: ₪${Math.round(rem).toLocaleString()} ${ar ? '[غير مدفوع]' : '[לא שולם]'}`);
-          landTotal += rem; grandTotal += rem;
-        }
-      });
+      // ✅ الإضافات غير المدفوعة لهذه الأرض — مرة واحدة بس، حتى لو ظهرت لهذا المزارع أكثر
+      // من قراءة/سنة لنفس الأرض بهذا الكشف
+      if (!extrasShownForLand.has(String(r.landId))) {
+        extrasShownForLand.add(String(r.landId));
+        (landExtrasByLand[r.landId] || []).forEach(ex => {
+          const amt = parseFloat(ex.amount) || 0;
+          const paidAmt = parseFloat(ex.paid) || 0;
+          const rem = amt - paidAmt;
+          if (rem > 0.01) {
+            periodLines.push(`   - ${ex.note || (ar ? 'إضافة' : 'תוספת')}: ₪${Math.round(rem).toLocaleString()} ${ar ? '[غير مدفوع]' : '[לא שולם]'}`);
+            landTotal += rem; grandTotal += rem;
+          }
+        });
+      }
 
       if (periodLines.length > 0) {
         landBlocks.push(
-          `${ar ? 'الأرض' : 'קרקע'}: ${landLabel} (${r.year})\n${periodLines.join('\n')}` +
+          `${ar ? 'الأرض' : 'קרקע'}: ${landLabelStr} (${r.year})\n${periodLines.join('\n')}` +
           (landTotal > 0 ? `\n   ${ar ? 'مجموع الأرض' : 'סה"כ קרקע'}: ₪${Math.round(landTotal).toLocaleString()}` : '')
         );
       }
@@ -1076,8 +1097,6 @@ export default function AdminReadings({ adminRole = 'admin' }) {
           {combinedPct}% (₪{Math.round(combinedPaid).toLocaleString()} / ₪{Math.round(combinedTotal).toLocaleString()})
         </span>
       </div>
-
-      {/* ── شريط نسبة الدفع ── */}
 
       {/* ── شريط نسبة الدفع ── */}
       <div className="card mb-16" style={{ padding: '14px 18px' }}>
@@ -1426,42 +1445,48 @@ export default function AdminReadings({ adminRole = 'admin' }) {
                 )}
               </div>
 
-              {/* ✅ قسم الإضافات المتعددة */}
+              {/* ✅ قسم الإضافات — الآن تابعة للأرض المختارة (landId) وتُحفظ فوراً بالسيرفر،
+                  بغض النظر عن سنة القراءة المفتوحة هلق. بتظهر بنفس الشكل لو فتحت أي قراءة
+                  تانية لنفس الأرض (سنة مختلفة)، لحد ما تُعلَّم مدفوعة بالكامل. */}
               <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: 12, padding: '14px 16px', marginBottom: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                   <h4 style={{ margin: 0, fontSize: 14, color: '#92400e' }}>
-                    ➕ {ar ? 'الإضافات' : 'תוספות'}
-                    {(rForm.extras || []).length > 0 && (
+                    ➕ {ar ? 'إضافات هذه الأرض' : 'תוספות הקרקע הזו'}
+                    {currentLandExtras.length > 0 && (
                       <span style={{ marginRight: 8, background: '#fed7aa', color: '#92400e', borderRadius: 8, padding: '1px 8px', fontSize: 12 }}>
-                        {(rForm.extras || []).length}
+                        {currentLandExtras.length}
                       </span>
                     )}
                   </h4>
-                  <button type="button" onClick={addExtra}
-                    style={{ padding: '5px 14px', borderRadius: 8, border: '1.5px solid #f59e0b', background: '#fff', color: '#92400e', cursor: 'pointer', fontWeight: 700, fontSize: 12 }}>
+                  <button type="button" onClick={addLandExtraForCurrentLand} disabled={!rForm.landId}
+                    style={{ padding: '5px 14px', borderRadius: 8, border: '1.5px solid #f59e0b', background: '#fff', color: '#92400e', cursor: rForm.landId ? 'pointer' : 'not-allowed', fontWeight: 700, fontSize: 12, opacity: rForm.landId ? 1 : 0.5 }}>
                     + {ar ? 'إضافة جديدة' : 'תוספת חדשה'}
                   </button>
                 </div>
 
-                {(rForm.extras || []).length === 0 ? (
+                {!rForm.landId ? (
                   <div style={{ textAlign: 'center', color: '#d97706', fontSize: 12, padding: '8px 0' }}>
-                    {ar ? 'لا توجد إضافات — اضغط + لإضافة' : 'אין תוספות — לחץ + להוסיף'}
+                    {ar ? 'اختر المزارع والمحطة أولاً' : 'בחר חקלאי ותחנה תחילה'}
+                  </div>
+                ) : currentLandExtras.length === 0 ? (
+                  <div style={{ textAlign: 'center', color: '#d97706', fontSize: 12, padding: '8px 0' }}>
+                    {ar ? 'لا توجد إضافات على هذه الأرض — اضغط + لإضافة' : 'אין תוספות לקרקע זו — לחץ + להוסיף'}
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {(rForm.extras || []).map((ex, i) => (
-                      <ExtraRow key={i} idx={i} extra={ex}
-                        onChange={val => updateExtra(i, val)}
-                        onRemove={() => removeExtra(i)}
+                    {currentLandExtras.map(ex => (
+                      <ExtraRow key={ex.id} extra={ex}
+                        onSave={patch => saveLandExtra(ex.id, patch)}
+                        onRemove={() => removeLandExtra(ex.id)}
                         suggestions={extrasSuggestions}
                         ar={ar}
                       />
                     ))}
                     {/* إجمالي الإضافات */}
-                    {(rForm.extras || []).length > 1 && (
+                    {currentLandExtras.length > 1 && (
                       <div style={{ background: '#92400e', borderRadius: 8, padding: '8px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ color: '#fde68a', fontWeight: 700, fontSize: 13 }}>
-                          {ar ? 'إجمالي الإضافات المتبقية:' : 'סה"כ תוספות שנותרו:'}
+                          {ar ? 'إجمالي الإضافات المتبقية على هذه الأرض:' : 'סה"כ תוספות שנותרו לקרקע זו:'}
                         </span>
                         <span style={{ color: '#fff', fontWeight: 900, fontSize: 18 }}>₪{extrasTotal.toLocaleString()}</span>
                       </div>
@@ -1502,6 +1527,7 @@ export default function AdminReadings({ adminRole = 'admin' }) {
           lands={lands}
           regions={regions}
           unpaidProjectsByFarmer={unpaidProjectsByFarmer}
+          landExtrasByLand={landExtrasByLand}
         />
       )}
     </div>

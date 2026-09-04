@@ -3,6 +3,7 @@ const Farmer     = require('../models/Farmer');
 const Land       = require('../models/Land');
 const Reading    = require('../models/Reading');
 const FarmerNote = require('../models/FarmerNote');
+const LandExtra  = require('../models/LandExtra'); // ✅ إضافات تابعة للأرض (بدل ما كانت جوا Reading)
 const { Prices, Announcement, Gallery, Video, Admin } = require('../models/Settings');
 const { getStorage } = require('../../config/firebase');
 
@@ -151,7 +152,8 @@ const updateLand = async (req, res) => {
 const deleteLand = async (req, res) => {
   try {
     const id = req.params.landId;
-    await Promise.all([ Land.findByIdAndDelete(id), Reading.deleteMany({ landId: id }) ]);
+    // ✅ نحذف كمان إضافات هاي الأرض (LandExtra) — ما في داعي تبقى يتيمة بعد حذف الأرض نفسها
+    await Promise.all([ Land.findByIdAndDelete(id), Reading.deleteMany({ landId: id }), LandExtra.deleteMany({ landId: id }) ]);
     return res.json({ success: true });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
@@ -171,6 +173,8 @@ const cleanDuplicateLands = async (req, res) => {
       const toDelete = group.slice(1);
       for (const land of toDelete) {
         await Reading.updateMany({ landId: land._id }, { $set: { landId: group[0]._id } });
+        // ✅ ننقل إضافات الأرض المكرّرة (لو فيها) للأرض المُبقاة، بدل ما تضيع
+        await LandExtra.updateMany({ landId: land._id }, { $set: { landId: group[0]._id } });
         await Land.findByIdAndDelete(land._id);
         deleted++;
       }
@@ -184,17 +188,6 @@ const cleanDuplicateLands = async (req, res) => {
 // ════════════════════════════════════════
 //  READINGS
 // ════════════════════════════════════════
-const parseExtras = (extrasRaw) => {
-  if (!Array.isArray(extrasRaw)) return [];
-  return extrasRaw
-    .filter(e => e.note || parseFloat(e.amount) > 0)
-    .map(e => ({
-      note:   e.note || '',
-      amount: parseFloat(e.amount) || 0,
-      paid:   parseFloat(e.paid)   || 0,
-    }));
-};
-
 const cleanReadingsArray = (readings) => (readings || []).map((r) => {
   if (r === '' || r === null || r === undefined) return null;
   const f = parseFloat(r);
@@ -234,6 +227,10 @@ const deriveLegacyPaid = (cleanReadings, paidPeriods) => {
   return activeIdx.length > 0 && activeIdx.every(i => paidPeriods[i]);
 };
 
+// ✅ الإضافات (extras) انتقلت لكولكشن LandExtra المستقل — القراءة ما عادت تحمل
+// ولا سبب/مبلغ إضافة إطلاقاً. الحقول extra/extraPaid/extraNote تبقى بالموديل
+// فقط للتوافق التاريخي مع مستندات قديمة (سكربت الترحيل بيصفّرها)، وما عاد
+// أي كود جديد يقرأها أو يكتبها.
 const serializeReading = (r) => ({
   ...r,
   id:       r._id.toString(),
@@ -242,15 +239,6 @@ const serializeReading = (r) => ({
   stationNumber: r.stationNumber || '',
   stationLat:    r.stationLat    || null,
   stationLng:    r.stationLng    || null,
-  extras:    (r.extras || []).map(e => ({
-    id:     e._id?.toString(),
-    note:   e.note   || '',
-    amount: e.amount || 0,
-    paid:   e.paid   || 0,
-  })),
-  extra:     r.extra     || 0,
-  extraPaid: r.extraPaid || 0,
-  extraNote: r.extraNote || '',
   note:      r.note      || '',
   paidPeriods: r.paidPeriods || [],
   // ✅ تبديلات العداد (فترة + إغلاق قديم + بداية جديد)
@@ -271,7 +259,7 @@ const getReadings = async (req, res) => {
 
 const createReading = async (req, res) => {
   try {
-    const { farmerId, landId, year, readings, note, extra, extraPaid, extraNote } = req.body;
+    const { farmerId, landId, year, readings, note } = req.body;
     if (!farmerId || !landId || !year || !readings?.length) return res.status(400).json({ error: 'جميع الحقول مطلوبة' });
     if (readings[0] === '' || readings[0] === null || readings[0] === undefined)
       return res.status(400).json({ error: 'القراءة الأولى (البداية) مطلوبة' });
@@ -288,10 +276,6 @@ const createReading = async (req, res) => {
       stationNumber: land?.stationNumber || '',
       stationLat:    land?.stationLat    || null,
       stationLng:    land?.stationLng    || null,
-      extras:    parseExtras(req.body.extras),
-      extra:     parseFloat(extra)     || 0,
-      extraPaid: parseFloat(extraPaid) || 0,
-      extraNote: extraNote || '',
       note:      note      || '',
       paidPeriods,
       meterChanges,
@@ -307,7 +291,7 @@ const createReading = async (req, res) => {
 
 const updateReading = async (req, res) => {
   try {
-    const { farmerId, landId, year, readings, note, extra, extraPaid, extraNote } = req.body;
+    const { farmerId, landId, year, readings, note } = req.body;
 
     const [land, existing] = await Promise.all([
       Land.findById(landId).lean(),
@@ -326,10 +310,6 @@ const updateReading = async (req, res) => {
       stationNumber: land?.stationNumber || '',
       stationLat:    land?.stationLat    || null,
       stationLng:    land?.stationLng    || null,
-      extras:    parseExtras(req.body.extras),
-      extra:     parseFloat(extra)     || 0,
-      extraPaid: parseFloat(extraPaid) || 0,
-      extraNote: extraNote || '',
       note:      note      || '',
       paidPeriods,
       meterChanges,
@@ -430,11 +410,12 @@ const getReport = async (req, res) => {
     const filter = {};
     if (req.query.year)     filter.year = parseInt(req.query.year);
     if (req.query.farmerId) filter.farmerId = req.query.farmerId;
-    const [farmers, lands, readings, pricesDoc] = await Promise.all([
+    const [farmers, lands, readings, pricesDoc, landExtras] = await Promise.all([
       Farmer.find().sort({ name: 1 }).lean(),
       Land.find().lean(),
       Reading.find(filter).sort({ year: -1 }).lean(),
       Prices.findOne({ key: 'prices' }).lean(),
+      LandExtra.find().lean(), // ✅ كل إضافات الأراضي — التقارير بتربطها بالأرض بنفسها
     ]);
     const prices = pricesDoc ? { globalPrice: pricesDoc.globalPrice || 0, yearPrices: pricesDoc.yearPrices || {}, landPrices: pricesDoc.landPrices || {} } : {};
     return res.json({
@@ -444,13 +425,16 @@ const getReport = async (req, res) => {
         ...r, id: r._id.toString(),
         farmerId: r.farmerId?.toString() || '', landId: r.landId?.toString() || '',
         stationNumber: r.stationNumber || '',
-        extras: (r.extras || []).map(e => ({ id: e._id?.toString(), note: e.note||'', amount: e.amount||0, paid: e.paid||0 })),
-        extra: r.extra || 0, extraPaid: r.extraPaid || 0,
-        extraNote: r.extraNote || '',
         paidPeriods: r.paidPeriods || [],
         // ✅ تبديلات العداد — لازم تُستخدم بالتقارير عند حساب الاستهلاك
         meterChanges: r.meterChanges || [],
         paid: r.paid || false, paidAt: r.paidAt || null,
+      })),
+      // ✅ إضافات الأراضي — سجل واحد لكل إضافة، مربوط بـ landId فقط (بدون سنة)
+      landExtras: landExtras.map(e => ({
+        id: e._id.toString(), landId: e.landId.toString(),
+        note: e.note || '', amount: e.amount || 0, paid: e.paid || 0,
+        createdAt: e.createdAt,
       })),
       prices,
     });
@@ -612,7 +596,7 @@ const applyReadingsImport = async (req, res) => {
             stationNumber: land?.stationNumber || '',
             stationLat:    land?.stationLat    || null,
             stationLng:    land?.stationLng    || null,
-            extras: [], extra: 0, extraPaid: 0, extraNote: '', note: '',
+            note: '',
             paidPeriods: buildPaidPeriods([], periodsCount),
             meterChanges: [],
           });

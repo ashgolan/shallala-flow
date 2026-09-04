@@ -49,6 +49,13 @@ router.post  ('/readings',              ctrl.createReading);
 router.put   ('/readings/:readingId',   ctrl.updateReading);
 router.delete('/readings/:readingId',   ctrl.deleteReading);
 
+const landExtraCtrl = require('../controllers/landExtraController');
+// ── Land Extras ──────────────────────────
+router.get   ('/land-extras',           landExtraCtrl.getLandExtras);
+router.post  ('/land-extras',           landExtraCtrl.createLandExtra);
+router.put   ('/land-extras/:extraId',  landExtraCtrl.updateLandExtra);
+router.delete('/land-extras/:extraId',  landExtraCtrl.deleteLandExtra);
+
 // ── Prices ───────────────────────────────
 router.get ('/prices',  ctrl.getPrices);
 router.post('/prices',  ctrl.updatePrices);

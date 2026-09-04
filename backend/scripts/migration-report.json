@@ -1,0 +1,3002 @@
+{
+  "generatedAt": "2026-09-04T20:07:11.995Z",
+  "scannedReadings": 365,
+  "readingsWithExtras": 295,
+  "totalItems": 317,
+  "landsCount": 291,
+  "duplicateGroups": 11,
+  "duplicateItems": 22,
+  "duplicates": [
+    {
+      "landId": "6a25cf88d18e008c88d0d0a8",
+      "stationNumber": "K4",
+      "landLabel": "K4",
+      "farmerName": "עלא שעלאן",
+      "years": [
+        2026,
+        2026
+      ],
+      "groups": [
+        {
+          "note": "השתתפות קו מים חקלאי",
+          "amount": 400,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "landId": "6a25cf88d18e008c88d0d0a9",
+      "stationNumber": "L6",
+      "landLabel": "L6",
+      "farmerName": "עלא שעלאן",
+      "years": [
+        2026,
+        2026
+      ],
+      "groups": [
+        {
+          "note": "השתתפות קו מים חקלאי",
+          "amount": 400,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "landId": "6a2c065bcdc3dd5c2e207457",
+      "stationNumber": "H1",
+      "landLabel": "H1",
+      "farmerName": "אגיד דמקסי",
+      "years": [
+        2026,
+        2026
+      ],
+      "groups": [
+        {
+          "note": "השתתפות קו מים חקלאי",
+          "amount": 400,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "landId": "6a2c065bcdc3dd5c2e207458",
+      "stationNumber": "I2",
+      "landLabel": "I2",
+      "farmerName": "אגיד דמקסי",
+      "years": [
+        2026,
+        2026
+      ],
+      "groups": [
+        {
+          "note": "השתתפות קו מים חקלאי",
+          "amount": 400,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "landId": "6a36a064e1f4f74886cf9b8d",
+      "stationNumber": "C11",
+      "landLabel": "C11",
+      "farmerName": "האני היסם מוגרבי",
+      "years": [
+        2026,
+        2026
+      ],
+      "groups": [
+        {
+          "note": "השתתפות קו מים חקלאי",
+          "amount": 400,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "landId": "6a3c4191bbd8ac9b122a7542",
+      "stationNumber": "K2",
+      "landLabel": "K2",
+      "farmerName": "חמוד סעב",
+      "years": [
+        2026,
+        2026
+      ],
+      "groups": [
+        {
+          "note": "השתתפות קו מים חקלאי",
+          "amount": 400,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "landId": "6a3c453ebbd8ac9b122a7573",
+      "stationNumber": "H6",
+      "landLabel": "H6",
+      "farmerName": "מדאא שופי",
+      "years": [
+        2026,
+        2026
+      ],
+      "groups": [
+        {
+          "note": "השתתפות קו מים חקלאי",
+          "amount": 400,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "landId": "6a3c453ebbd8ac9b122a7574",
+      "stationNumber": "L1",
+      "landLabel": "L1",
+      "farmerName": "מדאא שופי",
+      "years": [
+        2026,
+        2026
+      ],
+      "groups": [
+        {
+          "note": "השתתפות קו מים חקלאי",
+          "amount": 400,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "landId": "6a3e920b1105db39f370df75",
+      "stationNumber": "I4",
+      "landLabel": "I4",
+      "farmerName": "נביה שעלאן",
+      "years": [
+        2026,
+        2026,
+        2026
+      ],
+      "groups": [
+        {
+          "note": "השתתפות קו מים חקלאי",
+          "amount": 400,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "landId": "6a3e92fa1105db39f370df7a",
+      "stationNumber": "J2",
+      "landLabel": "J2",
+      "farmerName": "סעד שעלאן",
+      "years": [
+        2026,
+        2026
+      ],
+      "groups": [
+        {
+          "note": "השתתפות קו מים חקלאי",
+          "amount": 400,
+          "count": 2
+        }
+      ]
+    },
+    {
+      "landId": "6a3e93781105db39f370df85",
+      "stationNumber": "H7",
+      "landLabel": "H7",
+      "farmerName": "סלמאן ע\"סאן שעלאן",
+      "years": [
+        2026,
+        2026
+      ],
+      "groups": [
+        {
+          "note": "השתתפות קו מים חקלאי",
+          "amount": 400,
+          "count": 2
+        }
+      ]
+    }
+  ],
+  "allItemsByLand": {
+    "6a25cf88d18e008c88d0d0a8": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3c113a3bb7b5c97311",
+        "year": 2026
+      },
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3c113a3bb7b5c97311",
+        "year": 2026
+      }
+    ],
+    "6a25cf88d18e008c88d0d0a9": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af41113a3bb7b5c97339",
+        "year": 2026
+      },
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af41113a3bb7b5c97339",
+        "year": 2026
+      }
+    ],
+    "6a26c3efd18e008c88d0d0b5": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1d113a3bb7b5c97225",
+        "year": 2026
+      }
+    ],
+    "6a27b90e418930ddd555f5ab": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af36113a3bb7b5c972e5",
+        "year": 2026
+      }
+    ],
+    "6a27c131940d65a678efc7e3": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af3b113a3bb7b5c97308",
+        "year": 2026
+      }
+    ],
+    "6a27c147940d65a678efc7e4": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af37113a3bb7b5c972ee",
+        "year": 2026
+      }
+    ],
+    "6a27c166940d65a678efc7e5": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af33113a3bb7b5c972cd",
+        "year": 2026
+      }
+    ],
+    "6a27c166940d65a678efc7e6": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af35113a3bb7b5c972d9",
+        "year": 2026
+      }
+    ],
+    "6a27c2bc940d65a678efc7e8": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af18113a3bb7b5c971fe",
+        "year": 2026
+      }
+    ],
+    "6a27c354940d65a678efc7eb": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2c113a3bb7b5c97294",
+        "year": 2026
+      }
+    ],
+    "6a27c354940d65a678efc7ec": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2f113a3bb7b5c972af",
+        "year": 2026
+      }
+    ],
+    "6a27dbb0940d65a678efc7fa": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af18113a3bb7b5c97203",
+        "year": 2026
+      }
+    ],
+    "6a27dcbb940d65a678efc7fc": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af19113a3bb7b5c97206",
+        "year": 2026
+      }
+    ],
+    "6a27dd0c940d65a678efc7fe": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af25113a3bb7b5c97267",
+        "year": 2026
+      }
+    ],
+    "6a27dd70940d65a678efc800": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af19113a3bb7b5c9720c",
+        "year": 2026
+      }
+    ],
+    "6a27dddb940d65a678efc802": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af19113a3bb7b5c97205",
+        "year": 2026
+      }
+    ],
+    "6a27df1a940d65a678efc804": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af18113a3bb7b5c97204",
+        "year": 2026
+      }
+    ],
+    "6a27df1b940d65a678efc805": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af2b113a3bb7b5c9728e",
+        "year": 2026
+      }
+    ],
+    "6a27dfed940d65a678efc807": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af19113a3bb7b5c97209",
+        "year": 2026
+      }
+    ],
+    "6a284b1686f18aa2316867c5": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af26113a3bb7b5c9726c",
+        "year": 2026
+      }
+    ],
+    "6a284b8986f18aa2316867c7": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af15113a3bb7b5c971e7",
+        "year": 2026
+      }
+    ],
+    "6a284b8986f18aa2316867c8": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2a113a3bb7b5c97289",
+        "year": 2026
+      }
+    ],
+    "6a284b8a86f18aa2316867c9": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af29113a3bb7b5c97282",
+        "year": 2026
+      }
+    ],
+    "6a284b8a86f18aa2316867ca": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af32113a3bb7b5c972c4",
+        "year": 2026
+      }
+    ],
+    "6a28511d86f18aa2316867cc": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af18113a3bb7b5c97202",
+        "year": 2026
+      }
+    ],
+    "6a28518286f18aa2316867ce": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af15113a3bb7b5c971ec",
+        "year": 2026
+      }
+    ],
+    "6a28518386f18aa2316867cf": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af24113a3bb7b5c9725c",
+        "year": 2026
+      }
+    ],
+    "6a28518386f18aa2316867d0": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af25113a3bb7b5c97264",
+        "year": 2026
+      }
+    ],
+    "6a28518386f18aa2316867d1": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2a113a3bb7b5c97285",
+        "year": 2026
+      }
+    ],
+    "6a2851e286f18aa2316867d3": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af15113a3bb7b5c971ea",
+        "year": 2026
+      }
+    ],
+    "6a28526686f18aa2316867d5": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1d113a3bb7b5c97227",
+        "year": 2026
+      }
+    ],
+    "6a28526786f18aa2316867d6": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af20113a3bb7b5c9723b",
+        "year": 2026
+      }
+    ],
+    "6a28526786f18aa2316867d7": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af24113a3bb7b5c9725a",
+        "year": 2026
+      }
+    ],
+    "6a2852e286f18aa2316867dd": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2e113a3bb7b5c972a9",
+        "year": 2026
+      }
+    ],
+    "6a29c6a317f02bc9fd5b035e": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af1b113a3bb7b5c9721b",
+        "year": 2026
+      }
+    ],
+    "6a29c73317f02bc9fd5b0365": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3f113a3bb7b5c9732a",
+        "year": 2026
+      }
+    ],
+    "6a29c79517f02bc9fd5b0367": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af16113a3bb7b5c971f5",
+        "year": 2026
+      }
+    ],
+    "6a29c79517f02bc9fd5b0368": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af17113a3bb7b5c971f6",
+        "year": 2026
+      }
+    ],
+    "6a29c79517f02bc9fd5b0369": [
+      {
+        "note": "התקנת מחשב השקייה",
+        "amount": 590,
+        "paid": 0,
+        "fromReadingId": "6a47af24113a3bb7b5c9725b",
+        "year": 2026
+      }
+    ],
+    "6a2b1498cdc3dd5c2e207428": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1f113a3bb7b5c97239",
+        "year": 2026
+      }
+    ],
+    "6a2b14e4cdc3dd5c2e20742b": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1e113a3bb7b5c9722d",
+        "year": 2026
+      }
+    ],
+    "6a2b152bcdc3dd5c2e20742d": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1e113a3bb7b5c9722b",
+        "year": 2026
+      }
+    ],
+    "6a2b1569cdc3dd5c2e20742f": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af20113a3bb7b5c9723a",
+        "year": 2026
+      }
+    ],
+    "6a2b1569cdc3dd5c2e207430": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af33113a3bb7b5c972cc",
+        "year": 2026
+      }
+    ],
+    "6a2b169bcdc3dd5c2e207432": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af17113a3bb7b5c971fd",
+        "year": 2026
+      }
+    ],
+    "6a2b169bcdc3dd5c2e207433": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1e113a3bb7b5c9722c",
+        "year": 2026
+      }
+    ],
+    "6a2b169ccdc3dd5c2e207434": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af27113a3bb7b5c97274",
+        "year": 2026
+      }
+    ],
+    "6a2b16decdc3dd5c2e207436": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af39113a3bb7b5c972fc",
+        "year": 2026
+      }
+    ],
+    "6a2b1746cdc3dd5c2e207438": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af17113a3bb7b5c971fc",
+        "year": 2026
+      }
+    ],
+    "6a2b1746cdc3dd5c2e207439": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af32113a3bb7b5c972c8",
+        "year": 2026
+      }
+    ],
+    "6a2b1746cdc3dd5c2e20743a": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3c113a3bb7b5c97310",
+        "year": 2026
+      }
+    ],
+    "6a2b190acdc3dd5c2e20743b": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af17113a3bb7b5c971fa",
+        "year": 2026
+      }
+    ],
+    "6a2b1967cdc3dd5c2e20743d": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af20113a3bb7b5c9723c",
+        "year": 2026
+      }
+    ],
+    "6a2b19b6cdc3dd5c2e207440": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af17113a3bb7b5c971f9",
+        "year": 2026
+      }
+    ],
+    "6a2b19d6cdc3dd5c2e207442": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af21113a3bb7b5c97242",
+        "year": 2026
+      }
+    ],
+    "6a2b1a28cdc3dd5c2e207444": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3f113a3bb7b5c97326",
+        "year": 2026
+      }
+    ],
+    "6a2b1a69cdc3dd5c2e207446": [
+      {
+        "note": "התקהת סולונואיד חדש",
+        "amount": 118,
+        "paid": 118,
+        "fromReadingId": "6a47af1f113a3bb7b5c97235",
+        "year": 2026
+      },
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1f113a3bb7b5c97235",
+        "year": 2026
+      }
+    ],
+    "6a2b1c61cdc3dd5c2e207448": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1a113a3bb7b5c97210",
+        "year": 2026
+      }
+    ],
+    "6a2b1caecdc3dd5c2e20744b": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3d113a3bb7b5c97319",
+        "year": 2026
+      }
+    ],
+    "6a2b1caecdc3dd5c2e20744c": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3f113a3bb7b5c97327",
+        "year": 2026
+      }
+    ],
+    "6a2c0592cdc3dd5c2e207454": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2f113a3bb7b5c972ab",
+        "year": 2026
+      }
+    ],
+    "6a2c065bcdc3dd5c2e207457": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af31113a3bb7b5c972c1",
+        "year": 2026
+      },
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af31113a3bb7b5c972c1",
+        "year": 2026
+      }
+    ],
+    "6a2c065bcdc3dd5c2e207458": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af37113a3bb7b5c972e9",
+        "year": 2026
+      },
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af37113a3bb7b5c972e9",
+        "year": 2026
+      }
+    ],
+    "6a2c0695cdc3dd5c2e20745a": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af32113a3bb7b5c972c5",
+        "year": 2026
+      }
+    ],
+    "6a2c06c4cdc3dd5c2e20745c": [
+      {
+        "note": "התקנת עמדה חדשה כולל מחשב ( ללא כלוב )",
+        "amount": 2700,
+        "paid": 2700,
+        "fromReadingId": "6a47af3e113a3bb7b5c97323",
+        "year": 2026
+      },
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3e113a3bb7b5c97323",
+        "year": 2026
+      }
+    ],
+    "6a2c06ffcdc3dd5c2e20745e": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2c113a3bb7b5c9729b",
+        "year": 2026
+      }
+    ],
+    "6a2c0778cdc3dd5c2e207460": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af32113a3bb7b5c972c3",
+        "year": 2026
+      }
+    ],
+    "6a2c088bcdc3dd5c2e207462": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af38113a3bb7b5c972f4",
+        "year": 2026
+      }
+    ],
+    "6a2c088bcdc3dd5c2e207463": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af40113a3bb7b5c9732c",
+        "year": 2026
+      }
+    ],
+    "6a2c0a39cdc3dd5c2e207467": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1e113a3bb7b5c9722e",
+        "year": 2026
+      }
+    ],
+    "6a2c0ad7cdc3dd5c2e207469": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1d113a3bb7b5c97223",
+        "year": 2026
+      }
+    ],
+    "6a2c0ad8cdc3dd5c2e20746a": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2c113a3bb7b5c9729a",
+        "year": 2026
+      }
+    ],
+    "6a2c0ad8cdc3dd5c2e20746b": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3a113a3bb7b5c972ff",
+        "year": 2026
+      }
+    ],
+    "6a2c0ad8cdc3dd5c2e20746c": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2d113a3bb7b5c972a1",
+        "year": 2026
+      }
+    ],
+    "6a2c0ad8cdc3dd5c2e20746d": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3a113a3bb7b5c97300",
+        "year": 2026
+      }
+    ],
+    "6a2c0b8dcdc3dd5c2e20746f": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1c113a3bb7b5c9721c",
+        "year": 2026
+      }
+    ],
+    "6a2c0d71cdc3dd5c2e207474": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af17113a3bb7b5c971fb",
+        "year": 2026
+      }
+    ],
+    "6a2c0d71cdc3dd5c2e207475": [
+      {
+        "note": "התקנת עמדה חדשה כולל מחשב ( ללא כלוב )",
+        "amount": 2500,
+        "paid": 2500,
+        "fromReadingId": "6a47af3e113a3bb7b5c97321",
+        "year": 2026
+      },
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3e113a3bb7b5c97321",
+        "year": 2026
+      }
+    ],
+    "6a2c0da2cdc3dd5c2e207477": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1d113a3bb7b5c97226",
+        "year": 2026
+      }
+    ],
+    "6a2c0dfecdc3dd5c2e207479": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2e113a3bb7b5c972a3",
+        "year": 2026
+      }
+    ],
+    "6a2c0dfecdc3dd5c2e20747a": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2d113a3bb7b5c972a2",
+        "year": 2026
+      }
+    ],
+    "6a2c0e35cdc3dd5c2e20747c": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af35113a3bb7b5c972dd",
+        "year": 2026
+      }
+    ],
+    "6a2c0e60cdc3dd5c2e20747e": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2a113a3bb7b5c9728a",
+        "year": 2026
+      }
+    ],
+    "6a2c0e90cdc3dd5c2e207480": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af29113a3bb7b5c9727f",
+        "year": 2026
+      }
+    ],
+    "6a2c0fe5cdc3dd5c2e207482": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2c113a3bb7b5c97299",
+        "year": 2026
+      }
+    ],
+    "6a2c1357cdc3dd5c2e207485": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af40113a3bb7b5c97331",
+        "year": 2026
+      }
+    ],
+    "6a2c1357cdc3dd5c2e207486": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af23113a3bb7b5c97252",
+        "year": 2026
+      }
+    ],
+    "6a2c1389cdc3dd5c2e207488": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af1c113a3bb7b5c9721e",
+        "year": 2026
+      }
+    ],
+    "6a2c13becdc3dd5c2e20748a": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1a113a3bb7b5c97211",
+        "year": 2026
+      }
+    ],
+    "6a2c13fbcdc3dd5c2e20748c": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3a113a3bb7b5c97301",
+        "year": 2026
+      }
+    ],
+    "6a2c1428cdc3dd5c2e20748e": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af36113a3bb7b5c972e7",
+        "year": 2026
+      }
+    ],
+    "6a2c1428cdc3dd5c2e20748f": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af39113a3bb7b5c972f8",
+        "year": 2026
+      }
+    ],
+    "6a2c1480cdc3dd5c2e207491": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af1c113a3bb7b5c9721d",
+        "year": 2026
+      }
+    ],
+    "6a2c14c4cdc3dd5c2e207494": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af27113a3bb7b5c97271",
+        "year": 2026
+      }
+    ],
+    "6a2c14c4cdc3dd5c2e207495": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af25113a3bb7b5c97262",
+        "year": 2026
+      }
+    ],
+    "6a2c14f5cdc3dd5c2e207497": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1f113a3bb7b5c97233",
+        "year": 2026
+      }
+    ],
+    "6a2c14f5cdc3dd5c2e207498": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2c113a3bb7b5c97295",
+        "year": 2026
+      }
+    ],
+    "6a2c1534cdc3dd5c2e20749a": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2c113a3bb7b5c97296",
+        "year": 2026
+      }
+    ],
+    "6a2c155fcdc3dd5c2e20749c": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af30113a3bb7b5c972b2",
+        "year": 2026
+      }
+    ],
+    "6a2c1586cdc3dd5c2e20749e": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2f113a3bb7b5c972b1",
+        "year": 2026
+      }
+    ],
+    "6a2f07ed54b027183581da50": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af38113a3bb7b5c972ef",
+        "year": 2026
+      }
+    ],
+    "6a2f081654b027183581da53": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2e113a3bb7b5c972a6",
+        "year": 2026
+      }
+    ],
+    "6a2f084354b027183581da55": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af22113a3bb7b5c9724b",
+        "year": 2026
+      }
+    ],
+    "6a2f087a54b027183581da57": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2f113a3bb7b5c972b0",
+        "year": 2026
+      }
+    ],
+    "6a2f08d054b027183581da5a": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2d113a3bb7b5c9729e",
+        "year": 2026
+      }
+    ],
+    "6a2f08d054b027183581da5b": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3d113a3bb7b5c9731a",
+        "year": 2026
+      }
+    ],
+    "6a2f0a7954b027183581da5d": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af33113a3bb7b5c972d0",
+        "year": 2026
+      }
+    ],
+    "6a310917e21556f79d806ff1": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1b113a3bb7b5c9721a",
+        "year": 2026
+      }
+    ],
+    "6a31097ee21556f79d806ff5": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af29113a3bb7b5c97280",
+        "year": 2026
+      }
+    ],
+    "6a3109aae21556f79d806ff8": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af38113a3bb7b5c972f6",
+        "year": 2026
+      }
+    ],
+    "6a3109d8e21556f79d806ffa": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af22113a3bb7b5c9724d",
+        "year": 2026
+      }
+    ],
+    "6a3109d8e21556f79d806ffb": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2e113a3bb7b5c972a5",
+        "year": 2026
+      }
+    ],
+    "6a3109fee21556f79d806ffd": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af26113a3bb7b5c97269",
+        "year": 2026
+      }
+    ],
+    "6a310a26e21556f79d806fff": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af30113a3bb7b5c972b4",
+        "year": 2026
+      }
+    ],
+    "6a310a8ee21556f79d807002": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2c113a3bb7b5c97298",
+        "year": 2026
+      }
+    ],
+    "6a310a8ee21556f79d807003": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af38113a3bb7b5c972f0",
+        "year": 2026
+      }
+    ],
+    "6a310a8ee21556f79d807004": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2e113a3bb7b5c972a4",
+        "year": 2026
+      }
+    ],
+    "6a310a8ee21556f79d807005": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af38113a3bb7b5c972f5",
+        "year": 2026
+      }
+    ],
+    "6a310a8ee21556f79d807006": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af39113a3bb7b5c972fd",
+        "year": 2026
+      }
+    ],
+    "6a310a8ee21556f79d807007": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2b113a3bb7b5c97291",
+        "year": 2026
+      }
+    ],
+    "6a310a8ee21556f79d807008": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2d113a3bb7b5c972a0",
+        "year": 2026
+      }
+    ],
+    "6a310a8fe21556f79d807009": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3e113a3bb7b5c9731d",
+        "year": 2026
+      },
+      {
+        "note": "מגוף + סולונואיד + עבודה",
+        "amount": 1000,
+        "paid": 1000,
+        "fromReadingId": "6a47af3e113a3bb7b5c9731d",
+        "year": 2026
+      }
+    ],
+    "6a310ae0e21556f79d80700c": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af31113a3bb7b5c972bc",
+        "year": 2026
+      }
+    ],
+    "6a310b18e21556f79d80700e": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af2a113a3bb7b5c9728b",
+        "year": 2026
+      }
+    ],
+    "6a310b9fe21556f79d807011": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af2a113a3bb7b5c9728c",
+        "year": 2026
+      }
+    ],
+    "6a310bc1e21556f79d807013": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af41113a3bb7b5c97336",
+        "year": 2026
+      }
+    ],
+    "6a310bf7e21556f79d807015": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1b113a3bb7b5c97215",
+        "year": 2026
+      }
+    ],
+    "6a310bf7e21556f79d807016": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af37113a3bb7b5c972eb",
+        "year": 2026
+      }
+    ],
+    "6a310c33e21556f79d807018": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af31113a3bb7b5c972ba",
+        "year": 2026
+      }
+    ],
+    "6a310c33e21556f79d807019": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af19113a3bb7b5c9720a",
+        "year": 2026
+      }
+    ],
+    "6a310c7fe21556f79d80701c": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af16113a3bb7b5c971f4",
+        "year": 2026
+      }
+    ],
+    "6a310c7fe21556f79d80701d": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af31113a3bb7b5c972bd",
+        "year": 2026
+      }
+    ],
+    "6a310d4fe21556f79d807021": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af36113a3bb7b5c972e4",
+        "year": 2026
+      }
+    ],
+    "6a310d4fe21556f79d807022": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af39113a3bb7b5c972fa",
+        "year": 2026
+      }
+    ],
+    "6a310d6ee21556f79d807024": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af31113a3bb7b5c972bb",
+        "year": 2026
+      }
+    ],
+    "6a310d9ee21556f79d807026": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af26113a3bb7b5c9726d",
+        "year": 2026
+      }
+    ],
+    "6a310dc0e21556f79d807028": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2b113a3bb7b5c97292",
+        "year": 2026
+      }
+    ],
+    "6a310dc0e21556f79d807029": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af30113a3bb7b5c972b3",
+        "year": 2026
+      }
+    ],
+    "6a310df2e21556f79d80702b": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af37113a3bb7b5c972e8",
+        "year": 2026
+      }
+    ],
+    "6a310df2e21556f79d80702c": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af37113a3bb7b5c972ea",
+        "year": 2026
+      }
+    ],
+    "6a310df2e21556f79d80702d": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2b113a3bb7b5c97290",
+        "year": 2026
+      }
+    ],
+    "6a310e17e21556f79d80702f": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2f113a3bb7b5c972ae",
+        "year": 2026
+      }
+    ],
+    "6a310e7de21556f79d807031": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3e113a3bb7b5c97320",
+        "year": 2026
+      }
+    ],
+    "6a310ea7e21556f79d807033": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2f113a3bb7b5c972ad",
+        "year": 2026
+      }
+    ],
+    "6a310ed2e21556f79d807035": [
+      {
+        "note": "התקהת סולונואיד חדש",
+        "amount": 118,
+        "paid": 0,
+        "fromReadingId": "6a47af31113a3bb7b5c972c0",
+        "year": 2026
+      },
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af31113a3bb7b5c972c0",
+        "year": 2026
+      }
+    ],
+    "6a369c20e1f4f74886cf9b85": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3b113a3bb7b5c97309",
+        "year": 2026
+      }
+    ],
+    "6a369cc8e1f4f74886cf9b89": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af30113a3bb7b5c972b6",
+        "year": 2026
+      }
+    ],
+    "6a36a064e1f4f74886cf9b8d": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af23113a3bb7b5c97258",
+        "year": 2026
+      },
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a554723a95eb8dd46be63dd",
+        "year": 2026
+      }
+    ],
+    "6a36a0d2e1f4f74886cf9b90": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af27113a3bb7b5c97275",
+        "year": 2026
+      }
+    ],
+    "6a36a0d2e1f4f74886cf9b91": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af34113a3bb7b5c972d3",
+        "year": 2026
+      }
+    ],
+    "6a36a1bee1f4f74886cf9b93": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af26113a3bb7b5c9726e",
+        "year": 2026
+      }
+    ],
+    "6a36a26ce1f4f74886cf9b97": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af27113a3bb7b5c97273",
+        "year": 2026
+      }
+    ],
+    "6a36a26ce1f4f74886cf9b98": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af31113a3bb7b5c972be",
+        "year": 2026
+      }
+    ],
+    "6a36a26ce1f4f74886cf9b99": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3d113a3bb7b5c97318",
+        "year": 2026
+      }
+    ],
+    "6a36a333e1f4f74886cf9b9b": [
+      {
+        "note": "התקנת מחשב השקייה",
+        "amount": 708,
+        "paid": 708,
+        "fromReadingId": "6a47af31113a3bb7b5c972bf",
+        "year": 2026
+      },
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af31113a3bb7b5c972bf",
+        "year": 2026
+      }
+    ],
+    "6a36a97ae1f4f74886cf9b9e": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3c113a3bb7b5c97314",
+        "year": 2026
+      }
+    ],
+    "6a36a9e2e1f4f74886cf9ba0": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af34113a3bb7b5c972d1",
+        "year": 2026
+      }
+    ],
+    "6a36a9e2e1f4f74886cf9ba1": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af30113a3bb7b5c972b9",
+        "year": 2026
+      }
+    ],
+    "6a36a9e2e1f4f74886cf9ba2": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af29113a3bb7b5c97283",
+        "year": 2026
+      }
+    ],
+    "6a36aed0e1f4f74886cf9bb1": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af34113a3bb7b5c972d7",
+        "year": 2026
+      }
+    ],
+    "6a36aed0e1f4f74886cf9bb2": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1b113a3bb7b5c97217",
+        "year": 2026
+      }
+    ],
+    "6a36aed0e1f4f74886cf9bb3": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af14113a3bb7b5c971e2",
+        "year": 2026
+      }
+    ],
+    "6a3c2438bbd8ac9b122a74fa": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af30113a3bb7b5c972b8",
+        "year": 2026
+      }
+    ],
+    "6a3c2438bbd8ac9b122a74fb": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af38113a3bb7b5c972f2",
+        "year": 2026
+      }
+    ],
+    "6a3c24d0bbd8ac9b122a7500": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1e113a3bb7b5c97232",
+        "year": 2026
+      }
+    ],
+    "6a3c2518bbd8ac9b122a7504": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af25113a3bb7b5c97261",
+        "year": 2026
+      }
+    ],
+    "6a3c254fbbd8ac9b122a7506": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af15113a3bb7b5c971eb",
+        "year": 2026
+      }
+    ],
+    "6a3c2571bbd8ac9b122a7508": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af28113a3bb7b5c9727a",
+        "year": 2026
+      }
+    ],
+    "6a3c25ddbbd8ac9b122a750b": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2a113a3bb7b5c97286",
+        "year": 2026
+      }
+    ],
+    "6a3c25ddbbd8ac9b122a750c": [
+      {
+        "note": "התקנת עמדה חדשה כולל מחשב ( ללא כלוב )",
+        "amount": 2500,
+        "paid": 2500,
+        "fromReadingId": "6a47af2e113a3bb7b5c972a7",
+        "year": 2026
+      },
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2e113a3bb7b5c972a7",
+        "year": 2026
+      }
+    ],
+    "6a3c262abbd8ac9b122a750e": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af35113a3bb7b5c972db",
+        "year": 2026
+      }
+    ],
+    "6a3c265cbbd8ac9b122a7510": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af1d113a3bb7b5c97229",
+        "year": 2026
+      }
+    ],
+    "6a3c265cbbd8ac9b122a7511": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af1f113a3bb7b5c97234",
+        "year": 2026
+      }
+    ],
+    "6a3c26a6bbd8ac9b122a7513": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af16113a3bb7b5c971ef",
+        "year": 2026
+      }
+    ],
+    "6a3c26a6bbd8ac9b122a7514": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af22113a3bb7b5c97249",
+        "year": 2026
+      }
+    ],
+    "6a3c26f3bbd8ac9b122a7518": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1a113a3bb7b5c97213",
+        "year": 2026
+      }
+    ],
+    "6a3c2723bbd8ac9b122a751a": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af22113a3bb7b5c9724f",
+        "year": 2026
+      }
+    ],
+    "6a3c2756bbd8ac9b122a751c": [
+      {
+        "note": "התקנת מחשב השקייה",
+        "amount": 500,
+        "paid": 500,
+        "fromReadingId": "6a47af3a113a3bb7b5c97302",
+        "year": 2026
+      },
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3a113a3bb7b5c97302",
+        "year": 2026
+      }
+    ],
+    "6a3c2bb1bbd8ac9b122a751e": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1a113a3bb7b5c97212",
+        "year": 2026
+      }
+    ],
+    "6a3c2bdfbbd8ac9b122a7520": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1b113a3bb7b5c97214",
+        "year": 2026
+      }
+    ],
+    "6a3c2bdfbbd8ac9b122a7521": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af21113a3bb7b5c97244",
+        "year": 2026
+      }
+    ],
+    "6a3c2c44bbd8ac9b122a7525": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1f113a3bb7b5c97236",
+        "year": 2026
+      }
+    ],
+    "6a3c2c44bbd8ac9b122a7526": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3c113a3bb7b5c9730d",
+        "year": 2026
+      }
+    ],
+    "6a3c2cb8bbd8ac9b122a7528": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1f113a3bb7b5c97238",
+        "year": 2026
+      }
+    ],
+    "6a3c2cb8bbd8ac9b122a7529": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af22113a3bb7b5c9724c",
+        "year": 2026
+      }
+    ],
+    "6a3c2cb8bbd8ac9b122a752b": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2e113a3bb7b5c972aa",
+        "year": 2026
+      }
+    ],
+    "6a3c2d00bbd8ac9b122a752f": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1c113a3bb7b5c97221",
+        "year": 2026
+      }
+    ],
+    "6a3c2d4abbd8ac9b122a7531": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af16113a3bb7b5c971f2",
+        "year": 2026
+      }
+    ],
+    "6a3c2d8cbbd8ac9b122a7533": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af19113a3bb7b5c9720b",
+        "year": 2026
+      }
+    ],
+    "6a3c40a2bbd8ac9b122a7537": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af22113a3bb7b5c97250",
+        "year": 2026
+      }
+    ],
+    "6a3c40ccbbd8ac9b122a7539": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af26113a3bb7b5c9726a",
+        "year": 2026
+      }
+    ],
+    "6a3c4110bbd8ac9b122a753d": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af25113a3bb7b5c97263",
+        "year": 2026
+      }
+    ],
+    "6a3c4191bbd8ac9b122a7542": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3a113a3bb7b5c97305",
+        "year": 2026
+      },
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3a113a3bb7b5c97305",
+        "year": 2026
+      }
+    ],
+    "6a3c41b8bbd8ac9b122a7544": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af26113a3bb7b5c97268",
+        "year": 2026
+      }
+    ],
+    "6a3c41dfbbd8ac9b122a7546": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3f113a3bb7b5c97325",
+        "year": 2026
+      }
+    ],
+    "6a3c4228bbd8ac9b122a754a": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3e113a3bb7b5c9731f",
+        "year": 2026
+      }
+    ],
+    "6a3c4252bbd8ac9b122a754c": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af36113a3bb7b5c972e6",
+        "year": 2026
+      }
+    ],
+    "6a3c427cbbd8ac9b122a754e": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2a113a3bb7b5c97287",
+        "year": 2026
+      }
+    ],
+    "6a3c427cbbd8ac9b122a754f": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2a113a3bb7b5c97288",
+        "year": 2026
+      }
+    ],
+    "6a3c42cfbbd8ac9b122a7553": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af13113a3bb7b5c971de",
+        "year": 2026
+      }
+    ],
+    "6a3c42cfbbd8ac9b122a7555": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af21113a3bb7b5c97243",
+        "year": 2026
+      }
+    ],
+    "6a3c42f4bbd8ac9b122a7557": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3b113a3bb7b5c97306",
+        "year": 2026
+      }
+    ],
+    "6a3c42f4bbd8ac9b122a7558": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3d113a3bb7b5c9731c",
+        "year": 2026
+      }
+    ],
+    "6a3c4334bbd8ac9b122a755e": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3e113a3bb7b5c9731e",
+        "year": 2026
+      }
+    ],
+    "6a3c4372bbd8ac9b122a7562": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af15113a3bb7b5c971ed",
+        "year": 2026
+      }
+    ],
+    "6a3c4395bbd8ac9b122a7564": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af40113a3bb7b5c9732f",
+        "year": 2026
+      }
+    ],
+    "6a3c43b4bbd8ac9b122a7566": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1c113a3bb7b5c9721f",
+        "year": 2026
+      }
+    ],
+    "6a3c43d8bbd8ac9b122a7568": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af33113a3bb7b5c972cf",
+        "year": 2026
+      }
+    ],
+    "6a3c43d9bbd8ac9b122a7569": [
+      {
+        "note": "חוב ישן",
+        "amount": 778,
+        "paid": 0,
+        "fromReadingId": "6a47af38113a3bb7b5c972f3",
+        "year": 2026
+      },
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af38113a3bb7b5c972f3",
+        "year": 2026
+      }
+    ],
+    "6a3c4403bbd8ac9b122a756b": [
+      {
+        "note": "התקנת מחשב השקייה",
+        "amount": 500,
+        "paid": 0,
+        "fromReadingId": "6a47af35113a3bb7b5c972da",
+        "year": 2026
+      },
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af35113a3bb7b5c972da",
+        "year": 2026
+      }
+    ],
+    "6a3c4422bbd8ac9b122a756d": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af27113a3bb7b5c97276",
+        "year": 2026
+      }
+    ],
+    "6a3c444cbbd8ac9b122a7570": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2b113a3bb7b5c9728f",
+        "year": 2026
+      }
+    ],
+    "6a3c444cbbd8ac9b122a7571": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3f113a3bb7b5c97328",
+        "year": 2026
+      }
+    ],
+    "6a3c453ebbd8ac9b122a7573": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af34113a3bb7b5c972d8",
+        "year": 2026
+      },
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af34113a3bb7b5c972d8",
+        "year": 2026
+      }
+    ],
+    "6a3c453ebbd8ac9b122a7574": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3e113a3bb7b5c97322",
+        "year": 2026
+      },
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3e113a3bb7b5c97322",
+        "year": 2026
+      }
+    ],
+    "6a3c4572bbd8ac9b122a7576": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3f113a3bb7b5c97329",
+        "year": 2026
+      }
+    ],
+    "6a3c45abbbd8ac9b122a7578": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af14113a3bb7b5c971e0",
+        "year": 2026
+      }
+    ],
+    "6a3c45abbbd8ac9b122a757a": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af14113a3bb7b5c971e3",
+        "year": 2026
+      }
+    ],
+    "6a3c45c8bbd8ac9b122a757c": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af14113a3bb7b5c971e1",
+        "year": 2026
+      }
+    ],
+    "6a3c45c8bbd8ac9b122a757d": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af39113a3bb7b5c972fb",
+        "year": 2026
+      }
+    ],
+    "6a3c45edbbd8ac9b122a757f": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af14113a3bb7b5c971e4",
+        "year": 2026
+      }
+    ],
+    "6a3e8efb1105db39f370df47": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3a113a3bb7b5c97303",
+        "year": 2026
+      }
+    ],
+    "6a3e8f331105db39f370df49": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3d113a3bb7b5c97317",
+        "year": 2026
+      }
+    ],
+    "6a3e8f631105db39f370df4b": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1b113a3bb7b5c97219",
+        "year": 2026
+      }
+    ],
+    "6a3e8f631105db39f370df4c": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3b113a3bb7b5c9730c",
+        "year": 2026
+      }
+    ],
+    "6a3e8f631105db39f370df4d": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3d113a3bb7b5c97316",
+        "year": 2026
+      }
+    ],
+    "6a3e8f8f1105db39f370df4f": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3f113a3bb7b5c9732b",
+        "year": 2026
+      }
+    ],
+    "6a3e8fc41105db39f370df51": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3b113a3bb7b5c97307",
+        "year": 2026
+      }
+    ],
+    "6a3e8fe61105db39f370df53": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af16113a3bb7b5c971f1",
+        "year": 2026
+      }
+    ],
+    "6a3e90191105db39f370df55": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af23113a3bb7b5c97254",
+        "year": 2026
+      }
+    ],
+    "6a3e90191105db39f370df56": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3f113a3bb7b5c97324",
+        "year": 2026
+      }
+    ],
+    "6a3e90521105db39f370df58": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af19113a3bb7b5c97207",
+        "year": 2026
+      }
+    ],
+    "6a3e90521105db39f370df59": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1b113a3bb7b5c97218",
+        "year": 2026
+      }
+    ],
+    "6a3e907d1105db39f370df5c": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3d113a3bb7b5c9731b",
+        "year": 2026
+      }
+    ],
+    "6a3e90db1105db39f370df5e": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af20113a3bb7b5c97240",
+        "year": 2026
+      }
+    ],
+    "6a3e90db1105db39f370df5f": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af20113a3bb7b5c9723f",
+        "year": 2026
+      }
+    ],
+    "6a3e90db1105db39f370df61": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af21113a3bb7b5c97247",
+        "year": 2026
+      }
+    ],
+    "6a3e90fd1105db39f370df63": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af40113a3bb7b5c9732e",
+        "year": 2026
+      }
+    ],
+    "6a3e91201105db39f370df65": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af16113a3bb7b5c971f0",
+        "year": 2026
+      }
+    ],
+    "6a3e91bd1105db39f370df6a": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af32113a3bb7b5c972c7",
+        "year": 2026
+      }
+    ],
+    "6a3e91bd1105db39f370df6b": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af20113a3bb7b5c9723d",
+        "year": 2026
+      }
+    ],
+    "6a3e91bd1105db39f370df6c": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af23113a3bb7b5c97251",
+        "year": 2026
+      }
+    ],
+    "6a3e920b1105db39f370df74": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af18113a3bb7b5c97201",
+        "year": 2026
+      }
+    ],
+    "6a3e920b1105db39f370df75": [
+      {
+        "note": "התקנת מחשב השקייה + מגוף",
+        "amount": 1062,
+        "paid": 1062,
+        "fromReadingId": "6a47af37113a3bb7b5c972ed",
+        "year": 2026
+      },
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af37113a3bb7b5c972ed",
+        "year": 2026
+      },
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47cb35113a3bb7b5c97349",
+        "year": 2026
+      }
+    ],
+    "6a3e920b1105db39f370df76": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af22113a3bb7b5c9724e",
+        "year": 2026
+      }
+    ],
+    "6a3e920b1105db39f370df77": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af23113a3bb7b5c97256",
+        "year": 2026
+      }
+    ],
+    "6a3e92fa1105db39f370df79": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af34113a3bb7b5c972d6",
+        "year": 2026
+      }
+    ],
+    "6a3e92fa1105db39f370df7a": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af39113a3bb7b5c972f7",
+        "year": 2026
+      },
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a48b92481f56ffb2a1f8090",
+        "year": 2026
+      }
+    ],
+    "6a3e92fb1105db39f370df7b": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af27113a3bb7b5c97272",
+        "year": 2026
+      }
+    ],
+    "6a3e92fb1105db39f370df7c": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2e113a3bb7b5c972a8",
+        "year": 2026
+      }
+    ],
+    "6a3e92fb1105db39f370df7d": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af24113a3bb7b5c9725d",
+        "year": 2026
+      }
+    ],
+    "6a3e93401105db39f370df81": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af2d113a3bb7b5c9729d",
+        "year": 2026
+      }
+    ],
+    "6a3e93781105db39f370df83": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af23113a3bb7b5c97255",
+        "year": 2026
+      }
+    ],
+    "6a3e93781105db39f370df84": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af32113a3bb7b5c972c6",
+        "year": 2026
+      }
+    ],
+    "6a3e93781105db39f370df85": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af35113a3bb7b5c972dc",
+        "year": 2026
+      },
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a48097c81f56ffb2a1f807e",
+        "year": 2026
+      }
+    ],
+    "6a3e93a91105db39f370df86": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3b113a3bb7b5c9730b",
+        "year": 2026
+      }
+    ],
+    "6a3e93c51105db39f370df88": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af28113a3bb7b5c97279",
+        "year": 2026
+      }
+    ],
+    "6a3e941c1105db39f370df8a": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3c113a3bb7b5c9730f",
+        "year": 2026
+      },
+      {
+        "note": "התקנת מגוף ומחשב וסולונייד חדשים",
+        "amount": 1000,
+        "paid": 1000,
+        "fromReadingId": "6a47af3c113a3bb7b5c9730f",
+        "year": 2026
+      }
+    ],
+    "6a3e941c1105db39f370df8b": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3d113a3bb7b5c97315",
+        "year": 2026
+      }
+    ],
+    "6a3e941c1105db39f370df8c": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af24113a3bb7b5c9725e",
+        "year": 2026
+      }
+    ],
+    "6a3e94411105db39f370df8e": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af28113a3bb7b5c97278",
+        "year": 2026
+      }
+    ],
+    "6a3e94981105db39f370df90": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af24113a3bb7b5c9725f",
+        "year": 2026
+      }
+    ],
+    "6a3e94981105db39f370df91": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af25113a3bb7b5c97260",
+        "year": 2026
+      }
+    ],
+    "6a3e94981105db39f370df92": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af34113a3bb7b5c972d2",
+        "year": 2026
+      }
+    ],
+    "6a3e94981105db39f370df93": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af40113a3bb7b5c9732d",
+        "year": 2026
+      }
+    ],
+    "6a3e94981105db39f370df94": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af21113a3bb7b5c97246",
+        "year": 2026
+      }
+    ],
+    "6a3e94981105db39f370df95": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3a113a3bb7b5c97304",
+        "year": 2026
+      }
+    ],
+    "6a3e94981105db39f370df96": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3c113a3bb7b5c9730e",
+        "year": 2026
+      }
+    ],
+    "6a3e94b81105db39f370df98": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a53a228602f1c9a483e4bca",
+        "year": 2026
+      }
+    ],
+    "6a3e94d21105db39f370df9a": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af41113a3bb7b5c97333",
+        "year": 2026
+      }
+    ],
+    "6a3e94ea1105db39f370df9c": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af3b113a3bb7b5c9730a",
+        "year": 2026
+      }
+    ],
+    "6a3e95061105db39f370df9e": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af41113a3bb7b5c97334",
+        "year": 2026
+      }
+    ],
+    "6a3e953d1105db39f370dfa1": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af1d113a3bb7b5c97224",
+        "year": 2026
+      }
+    ],
+    "6a3e95821105db39f370dfa3": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47af29113a3bb7b5c9727e",
+        "year": 2026
+      }
+    ],
+    "6a3e95a61105db39f370dfa5": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af28113a3bb7b5c9727d",
+        "year": 2026
+      }
+    ],
+    "6a3e95cd1105db39f370dfa8": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af28113a3bb7b5c9727c",
+        "year": 2026
+      }
+    ],
+    "6a3ea2778a39380250b64e23": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47af33113a3bb7b5c972c9",
+        "year": 2026
+      }
+    ],
+    "6a47b578113a3bb7b5c9733a": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47b7e9113a3bb7b5c9733b",
+        "year": 2026
+      }
+    ],
+    "6a47be35113a3bb7b5c9733c": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47be5d113a3bb7b5c9733d",
+        "year": 2026
+      }
+    ],
+    "6a47bfed113a3bb7b5c97340": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47c008113a3bb7b5c97341",
+        "year": 2026
+      }
+    ],
+    "6a47c226113a3bb7b5c97345": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 0,
+        "fromReadingId": "6a47c25c113a3bb7b5c97346",
+        "year": 2026
+      }
+    ],
+    "6a47c5ed113a3bb7b5c97347": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a47c6b8113a3bb7b5c97348",
+        "year": 2026
+      }
+    ],
+    "6a4809c581f56ffb2a1f807f": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a480b0f81f56ffb2a1f8080",
+        "year": 2026
+      }
+    ],
+    "6a480b4881f56ffb2a1f8081": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a480bcd81f56ffb2a1f8083",
+        "year": 2026
+      }
+    ],
+    "6a480b6581f56ffb2a1f8082": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a480bdb81f56ffb2a1f8084",
+        "year": 2026
+      }
+    ],
+    "6a4817ef81f56ffb2a1f8087": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a4817ff81f56ffb2a1f8088",
+        "year": 2026
+      }
+    ],
+    "6a7e29becf498f0c5004647d": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a7e2a51cf498f0c5004647e",
+        "year": 2026
+      },
+      {
+        "note": "התקנת קוצב מים",
+        "amount": 200,
+        "paid": 200,
+        "fromReadingId": "6a7e2a51cf498f0c5004647e",
+        "year": 2026
+      }
+    ],
+    "6a7f369cd314a2641c709005": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a7f377bd314a2641c709006",
+        "year": 2026
+      },
+      {
+        "note": "עבודה",
+        "amount": 100,
+        "paid": 100,
+        "fromReadingId": "6a7f377bd314a2641c709006",
+        "year": 2026
+      }
+    ],
+    "6a81311dd314a2641c709018": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a813157d314a2641c709019",
+        "year": 2026
+      },
+      {
+        "note": "התקנת עמדה חדשה כולל מחשב ",
+        "amount": 2700,
+        "paid": 2700,
+        "fromReadingId": "6a813157d314a2641c709019",
+        "year": 2026
+      }
+    ],
+    "6a88bf581ad643a6e567d090": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 400,
+        "fromReadingId": "6a88bf9d1ad643a6e567d093",
+        "year": 2026
+      }
+    ],
+    "6a95c86911a8e958e0e943f8": [
+      {
+        "note": "השתתפות קו מים חקלאי",
+        "amount": 400,
+        "paid": 200,
+        "fromReadingId": "6a95c8ac11a8e958e0e943f9",
+        "year": 2026
+      }
+    ]
+  }
+}

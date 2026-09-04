@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { togglePaid, updateNote } from '../../api';
 import { getPrice } from '../../utils/pricing'; // ✅ سعر موحّد شامل الضريبة (מע"מ)
 import { cupsDiff, cupsPositive, getMeterChange } from '../../utils/cups'; // ✅ فرق أكواب موحّد (يدمج تبديل العداد ضمن نفس الفترة)
-import { getExtrasList as getExtras, getExtrasNet } from '../../utils/extras'; // ✅ إضافات موحّدة
+import { getExtrasNet, getExtrasGross } from '../../utils/extras'; // ✅ إضافات موحّدة — الآن تابعة للأرض (landId) لا للقراءة
 
 const PaidBtn = ({ paid, loading, onClick, size = 17 }) => (
   <button onClick={onClick} disabled={loading}
@@ -50,6 +50,7 @@ export default function ReadingsTable({
   readings, setReadings, farmerName, landName, landRegion,
   onEdit, onDelete, lang, prices, isViewer=false, lands=[], regions=[],
   unpaidProjectsByFarmer={}, // ✅ farmerId -> [{ projectName, remaining }] — مشاريع لم يُكمل المزارع دفعها
+  landExtrasByLand={}, // ✅ landId -> [extras] — إضافات تابعة للأرض نفسها (وليست القراءة/السنة)
 }) {
   const [expandedId, setExpandedId] = useState(null);
   const [togglingId, setTogglingId] = useState(null); // ✅ الآن مفتاحه `${readingId}_${periodIndex}`
@@ -143,8 +144,14 @@ export default function ReadingsTable({
   const partialPaidCount = readings.filter(r=>getPayStatus(r)==='partial').length;
   const unpaidCount      = readings.length - fullPaidCount - partialPaidCount;
 
-  // ✅ إجمالي الإضافات
-  const grandExtrasRem = sorted.reduce((s,r) => s + getExtrasNet(r), 0);
+  // ✅ إجمالي الإضافات — الإضافات صارت تابعة للأرض (landId) وليست القراءة، وممكن نفس
+  // الأرض تظهر بأكثر من صف (سنة) بالجدول. عشان ما نحسب نفس رصيد الإضافات أكثر من مرة
+  // بالإجمالي الكلي، نجمع أراضي هذا الجدول (sorted) بشكل فريد أولاً، وبعدين نحسب
+  // إضافات كل أرض مرة وحدة بس.
+  const uniqueLandIdsInSorted = [...new Set(sorted.map(r => String(r.landId)))];
+  const extrasForSortedLands  = uniqueLandIdsInSorted.flatMap(lid => landExtrasByLand[lid] || []);
+  const grandExtrasRem   = getExtrasNet(extrasForSortedLands);
+  const grandExtrasGross = getExtrasGross(extrasForSortedLands);
 
   const MapModal = () => {
     if (!mapModal) return null;
@@ -239,7 +246,7 @@ export default function ReadingsTable({
                 <STh key={i} col={`cups_${i}`} style={thCups}>🪣 {ar?`ف${i+1}`:`ת${i+1}`}</STh>
               ))}
               <STh col="total"  style={thTotal}>🪣 {ar?'الكل':'כלל'}</STh>
-              <th className="print-col-extras" style={{ ...thBase, minWidth:90, background:'#fff3e0', color:'#e65100', textAlign:'center' }}>➕ {ar?'إضافات':'תוספות'}</th>
+              <th className="print-col-extras" style={{ ...thBase, minWidth:90, background:'#fff3e0', color:'#e65100', textAlign:'center' }}>➕ {ar?'إضافات الأرض':'תוספות'}</th>
               <STh col="amount" style={{...thAmount, minWidth:100}}>💰 {ar?'الإجمالي':'סה"כ'}</STh>
               <th className="print-col-note" style={{...thBase, minWidth:90, textAlign:'center'}}>💬</th>
               <th style={{...thBase, minWidth:70, textAlign:'center', position:'sticky', left:0, background:'var(--surface-2)', zIndex:2, boxShadow:'2px 0 4px rgba(0,0,0,0.06)'}}></th>
@@ -263,9 +270,11 @@ export default function ReadingsTable({
               const amtBg   = payStatus==='full' ? '#fef9c3' : '#fef3c7';
               const stickyBg = payStatus==='full' ? '#f0fdf4' : payStatus==='partial' ? '#fffbeb' : '#fff5f5';
 
-              // ✅ إجمالي الإضافات للصف
-              const rowExtras = getExtras(r);
-              const rowExtrasTotal = rowExtras.reduce((s,e)=>(s+(parseFloat(e.amount)||0)-(parseFloat(e.paid)||0)),0);
+              // ✅ إضافات هذه الأرض — تُقرأ من landExtrasByLand (تابعة للأرض، تظهر بنفس الشكل
+              // بجانب كل قراءة/سنة لنفس الأرض حتى يعرف المستخدم فوراً إن كان الاشتراك/التجهيزات
+              // مدفوعة أو لا، بغض النظر عن أي سنة يشاهد الآن)
+              const rowExtras = landExtrasByLand[String(r.landId)] || [];
+              const rowExtrasTotal = getExtrasNet(rowExtras);
 
               // ✅ مشاريع لم يُكمل هذا المزارع دفعها (تحذير ⚠️ جنب اسمه)
               // ✅ نفلتر التحذيرات حسب رقم محطة هذه القراءة تحديداً (مطابقة نصية، وليست
@@ -384,7 +393,7 @@ export default function ReadingsTable({
                       }
                     </td>
 
-                    {/* ✅ عمود الإضافات المتعددة */}
+                    {/* ✅ عمود إضافات الأرض — إضافات دائمة تتبع الأرض، تظهر بنفس القيمة بكل سنوات هذه الأرض */}
                     <td className="print-col-extras" style={{textAlign:'center', background:'#fff3e0', padding:'6px 4px', minWidth:90}}>
                       {rowExtras.length === 0 ? (
                         <span style={{color:'var(--border)'}}>—</span>
@@ -531,10 +540,10 @@ export default function ReadingsTable({
                             </div>
                           </div>
 
-                          {/* ✅ الإضافات في الصف الموسَّع */}
+                          {/* ✅ إضافات هذه الأرض في الصف الموسَّع — نفس المصدر landExtrasByLand، تظهر دائماً بجانب الأرض بغض النظر عن السنة المفتوحة */}
                           {rowExtras.length > 0 && (
                             <div>
-                              <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:6,fontWeight:700}}>➕ {ar?'الإضافات:':'תוספות:'}</div>
+                              <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:6,fontWeight:700}}>➕ {ar?'إضافات هذه الأرض:':'תוספות החלקה:'}</div>
                               <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
                                 {rowExtras.map((ex,ei) => {
                                   const amt  = parseFloat(ex.amount)||0;
@@ -601,7 +610,7 @@ export default function ReadingsTable({
                 })}
                 <td style={{textAlign:'center',padding:'11px 8px'}}><span style={{fontWeight:900,color:'#a3e635',fontSize:17}}>{grandCups.toLocaleString()}</span></td>
                 <td className="print-col-extras" style={{textAlign:'center',padding:'11px 8px',color:'#fde68a',fontWeight:900,fontSize:15}}>
-                  ₪{sorted.reduce((s,r)=>s+getExtras(r).reduce((ss,e)=>(ss+(parseFloat(e.amount)||0)),0),0).toLocaleString()}
+                  ₪{grandExtrasGross.toLocaleString()}
                 </td>
                 <td style={{textAlign:'center',padding:'11px 8px',borderLeft:'2px solid #a3e635'}}>
                   <span style={{fontWeight:900,color:'#fde68a',fontSize:19}}>

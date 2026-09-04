@@ -11,7 +11,8 @@ import { LangToggleLight } from '../components/shared/LangToggle';
 import AnnouncementBanner from '../components/shared/AnnouncementBanner';
 import { getPrice } from '../utils/pricing'; // ✅ سعر موحّد شامل الضريبة (מע"מ)
 import { cupsDiff, cupsPositive } from '../utils/cups'; // ✅ فرق أكواب موحّد
-import { getExtrasList } from '../utils/extras'; // ✅ قائمة الإضافات (تفاصيل كل إضافة: سبب/مبلغ/مدفوع)
+// ✅ الإضافات صارت تابعة للأرض نفسها (LandExtra) وليست القراءة/السنة — لذلك نقرأها
+// مباشرة من data.landExtras بدل استخراجها من كل قراءة على حدة
 import useElementWidth from '../hooks/useElementWidth'; // ✅ قياس عرض موحّد للرسوم البيانية
 
 // ── رسم بياني الأكواب السنوي (مكوّن مستقل — يقيس نفسه عند ظهوره فعلياً) ──
@@ -325,7 +326,7 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
   const { lang } = useLang();
   const ar = lang === 'ar';
   const [tab, setTab]     = useState('overview');
-  const [data, setData]   = useState({ lands: [], readings: [], prices: {}, projects: [] });
+  const [data, setData]   = useState({ lands: [], readings: [], prices: {}, projects: [], landExtras: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selYear, setSelYear] = useState(null);
@@ -351,7 +352,7 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
     </div>
   );
 
-  const { lands, readings, prices, projects: myProjects = [] } = data;
+  const { lands, readings, prices, projects: myProjects = [], landExtras = [] } = data;
 
   const byYear = {};
   readings.forEach(r => {
@@ -396,17 +397,21 @@ export default function FarmerDashboard({ farmer: farmerProp, onLogout }) {
     !search || l.name.includes(search) || (l.nameHeb || '').includes(search)
   );
 
-  // ✅ قائمة تفصيلية بكل إضافة غير مدفوعة (السبب/الأرض/السنة/المبلغ المتبقي) — تُستخدم بشريط المستحقات
-  const extrasUnpaidList = readings.flatMap(r =>
-    getExtrasList(r)
-      .map(e => ({
+  // ✅ قائمة تفصيلية بكل إضافة غير مدفوعة (السبب/الأرض/المبلغ المتبقي) — تُستخدم بشريط المستحقات
+  // الإضافات صارت تابعة للأرض نفسها (landExtras) وليست لقراءة/سنة معينة، فكل إضافة
+  // تظهر مرة واحدة بغض النظر عن عدد سنوات القراءات المسجّلة لتلك الأرض — بدون أي تكرار.
+  const extrasUnpaidList = landExtras
+    .map(e => {
+      const remaining = (parseFloat(e.amount) || 0) - (parseFloat(e.paid) || 0);
+      if (remaining <= 0.01) return null;
+      return {
         note:      (e.note || '').trim(),
-        remaining: (parseFloat(e.amount) || 0) - (parseFloat(e.paid) || 0),
-        year:      r.year,
-        landLabel: landName(r.landId),
-      }))
-      .filter(e => e.remaining > 0.01)
-  );
+        remaining,
+        year:      e.createdAt ? new Date(e.createdAt).getFullYear() : null, // ✅ سنة إضافتها (تقريبية) — للعرض فقط
+        landLabel: landName(e.landId),
+      };
+    })
+    .filter(Boolean);
   const extrasUnpaid = extrasUnpaidList.reduce((s, e) => s + e.remaining, 0);
 
   // بيانات توزيع الأراضي للـ Pie chart

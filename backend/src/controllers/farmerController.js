@@ -2,6 +2,7 @@ const Land       = require('../models/Land');
 const Reading    = require('../models/Reading');
 const FarmerNote = require('../models/FarmerNote');
 const Project    = require('../models/Project'); // ✅ لعرض المشاريع المرتبطة بالمزارع بلوحة تحكمه
+const LandExtra  = require('../models/LandExtra'); // ✅ إضافات تابعة لأراضي المزارع
 const { Prices, Region } = require('../models/Settings');
 
 // ✅ نفس منطق استنتاج اسم المنطقة المستخدم في صفحة التقارير للإدارة:
@@ -67,11 +68,13 @@ const getMyData = async (req, res) => {
 
     // 2. الأراضي من القراءات
     const landIds = [...new Set(readings.map(r => r.landId?.toString()).filter(Boolean))];
-    const [lands, pricesDoc, regions, myProjects] = await Promise.all([
+    const [lands, pricesDoc, regions, myProjects, landExtras] = await Promise.all([
       landIds.length > 0 ? Land.find({ _id: { $in: landIds } }).lean() : Promise.resolve([]),
       Prices.findOne({ key: 'prices' }).lean(),
       Region.find({}).lean(),
       getMyProjects(farmerId), // ✅ مشاريع المزارع (إن وُجدت)
+      // ✅ إضافات أراضي المزارع (اشتراك/تجهيزات...) — تابعة للأرض، تظهر بغض النظر عن السنة
+      landIds.length > 0 ? LandExtra.find({ landId: { $in: landIds } }).lean() : Promise.resolve([]),
     ]);
 
     // ✅ Mixed type — لا نستخدم Object.fromEntries
@@ -105,6 +108,15 @@ const getMyData = async (req, res) => {
       })),
       prices,
       projects: myProjects, // ✅ مشاريع المزارع — تُعرض بلوحة التحكم إن وُجدت
+      // ✅ إضافات أراضي المزارع — سجل واحد لكل إضافة، مربوط بالأرض فقط
+      landExtras: landExtras.map(e => ({
+        id:        e._id.toString(),
+        landId:    e.landId.toString(),
+        note:      e.note   || '',
+        amount:    e.amount || 0,
+        paid:      e.paid   || 0,
+        createdAt: e.createdAt,
+      })),
     });
   } catch (err) {
     console.error('getMyData error:', err.message);

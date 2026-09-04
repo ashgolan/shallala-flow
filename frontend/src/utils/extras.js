@@ -1,26 +1,29 @@
 // ════════════════════════════════════════════════════════════
-//  EXTRAS — دالة موحّدة لحساب "الإضافات" لكل قراءة
-//  ✅ مصدر واحد يدعم الصيغة الجديدة extras:[{note,amount,paid}]
-//     والصيغة القديمة (extra/extraPaid/extraNote) معاً، بدل
-//     نسخ متفرقة كان بعضها يقرأ الصيغة القديمة فقط ويتجاهل
-//     الإضافات المتعددة الجديدة — ما كان يسبب نقص في الإجماليات.
+//  EXTRAS — دوال موحّدة لحساب "الإضافات" (LandExtra)
+//  ✅ الإضافات صارت تابعة للأرض نفسها (landId) بدل ما كانت مخزّنة
+//  جوا كل قراءة على حدة — فكل الدوال هون بتاخذ مباشرة "مصفوفة
+//  إضافات" (مثل landExtrasByLand[landId]) بدل ما كانت تاخذ كائن
+//  قراءة (reading) وتقرأ r.extras منه.
 // ════════════════════════════════════════════════════════════
 
-/**
- * قائمة كل الإضافات لقراءة واحدة (تدعم الصيغتين)
- */
-export const getExtrasList = (r) => {
-  const extras = r?.extras || [];
-  if (extras.length > 0) return extras;
-  const legacyExtra = parseFloat(r?.extra) || 0;
-  if (legacyExtra > 0) return [{ note: r?.extraNote || '', amount: legacyExtra, paid: parseFloat(r?.extraPaid) || 0 }];
-  return [];
+/** يرجّع نفس المصفوفة (أو [] لو فاضية/غير موجودة) — للراحة عند الاستدعاء */
+export const getExtrasList = (extras) => extras || [];
+
+/** إجمالي المبلغ الصافي المتبقي (المبلغ - المدفوع) لمصفوفة إضافات */
+export const getExtrasNet = (extras) =>
+  (extras || []).reduce((s, e) => s + (parseFloat(e.amount) || 0) - (parseFloat(e.paid) || 0), 0);
+
+/** إجمالي المبلغ الكامل (بدون خصم المدفوع) لمصفوفة إضافات */
+export const getExtrasGross = (extras) =>
+  (extras || []).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+
+/** يبني خريطة landId -> [extras] من مصفوفة إضافات مسطّحة (نتيجة adminAPI.getLandExtras) */
+export const groupExtrasByLand = (extrasFlat) => {
+  const map = {};
+  (extrasFlat || []).forEach(e => {
+    const key = String(e.landId);
+    if (!map[key]) map[key] = [];
+    map[key].push(e);
+  });
+  return map;
 };
-
-/** إجمالي المبلغ الصافي المتبقي (المبلغ - المدفوع) لكل الإضافات في قراءة واحدة */
-export const getExtrasNet = (r) =>
-  getExtrasList(r).reduce((s, e) => s + (parseFloat(e.amount) || 0) - (parseFloat(e.paid) || 0), 0);
-
-/** إجمالي المبلغ الكامل (بدون خصم المدفوع) لكل الإضافات في قراءة واحدة */
-export const getExtrasGross = (r) =>
-  getExtrasList(r).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);

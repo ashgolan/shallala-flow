@@ -5,7 +5,7 @@ import { useLang } from '../../contexts/LangContext';
 import { t } from '../../i18n/translations';
 import { getPrice as getPriceWithVat } from '../../utils/pricing'; // ✅ سعر موحّد شامل الضريبة (מע"מ)
 import { cupsPositive } from '../../utils/cups'; // ✅ فرق أكواب موحّد (مجاميع فقط)
-import { getExtrasNet } from '../../utils/extras'; // ✅ إضافات موحّدة (تدعم extras[] + الحقول القديمة)
+import { getExtrasNet, groupExtrasByLand } from '../../utils/extras'; // ✅ إضافات موحّدة — الآن تابعة للأرض
 
 const dmsToDecimal = (deg, min, sec, dir) => {
   let dd = parseFloat(deg) + parseFloat(min) / 60 + parseFloat(sec) / 3600;
@@ -76,23 +76,28 @@ export default function AdminFarmers({ adminRole = 'admin' }) {
   const [applyingImport, setApplyingImport] = useState(false);
   const importFileRef = React.useRef(null);
   const [projects, setProjects] = useState([]);
+  const [landExtras, setLandExtras] = useState([]);
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [d, rg, rd, pr, ld, pd] = await Promise.all([
+      const [d, rg, rd, pr, ld, pd, le] = await Promise.all([
         adminAPI.getFarmers(), adminAPI.getRegions(),
         adminAPI.getReadings(), adminAPI.getPrices(), adminAPI.getLands(),
-        adminAPI.getProjects(), // ✅ جديد
+        adminAPI.getProjects(), adminAPI.getLandExtras(),
       ]);
       setFarmers(d.farmers || []);
       setRegions(rg.regions || []);
       setReadings(rd.readings || []);
       setPrices(pr || {});
       setAllLands(ld.lands || []);
-      setProjects(pd.projects || []); // ✅ جديد
+      setProjects(pd.projects || []);
+      setLandExtras(le.landExtras || []);
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
   }, []);
+
+  // ✅ تجميع الإضافات حسب الأرض — لاستخدامه بحساب المتبقي لكل مزارع
+  const landExtrasByLand = groupExtrasByLand(landExtras);
 
   useEffect(() => { load(); }, [load]);
 
@@ -131,9 +136,17 @@ export default function AdminFarmers({ adminRole = 'admin' }) {
           if (isPaid) return s;
           return s + c * getPrice(r.year, r.landId, i + 1);
         }, 0);
-        return total + cups + getExtrasNet(r);
+        return total + cups;
       }, 0);
-    return readingsTotal + projectsUnpaidTotal(farmerId); // ✅ + المشاريع
+    // ✅ إضافات كل أرض يملكها هذا المزارع — مرة وحدة بس لكل أرض (بدون تكرار عبر السنوات)
+    const farmerLandIds = allLands
+      .filter(l => String(l.farmerId) === String(farmerId))
+      .map(l => l.id);
+    const extrasTotal = farmerLandIds.reduce(
+      (s, lid) => s + getExtrasNet(landExtrasByLand[String(lid)] || []),
+      0
+    );
+    return readingsTotal + extrasTotal + projectsUnpaidTotal(farmerId);
   };
 
   const openAdd = () => { setEdit(null); setForm(EMPTY_FARMER); setNewCode(null); setError(''); setShowForm(true); };
