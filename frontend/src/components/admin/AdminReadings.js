@@ -5,7 +5,7 @@ import { t } from '../../i18n/translations';
 import ReadingsTable from './ReadingsTable';
 import { getPrice, getBasePrice, getVatRate } from '../../utils/pricing'; // ✅ سعر موحّد شامل الضريبة (מע"מ)
 import { cupsPositive } from '../../utils/cups'; // ✅ فرق أكواب موحّد (يدعم تبديل العداد ضمن نفس الفترة)
-import { getExtrasNet, getExtrasGross, groupExtrasByLand } from '../../utils/extras'; // ✅ إضافات تابعة للأرض (LandExtra)
+import { getExtrasNet, getExtrasGross, groupExtrasByLand } from '../../utils/extras'; // ✅ إضافات تابعة للأرض (LandExtra) — المبلغ المُدخل هو المبلغ النهائي مباشرة (بدون فصل قبل/بعد ضريبة)
 const dmsToDecimal = (deg, min, sec, dir) => {
   let dd = parseFloat(deg) + parseFloat(min) / 60 + parseFloat(sec) / 3600;
   if (/[SW]/i.test(dir)) dd = -dd;
@@ -40,53 +40,97 @@ const EMPTY_FORM = {
 
 // ✅ مكوّن إضافة واحدة — الآن مربوطة مباشرة بالأرض (LandExtra) وتُحفظ فوراً
 // بالسيرفر عند فقدان التركيز (blur)، مش عند "حفظ" القراءة
-function ExtraRow({ extra, onSave, onRemove, suggestions, ar }) {
+// ✅ الاسم يُختار من مخزن الإضافات (catalog) أو يُكتب حراً — عند الاختيار من المخزن
+// يتعبّى السعر المقترح تلقائياً ويُربط catalogItemId. تعديل السعر بعدها يعتبر "تغيير
+// لمرة واحدة" (خاص بهذه الإضافة فقط) إلا لو ضغط المستخدم "تحديث سعر المخزن" صراحة —
+// عندها يتحدّث السعر الافتراضي بالمخزن نفسه بشكل دائم. قبل/بعد الضريبة هون للعرض فقط
+// (حيّة من نسبة الضريبة العامة الحالية) ولا تؤثر على amount/paid الفعليين إطلاقاً.
+function ExtraRow({ extra, onSave, onRemove, catalog, prices, ar, onUpdateCatalogPrice }) {
   const [showAc, setShowAc] = useState(false);
   const [draft, setDraft] = useState({
     note: extra.note || '', amount: String(extra.amount ?? ''), paid: String(extra.paid ?? ''),
+    catalogItemId: extra.catalogItemId || null,
   });
   const [saving, setSaving] = useState(false);
+  const [updatingCatalog, setUpdatingCatalog] = useState(false);
 
   // ✅ لو تغيّر السجل من مصدر خارجي (إعادة تحميل مثلاً)، نزامن الحقول المحلية
   useEffect(() => {
-    setDraft({ note: extra.note || '', amount: String(extra.amount ?? ''), paid: String(extra.paid ?? '') });
+    setDraft({
+      note: extra.note || '', amount: String(extra.amount ?? ''), paid: String(extra.paid ?? ''),
+      catalogItemId: extra.catalogItemId || null,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [extra.id]);
 
-  const filtered = suggestions.filter(s => s.toLowerCase().includes((draft.note || '').toLowerCase()) && s !== draft.note);
+  const activeCatalog = (catalog || []).filter(c => c.active !== false);
+  const filtered = activeCatalog.filter(c => c.name.toLowerCase().includes((draft.note || '').toLowerCase()) && c.name !== draft.note);
 
   const commit = async (patch) => {
     const merged = { ...draft, ...patch };
     setDraft(merged);
     setSaving(true);
     try {
-      await onSave({ note: merged.note, amount: parseFloat(merged.amount) || 0, paid: parseFloat(merged.paid) || 0 });
+      await onSave({
+        note: merged.note,
+        amount: parseFloat(merged.amount) || 0,
+        paid: parseFloat(merged.paid) || 0,
+        catalogItemId: merged.catalogItemId || null,
+      });
     } finally { setSaving(false); }
   };
+
+  // ✅ اختيار عنصر من مخزن الإضافات — يعبّي الاسم والسعر المقترح تلقائياً ويربط catalogItemId
+  const pickCatalogItem = (item) => {
+    commit({ note: item.name, amount: String(item.defaultPrice ?? 0), catalogItemId: item.id });
+  };
+
+  // ✅ العنصر المرتبط حالياً بهذه الإضافة (إن وُجد) — لمقارنة السعر الحالي بسعر المخزن الافتراضي
+  const linkedCatalogItem = draft.catalogItemId ? (catalog || []).find(c => c.id === draft.catalogItemId) : null;
+  const priceDivergesFromCatalog = linkedCatalogItem && (parseFloat(draft.amount) || 0) !== (linkedCatalogItem.defaultPrice || 0);
+
+  const pushPriceToCatalog = async () => {
+    if (!linkedCatalogItem) return;
+    setUpdatingCatalog(true);
+    try { await onUpdateCatalogPrice(linkedCatalogItem.id, parseFloat(draft.amount) || 0); }
+    finally { setUpdatingCatalog(false); }
+  };
+
+  // ✅ صيغة تاريخ موحّدة بالمشروع (أرقام لاتينية، تقويم ميلادي) — نفس القاعدة المتّبعة بكل مكان آخر
+  const fmtDate = (d) => d ? new Date(d).toLocaleDateString(ar ? 'ar-EG-u-nu-latn' : 'he-IL') : '';
+  // ✅ المبلغ المُدخل هنا هو المبلغ النهائي (بعد الضريبة) مباشرة — بدون أي فصل قبل/بعد
+  const amountVal = parseFloat(draft.amount) || 0;
+  // ✅ السعر قبل الضريبة — لا يُعرض كسطر دائم، فقط كـ tooltip (title) يظهر عند تمرير
+  // المؤشر فوق حقل المبلغ ويختفي تلقائياً، بدل ما يحسبه المستخدم يدوياً كل مرة
+  const beforeTaxHint = amountVal > 0 ? amountVal / (1 + getVatRate(prices)) : 0;
+  const amountTitle = amountVal > 0
+    ? (ar ? `قبل الضريبة: ₪${Math.round(beforeTaxHint).toLocaleString()}` : `לפני מע"מ: ₪${Math.round(beforeTaxHint).toLocaleString()}`)
+    : undefined;
 
   return (
     <div style={{ background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: 10, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8, position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {/* سبب الإضافة مع autocomplete */}
+        {/* اسم الإضافة — يُكتب حر أو يُختار من مخزن الإضافات */}
         <div style={{ flex: 1, position: 'relative' }}>
           <input
             value={draft.note}
-            onChange={e => setDraft({ ...draft, note: e.target.value })}
+            onChange={e => setDraft({ ...draft, note: e.target.value, catalogItemId: null })}
             onFocus={() => setShowAc(true)}
             onBlur={() => { setTimeout(() => setShowAc(false), 150); commit({}); }}
-            placeholder={ar ? 'سبب الإضافة...' : 'סיבת התוספת...'}
+            placeholder={ar ? 'سبب الإضافة... (أو اختر من المخزن)' : 'סיבת התוספת... (או בחר מהמלאי)'}
             style={{ width: '100%', fontSize: 13 }}
           />
-          {/* قائمة الاقتراحات */}
+          {/* قائمة الاقتراحات — من مخزن الإضافات (اسم + سعره الافتراضي) */}
           {showAc && filtered.length > 0 && (
-            <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 200, background: '#fff', border: '1.5px solid #fed7aa', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.12)', minWidth: '100%', maxHeight: 160, overflowY: 'auto' }}>
-              {filtered.map(s => (
-                <div key={s}
-                  onMouseDown={() => commit({ note: s })}
-                  style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#92400e' }}
+            <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 200, background: '#fff', border: '1.5px solid #fed7aa', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.12)', minWidth: '100%', maxHeight: 200, overflowY: 'auto' }}>
+              {filtered.map(c => (
+                <div key={c.id}
+                  onMouseDown={() => pickCatalogItem(c)}
+                  style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#92400e', display: 'flex', justifyContent: 'space-between', gap: 10 }}
                   onMouseEnter={e => e.currentTarget.style.background = '#fff7ed'}
                   onMouseLeave={e => e.currentTarget.style.background = ''}>
-                  {s}
+                  <span>{c.name}</span>
+                  <span style={{ color: '#b45309', fontWeight: 800 }}>₪{c.defaultPrice.toLocaleString()}</span>
                 </div>
               ))}
             </div>
@@ -104,6 +148,7 @@ function ExtraRow({ extra, onSave, onRemove, suggestions, ar }) {
             onChange={e => setDraft({ ...draft, amount: e.target.value })}
             onBlur={() => commit({})}
             placeholder="0"
+            title={amountTitle}
             style={{ width: '100%', fontSize: 15, fontWeight: 700, textAlign: 'center' }}
           />
         </div>
@@ -118,6 +163,17 @@ function ExtraRow({ extra, onSave, onRemove, suggestions, ar }) {
           />
         </div>
       </div>
+
+      {/* ✅ تحديث سعر المخزن بشكل دائم — يظهر فقط لما المبلغ الحالي يختلف عن سعر المخزن المرتبط */}
+      {priceDivergesFromCatalog && (
+        <button type="button" onClick={pushPriceToCatalog} disabled={updatingCatalog}
+          style={{ alignSelf: 'flex-start', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 8, cursor: 'pointer', border: '1.5px solid #b45309', background: '#fffbeb', color: '#92400e' }}>
+          {updatingCatalog ? '⏳' : '🔄'} {ar
+            ? `تحديث سعر "${linkedCatalogItem.name}" بالمخزن إلى ₪${amountVal.toLocaleString()} بشكل دائم`
+            : `עדכן מחיר "${linkedCatalogItem.name}" במלאי ל-₪${amountVal.toLocaleString()} לצמיתות`}
+        </button>
+      )}
+
       {/* شريط التقدم */}
       {parseFloat(draft.amount) > 0 && (
         <div>
@@ -131,6 +187,12 @@ function ExtraRow({ extra, onSave, onRemove, suggestions, ar }) {
           </div>
         </div>
       )}
+
+      {/* ✅ تاريخ الإضافة / آخر تعديل — معلوماتي فقط (موجودان أصلاً بالسجل createdAt/updatedAt) */}
+      <div style={{ fontSize: 10, color: '#b45309', opacity: 0.8, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        {extra.createdAt && <span>📅 {ar ? 'أُضيفت' : 'נוסף'}: {fmtDate(extra.createdAt)}</span>}
+        {extra.updatedAt && extra.updatedAt !== extra.createdAt && <span>✏️ {ar ? 'آخر تعديل' : 'עודכן'}: {fmtDate(extra.updatedAt)}</span>}
+      </div>
     </div>
   );
 }
@@ -536,13 +598,14 @@ export default function AdminReadings({ adminRole = 'admin' }) {
   const [projects, setProjects] = useState([]);
   // ✅ إضافات الأراضي (LandExtra) — مصفوفة مسطّحة لكل الإضافات بالنظام، تُجمَّع حسب landId عند الحاجة
   const [landExtras, setLandExtras] = useState([]);
+  // ✅ مخزن الإضافات (ExtraCatalogItem) — أسماء/أسعار جاهزة تُقترح عند إضافة LandExtra جديدة
+  const [extraCatalog, setExtraCatalog] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [showRForm, setShowRForm] = useState(false);
   const [editR, setEditR] = useState(null);
   const rFormBackdropMouseDown = useRef(false); // ✅ لتفادي إغلاق المودال عند السحب (تحديد نص) من الداخل للخارج
   const [rForm, setRForm] = useState(EMPTY_FORM);
-  const [extrasSuggestions, setExtrasSuggestions] = useState([]); // ✅ اقتراحات
 
   const [filterF, setFilterF] = useState('');
   const [filterY, setFilterY] = useState('');
@@ -564,7 +627,7 @@ export default function AdminReadings({ adminRole = 'admin' }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [fd, ld, rd, rg, pr, pd, ed] = await Promise.all([
+      const [fd, ld, rd, rg, pr, pd, ed, ec] = await Promise.all([
         adminAPI.getFarmers(),
         adminAPI.getLands(),
         adminAPI.getReadings(),
@@ -572,6 +635,7 @@ export default function AdminReadings({ adminRole = 'admin' }) {
         adminAPI.getPrices(),
         adminAPI.getProjects(),
         adminAPI.getLandExtras(), // ✅ كل إضافات الأراضي
+        adminAPI.getExtraCatalog(), // ✅ مخزن الإضافات
       ]);
       setFarmers(fd.farmers || []);
       setLands(ld.lands || []);
@@ -580,6 +644,7 @@ export default function AdminReadings({ adminRole = 'admin' }) {
       setPrices(pr || { globalPrice: 0, yearPrices: {}, landPrices: {} });
       setProjects(pd.projects || []);
       setLandExtras(ed.extras || []);
+      setExtraCatalog(ec.items || []);
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
   }, []);
@@ -593,6 +658,20 @@ export default function AdminReadings({ adminRole = 'admin' }) {
   const reloadLandExtras = async () => {
     try { const ed = await adminAPI.getLandExtras(); setLandExtras(ed.extras || []); }
     catch (e) { setError(e.message); }
+  };
+
+  // ✅ إعادة تحميل مخزن الإضافات فقط (بعد تحديث سعر عنصر من داخل صف إضافة)
+  const reloadExtraCatalog = async () => {
+    try { const ec = await adminAPI.getExtraCatalog(); setExtraCatalog(ec.items || []); }
+    catch (e) { setError(e.message); }
+  };
+
+  // ✅ تحديث سعر عنصر بمخزن الإضافات بشكل دائم — يُستدعى من زر "تحديث سعر المخزن" بـExtraRow
+  const updateCatalogPrice = async (itemId, newPrice) => {
+    try {
+      await adminAPI.updateExtraCatalogItem(itemId, { defaultPrice: newPrice });
+      await reloadExtraCatalog();
+    } catch (e) { setError(e.message); }
   };
 
   const addLandExtraForCurrentLand = async () => {
@@ -616,12 +695,6 @@ export default function AdminReadings({ adminRole = 'admin' }) {
       await adminAPI.deleteLandExtra(extraId);
       await reloadLandExtras();
     } catch (e) { setError(e.message); }
-  };
-
-  // ✅ جمع أسماء الإضافات الموجودة للاقتراح — من إضافات الأراضي (LandExtra) مباشرة
-  const gatherSuggestions = (extrasFlat) => {
-    const notes = [...new Set((extrasFlat || []).map(e => e.note).filter(Boolean))];
-    setExtrasSuggestions(notes);
   };
 
   const farmerName = id => {
@@ -693,7 +766,6 @@ export default function AdminReadings({ adminRole = 'admin' }) {
     setEditR(null);
     setRForm(EMPTY_FORM);
     setFormFarmerSearch('');
-    gatherSuggestions(landExtras);
     setError(''); setShowRForm(true);
   };
 
@@ -712,7 +784,6 @@ export default function AdminReadings({ adminRole = 'admin' }) {
         newInitial: String(m.newInitial ?? ''),
       })),
     });
-    gatherSuggestions(landExtras);
     setError(''); setShowRForm(true);
   };
 
@@ -1478,7 +1549,9 @@ export default function AdminReadings({ adminRole = 'admin' }) {
                       <ExtraRow key={ex.id} extra={ex}
                         onSave={patch => saveLandExtra(ex.id, patch)}
                         onRemove={() => removeLandExtra(ex.id)}
-                        suggestions={extrasSuggestions}
+                        catalog={extraCatalog}
+                        prices={prices}
+                        onUpdateCatalogPrice={updateCatalogPrice}
                         ar={ar}
                       />
                     ))}

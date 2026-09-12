@@ -56,6 +56,13 @@ router.post  ('/land-extras',           landExtraCtrl.createLandExtra);
 router.put   ('/land-extras/:extraId',  landExtraCtrl.updateLandExtra);
 router.delete('/land-extras/:extraId',  landExtraCtrl.deleteLandExtra);
 
+const extraCatalogCtrl = require('../controllers/extraCatalogController');
+// ── Extras Catalog (مخزن الإضافات — أسماء/أسعار جاهزة تُقترح عند إضافة LandExtra) ──
+router.get   ('/extra-catalog',          extraCatalogCtrl.getExtraCatalog);
+router.post  ('/extra-catalog',          extraCatalogCtrl.createExtraCatalogItem);
+router.put   ('/extra-catalog/:itemId',  extraCatalogCtrl.updateExtraCatalogItem);
+router.delete('/extra-catalog/:itemId',  extraCatalogCtrl.deleteExtraCatalogItem);
+
 // ── Prices ───────────────────────────────
 router.get ('/prices',  ctrl.getPrices);
 router.post('/prices',  ctrl.updatePrices);

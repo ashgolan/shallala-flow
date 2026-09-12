@@ -248,7 +248,7 @@ export default function ReadingsTable({
               <STh col="total"  style={thTotal}>🪣 {ar?'الكل':'כלל'}</STh>
               <th className="print-col-extras" style={{ ...thBase, minWidth:90, background:'#fff3e0', color:'#e65100', textAlign:'center' }}>➕ {ar?'إضافات الأرض':'תוספות'}</th>
               <STh col="amount" style={{...thAmount, minWidth:100}}>💰 {ar?'الإجمالي':'סה"כ'}</STh>
-              <th className="print-col-note" style={{...thBase, minWidth:90, textAlign:'center'}}>💬</th>
+              <th className="print-col-note" style={{...thBase, minWidth:90, textAlign:'center', position:'sticky', left:70, background:'var(--surface-2)', zIndex:2, boxShadow:'2px 0 4px rgba(0,0,0,0.06)'}}>💬</th>
               <th style={{...thBase, minWidth:70, textAlign:'center', position:'sticky', left:0, background:'var(--surface-2)', zIndex:2, boxShadow:'2px 0 4px rgba(0,0,0,0.06)'}}></th>
             </tr>
           </thead>
@@ -407,7 +407,8 @@ export default function ReadingsTable({
                             return (
                               <div key={ei} style={{borderRadius:6,overflow:'hidden',border:`1px solid ${done?'#d1d5db':'#fed7aa'}`}}>
                                 {ex.note && (
-                                  <div style={{background:done?'#f3f4f6':'#fef3c7',padding:'1px 5px',fontSize:10,fontWeight:700,color:done?'#9ca3af':'#92400e',textAlign:'center'}}>
+                                  <div style={{background:done?'#f3f4f6':'#fef3c7',padding:'1px 5px',fontSize:10,fontWeight:700,color:done?'#9ca3af':'#92400e',textAlign:'center', maxWidth:110, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}
+                                    title={ex.note}>
                                     {ex.note}
                                   </div>
                                 )}
@@ -433,7 +434,7 @@ export default function ReadingsTable({
                       </strong>
                     </td>
 
-                    <td className="print-col-note" style={{textAlign:'center'}} onClick={e=>e.stopPropagation()}>
+                    <td className="print-col-note" style={{textAlign:'center', position:'sticky', left:70, background:stickyBg, zIndex:1, boxShadow:'2px 0 4px rgba(0,0,0,0.06)'}} onClick={e=>e.stopPropagation()}>
                       {isViewer ? (
                         r.note
                           ? <span style={{background:'#fef9c3',border:'1px solid #fde047',borderRadius:6,padding:'2px 8px',fontSize:12,color:'#78350f',fontWeight:600}}>💬 {r.note}</span>
@@ -617,7 +618,7 @@ export default function ReadingsTable({
                     ₪{Math.round(grandAmount + grandExtrasRem).toLocaleString()}
                   </span>
                 </td>
-                <td className="print-col-note"></td>
+                <td className="print-col-note" style={{position:'sticky', left:70, background:'#166534', zIndex:1, boxShadow:'2px 0 4px rgba(0,0,0,0.06)'}}></td>
                 <td></td>
               </tr>
             )}

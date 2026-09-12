@@ -89,6 +89,11 @@ export const adminAPI = {
   createLandExtra: d => req('/admin/land-extras', { method: 'POST', body: JSON.stringify(d) }),
   updateLandExtra: (id, d) => req(`/admin/land-extras/${id}`, { method: 'PUT', body: JSON.stringify(d) }),
   deleteLandExtra: id => req(`/admin/land-extras/${id}`, { method: 'DELETE' }),
+  // ✅ مخزن الإضافات (extra catalog) — أسماء/أسعار جاهزة تُقترح تلقائياً عند إضافة LandExtra جديدة
+  getExtraCatalog: () => req('/admin/extra-catalog'),
+  createExtraCatalogItem: d => req('/admin/extra-catalog', { method: 'POST', body: JSON.stringify(d) }),
+  updateExtraCatalogItem: (id, d) => req(`/admin/extra-catalog/${id}`, { method: 'PUT', body: JSON.stringify(d) }),
+  deleteExtraCatalogItem: id => req(`/admin/extra-catalog/${id}`, { method: 'DELETE' }),
   // prices
   getPrices: () => req('/admin/prices'),
   updatePrices: d => req('/admin/prices', { method: 'POST', body: JSON.stringify(d) }),

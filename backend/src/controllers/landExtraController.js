@@ -5,16 +5,21 @@ const Land       = require('../models/Land');
 //  landExtraController — CRUD لإضافات الأرض (LandExtra)
 //  ✅ نفس نمط projectController.js: كولكشن مستقل، لا علاقة له
 //  بمستند Reading إطلاقاً بعد الآن.
+//  ✅ إضافة catalogItemId (اختياري) — ربط بعنصر مخزن الإضافات
+//  (ExtraCatalogItem) لتعبئة السعر المقترح تلقائياً بالواجهة.
+//  لا تأثير على أي سجل قديم: الحقل اختياري ويبقى فارغاً (null)
+//  للإضافات النصية الحرة القديمة والجديدة على حد سواء.
 // ════════════════════════════════════════════════════════════
 
 const serialize = (e) => ({
-  id:        e._id.toString(),
-  landId:    e.landId.toString(),
-  note:      e.note   || '',
-  amount:    e.amount || 0,
-  paid:      e.paid   || 0,
-  createdAt: e.createdAt,
-  updatedAt: e.updatedAt,
+  id:            e._id.toString(),
+  landId:        e.landId.toString(),
+  note:          e.note   || '',
+  amount:        e.amount || 0,
+  paid:          e.paid   || 0,
+  catalogItemId: e.catalogItemId ? e.catalogItemId.toString() : null,
+  createdAt:     e.createdAt,
+  updatedAt:     e.updatedAt,
 });
 
 // GET /admin/land-extras?landId=...  (بدون landId = كل الإضافات بالنظام)
@@ -27,36 +32,47 @@ const getLandExtras = async (req, res) => {
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
 
-// POST /admin/land-extras   { landId, note, amount, paid }
+// POST /admin/land-extras   { landId, note, amount, paid, catalogItemId? }
+// ✅ نسمح بإنشاء سجل فارغ (بدون سبب/مبلغ) عمداً: زر "+ إضافة جديدة" بالواجهة
+// (AdminReadings.js → addLandExtraForCurrentLand) يُنشئ صف إضافة فارغ أولاً، وبعدين
+// المستخدم يعبّي السبب/المبلغ تدريجياً ويُحفظ تلقائياً عند فقدان التركيز (blur) —
+// تماماً متل ما updateLandExtra أصلاً يقبل قيم فارغة. رفض الإنشاء هون كان يمنع
+// هالسيناريو بالكامل (خطأ "سبب الإضافة أو المبلغ مطلوب" فوراً عند الضغط على +).
+// سجل فارغ (amount=0, note='') ما إله أي تأثير على أي رصيد/مجموع (getExtrasNet/Gross
+// بيجمعوا 0)، ويقدر المستخدم يحذفه بزر ✕ لو غيّر رأيه بدون ما يعبّيه.
 const createLandExtra = async (req, res) => {
   try {
-    const { landId, note, amount, paid } = req.body;
+    const { landId, note, amount, paid, catalogItemId } = req.body;
     if (!landId) return res.status(400).json({ error: 'الأرض مطلوبة' });
-    if (!(note && note.trim()) && !(parseFloat(amount) > 0))
-      return res.status(400).json({ error: 'سبب الإضافة أو المبلغ مطلوب' });
 
     const land = await Land.findById(landId).lean();
     if (!land) return res.status(404).json({ error: 'الأرض غير موجودة' });
 
     const extra = await LandExtra.create({
       landId,
-      note:   note || '',
-      amount: parseFloat(amount) || 0,
-      paid:   parseFloat(paid)   || 0,
+      note:          note || '',
+      amount:        parseFloat(amount) || 0,
+      paid:          parseFloat(paid)   || 0,
+      catalogItemId: catalogItemId || null,
     });
     return res.status(201).json({ success: true, id: extra._id.toString() });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم: ' + err.message }); }
 };
 
-// PUT /admin/land-extras/:extraId   { note, amount, paid }
+// PUT /admin/land-extras/:extraId   { note, amount, paid, catalogItemId? }
 const updateLandExtra = async (req, res) => {
   try {
-    const { note, amount, paid } = req.body;
-    const updated = await LandExtra.findByIdAndUpdate(req.params.extraId, {
+    const { note, amount, paid, catalogItemId } = req.body;
+    const patch = {
       note:   note || '',
       amount: parseFloat(amount) || 0,
       paid:   parseFloat(paid)   || 0,
-    }, { new: true });
+    };
+    // ✅ نحدّث الربط فقط لو انبعت صراحة بالطلب — حتى تحديثات قديمة (بدون catalogItemId
+    // بجسم الطلب) ما تصفّر ربط موجود بالغلط
+    if (catalogItemId !== undefined) patch.catalogItemId = catalogItemId || null;
+
+    const updated = await LandExtra.findByIdAndUpdate(req.params.extraId, patch, { new: true });
     if (!updated) return res.status(404).json({ error: 'غير موجود' });
     return res.json({ success: true });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }

@@ -495,6 +495,8 @@ export function AdminSettings() {
 
       <VatSettings ar={ar} lang={lang} />
 
+      <ExtrasCatalogSettings ar={ar} lang={lang} />
+
       <div className="card mb-20">
         <h3 className="mb-8">📢 {t('announcement', lang)}</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>{t('announcementDesc', lang)}</p>
@@ -577,6 +579,181 @@ function VatSettings({ ar, lang }) {
             value={vat} onChange={e => setVat(e.target.value)} placeholder="18" />
         </div>
         <button className="btn btn-primary" onClick={save} disabled={saving || prices === null}>💾</button>
+      </div>
+    </div>
+  );
+}
+
+// ── مخزن الإضافات (ExtraCatalogItem) ────────────────────────────
+// ✅ أسماء/أسعار جاهزة تُقترح تلقائياً عند إضافة إضافة جديدة لأرض (LandExtra) بصفحة
+// القراءات. تعديل السعر هنا يُحدّث "السعر المقترح" لأي إضافة جديدة تُنشأ لاحقاً فقط —
+// لا يلمس أي إضافة (LandExtra) موجودة مسبقاً (كل سجل يحتفظ بمبلغه الخاص المستقل).
+function ExtrasCatalogSettings({ ar, lang }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ name: '', defaultPrice: '' });
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  // ✅ تعديل السعر الافتراضي داخل الجدول مباشرة (بدون فورم منفصل)
+  const [editPriceId, setEditPriceId] = useState(null);
+  const [editPriceVal, setEditPriceVal] = useState('');
+
+  const load = () => adminAPI.getExtraCatalog().then(d => setItems(d.items || [])).catch(() => { }).finally(() => setLoading(false));
+  useEffect(() => { load(); }, []);
+
+  const submit = async e => {
+    e.preventDefault();
+    if (!form.name.trim()) { setError(ar ? 'اسم الإضافة مطلوب' : 'שם התוספת חובה'); return; }
+    setSaving(true); setError('');
+    try {
+      await adminAPI.createExtraCatalogItem({ name: form.name.trim(), defaultPrice: parseFloat(form.defaultPrice) || 0 });
+      setForm({ name: '', defaultPrice: '' });
+      setShowForm(false);
+      setSuccess('✅ ' + (ar ? 'تمت الإضافة' : 'נוסף בהצלחה'));
+      setTimeout(() => setSuccess(''), 3000);
+      load();
+    } catch (e) { setError(e.message); }
+    finally { setSaving(false); }
+  };
+
+  const openEditPrice = (item) => { setEditPriceId(item.id); setEditPriceVal(String(item.defaultPrice)); setError(''); };
+  const saveEditPrice = async (item) => {
+    setSaving(true); setError('');
+    try {
+      await adminAPI.updateExtraCatalogItem(item.id, { defaultPrice: parseFloat(editPriceVal) || 0 });
+      setEditPriceId(null);
+      setSuccess('✅ ' + (ar ? 'تم تحديث السعر' : 'המחיר עודכן'));
+      setTimeout(() => setSuccess(''), 3000);
+      load();
+    } catch (e) { setError(e.message); }
+    finally { setSaving(false); }
+  };
+
+  const toggleActive = async (item) => {
+    try {
+      await adminAPI.updateExtraCatalogItem(item.id, { active: !item.active });
+      load();
+    } catch (e) { alert(e.message); }
+  };
+
+  const remove = async (item) => {
+    if (!window.confirm(`${ar ? 'حذف' : 'מחיקת'} "${item.name}"?`)) return;
+    try {
+      await adminAPI.deleteExtraCatalogItem(item.id);
+      load();
+    } catch (e) { alert(e.message); }
+  };
+
+  return (
+    <div className="card mb-20">
+      <div className="flex-between mb-8" style={{ flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <h3 className="mb-4">🗂️ {ar ? 'مخزن الإضافات' : 'מחסן תוספות'}</h3>
+          <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: 0 }}>
+            {ar
+              ? 'أسماء وأسعار جاهزة تُقترح تلقائياً عند إضافة إضافة جديدة لأرض بصفحة القراءات — يمكن قبول السعر المقترح، تغييره لمرة واحدة، أو تحديثه هنا بشكل دائم.'
+              : 'שמות ומחירים מוכנים שמוצעים אוטומטית בעת הוספת תוספת חדשה לחלקה בעמוד הקריאות — ניתן לקבל את המחיר המוצע, לשנות אותו חד-פעמית, או לעדכן אותו כאן לצמיתות.'}
+          </p>
+        </div>
+        <button className="btn btn-primary btn-sm"
+          onClick={() => { setShowForm(v => !v); setError(''); setForm({ name: '', defaultPrice: '' }); }}>
+          {showForm ? (ar ? '✕ إلغاء' : '✕ ביטול') : (ar ? '+ إضافة عنصر' : '+ הוסף פריט')}
+        </button>
+      </div>
+
+      {success && <div className="alert alert-success mb-16">{success}</div>}
+      {!showForm && error && <div className="alert alert-error mb-16">{error}</div>}
+
+      {showForm && (
+        <form onSubmit={submit} className="card mb-16" style={{ background: 'var(--surface-2)', border: 'none' }}>
+          <div className="grid-2">
+            <div className="form-group">
+              <label>{ar ? 'اسم الإضافة' : 'שם התוספת'} *</label>
+              <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
+                placeholder={ar ? 'مثال: اشتراك خط مياه' : 'לדוגמה: מנוי קו מים'} />
+            </div>
+            <div className="form-group">
+              <label>{ar ? 'السعر الافتراضي (₪)' : 'מחיר ברירת מחדל (₪)'}</label>
+              <input type="number" step="0.01" min="0" value={form.defaultPrice}
+                onChange={e => setForm({ ...form, defaultPrice: e.target.value })} placeholder="0" />
+            </div>
+          </div>
+          {error && <div className="alert alert-error mb-8">{error}</div>}
+          <div className="flex-gap gap-8">
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? t('saving', lang) : `+ ${ar ? 'إضافة' : 'הוסף'}`}
+            </button>
+            <button type="button" className="btn btn-outline" onClick={() => { setShowForm(false); setError(''); }}>
+              {t('cancel', lang)}
+            </button>
+          </div>
+        </form>
+      )}
+
+      <div className="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{ar ? 'الاسم' : 'שם'}</th>
+              <th>{ar ? 'السعر الافتراضي' : 'מחיר ברירת מחדל'}</th>
+              <th>{ar ? 'الحالة' : 'סטטוס'}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading && (
+              <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 20 }}>
+                {ar ? 'جاري التحميل...' : 'טוען...'}
+              </td></tr>
+            )}
+            {!loading && items.length === 0 && (
+              <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 20 }}>
+                {ar ? 'لا توجد عناصر بعد' : 'אין פריטים עדיין'}
+              </td></tr>
+            )}
+            {items.map(item => (
+              <tr key={item.id} style={{ opacity: item.active ? 1 : 0.55 }}>
+                <td style={{ fontFamily: 'Heebo,sans-serif', fontWeight: 600 }}>{item.name}</td>
+                <td>
+                  {editPriceId === item.id ? (
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      <input type="number" step="0.01" min="0" value={editPriceVal}
+                        onChange={e => setEditPriceVal(e.target.value)}
+                        style={{ width: 90, fontSize: 13, padding: '3px 6px' }} autoFocus
+                        onKeyDown={e => { if (e.key === 'Enter') saveEditPrice(item); if (e.key === 'Escape') setEditPriceId(null); }} />
+                      <button onClick={() => saveEditPrice(item)} disabled={saving}
+                        style={{ width: 26, height: 26, borderRadius: 6, border: '1.5px solid #16a34a', background: '#dcfce7', color: '#16a34a', cursor: 'pointer', fontSize: 12 }}>✓</button>
+                      <button onClick={() => setEditPriceId(null)}
+                        style={{ width: 26, height: 26, borderRadius: 6, border: '1.5px solid #fca5a5', background: '#fff1f2', color: '#dc2626', cursor: 'pointer', fontSize: 12 }}>✕</button>
+                    </div>
+                  ) : (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
+                      onClick={() => openEditPrice(item)} title={ar ? 'اضغط لتعديل السعر بشكل دائم' : 'לחץ לעריכת המחיר לצמיתות'}>
+                      <strong>₪{Number(item.defaultPrice).toLocaleString()}</strong>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>✏</span>
+                    </span>
+                  )}
+                </td>
+                <td>
+                  <span className="badge badge-blue"
+                    style={{ cursor: 'pointer', ...(item.active ? {} : { background: '#f3f4f6', color: '#9ca3af' }) }}
+                    onClick={() => toggleActive(item)}
+                    title={ar ? 'اضغط لتبديل الحالة' : 'לחץ להחלפת הסטטוס'}>
+                    {item.active ? (ar ? '● نشط' : '● פעיל') : (ar ? '○ معطّل' : '○ לא פעיל')}
+                  </span>
+                </td>
+                <td>
+                  <button onClick={() => remove(item)}
+                    style={{ width: 28, height: 28, borderRadius: 7, border: '1.5px solid #fca5a5', background: '#fff1f2', color: '#dc2626', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#dc2626'; e.currentTarget.style.color = '#fff'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#fff1f2'; e.currentTarget.style.color = '#dc2626'; }}>✕</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
