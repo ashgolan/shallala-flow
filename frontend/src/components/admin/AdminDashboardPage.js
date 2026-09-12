@@ -4,7 +4,7 @@ import { adminAPI, paymentsAPI } from '../../api';
 import { useLang } from '../../contexts/LangContext';
 import { getPrice } from '../../utils/pricing'; // ✅ سعر موحّد شامل الضريبة (מע"מ)
 import { cupsPositive } from '../../utils/cups';     // ✅ فرق أكواب موحّد (مجاميع فقط، بدون قيم سالبة)
-import { getExtrasNet } from '../../utils/extras';   // ✅ إضافات موحّدة (تدعم extras[] + الحقول القديمة)
+import { getExtrasNet } from '../../utils/extras';   // ✅ إضافات الأرض (LandExtra) — مصفوفة مستقلة لكل أرض، مو جوا القراءة
 import useElementWidth from '../../hooks/useElementWidth'; // ✅ قياس عرض موحّد للرسوم البيانية (يحل مشكلة الرسوم الفارغة)
 import { CATEGORIES } from './AdminPayments'; // ✅ نفس تصنيفات المدفوعات (لترجمة الأسماء بدل عرضها بالإنجليزي)
 import {
@@ -247,15 +247,22 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
       const y = r.year;
       if (!byYear[y]) byYear[y] = { year:y, income:0, cups:0 };
       const vals = r.readings||[];
-      // أضف extra مرة واحدة فقط لكل قراءة (ليس لكل فترة)
-      const extraNet = getExtrasNet(r);
-      byYear[y].income += extraNet;
       vals.slice(1).forEach((v,i) => {
         const cups  = cupsPositive(vals, i);
         const price = getPrice(prices, y, r.landId, i+1);
         byYear[y].cups   += cups;
         byYear[y].income += cups * price;
       });
+    });
+    // ✅ إضافات الأراضي (LandExtra) صارت تابعة للأرض نفسها مباشرة، مو مخزّنة جوا كل
+    // قراءة كإله — فكل إضافة (سجل واحد فقط بمصفوفة report.landExtras) بتُحسب مرة
+    // وحدة بس، بسنة إنشائها (createdAt)، بدل ما كانت (بالغلط) تُمرَّر كائن القراءة
+    // نفسه لـgetExtrasNet وتتكرر لكل قراءة — كان هاد سبب كراش لوحة التحكم بالكامل
+    // ("reduce is not a function") لأن القراءة صارت كائن عادي مش مصفوفة إضافات.
+    (report.landExtras || []).forEach(e => {
+      const y = e.createdAt ? new Date(e.createdAt).getFullYear() : new Date().getFullYear();
+      if (!byYear[y]) byYear[y] = { year:y, income:0, cups:0 };
+      byYear[y].income += getExtrasNet([e]);
     });
     return Object.values(byYear).sort((a,b)=>a.year-b.year);
   };
@@ -467,8 +474,11 @@ export default function AdminDashboardPage({ adminRole='admin' }) {
   })();
 
   // ✅ ملخص المشاريع: التكلفة الإجمالية / المدفوع / المتبقي — ولائحة المشاريع الناقصة الدفع
+  // ✅ نستثني مشاريع "الأسماء الحرة" (customMembers=true) بالكامل من لوحة التحكم — هذي
+  // مشاريع خارجية مو تابعة للجنة الشلالة ولا لمزارعيها، وانضافت بصفحة المشاريع فقط لعدم
+  // ضياع بياناتها (وليس لأنها جزء من نشاط اللجنة). ما إلها علاقة بأي حساب مالي/إحصائي هون.
   const projectsSummary = (() => {
-    const projects = data.projects || [];
+    const projects = (data.projects || []).filter(p => !p.customMembers);
     const list = projects.map(p => {
       const members = p.members || [];
       const required = members.reduce((s,m) => s + (m.amount||0), 0);
