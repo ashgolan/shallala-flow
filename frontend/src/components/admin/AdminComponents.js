@@ -495,6 +495,8 @@ export function AdminSettings() {
 
       <VatSettings ar={ar} lang={lang} />
 
+      <PenaltyRateSettings ar={ar} lang={lang} />
+
       <ExtrasCatalogSettings ar={ar} lang={lang} />
 
       <div className="card mb-20">
@@ -577,6 +579,55 @@ function VatSettings({ ar, lang }) {
           <label>{ar ? 'نسبة الضريبة (%)' : 'אחוז מע"מ (%)'}</label>
           <input type="number" step="0.1" min="0" max="100"
             value={vat} onChange={e => setVat(e.target.value)} placeholder="18" />
+        </div>
+        <button className="btn btn-primary" onClick={save} disabled={saving || prices === null}>💾</button>
+      </div>
+    </div>
+  );
+}
+
+// ── إعداد السعر الافتراضي لغرامة التأخير (₪ لكل كوب غير مدفوع) ──
+// ✅ نفس نمط VatSettings تماماً — يقرأ/يكتب prices.latePenaltyRate عبر
+// adminAPI.updatePrices. هذا السعر يُستخدم فقط كقيمة مبدئية تُعبّى تلقائياً
+// عند فتح شباك "تطبيق غرامة تأخير" بصفحة القراءات، وقابل للتعديل هناك
+// لمرة واحدة بدون ما يغيّر هالإعداد الافتراضي.
+function PenaltyRateSettings({ ar, lang }) {
+  const [prices, setPrices] = useState(null);
+  const [rate, setRate] = useState('0.5');
+  const [saving, setSaving] = useState(false);
+  const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    adminAPI.getPrices().then(p => {
+      setPrices(p);
+      setRate(String(p?.latePenaltyRate ?? 0.5));
+    }).catch(() => { });
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await adminAPI.updatePrices({ ...prices, latePenaltyRate: parseFloat(rate) || 0 });
+      setSuccess('✅ ' + (ar ? 'تم الحفظ' : 'נשמר'));
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (e) { alert(e.message); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="card mb-20">
+      <h3 className="mb-8">⏰ {ar ? 'سعر غرامة التأخير' : 'מחיר קנס איחור'}</h3>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>
+        {ar
+          ? 'القيمة الافتراضية (₪ لكل كوب غير مدفوع) التي تُعبّى تلقائياً عند فتح شباك "تطبيق غرامة تأخير" بصفحة القراءات — وتبقى قابلة للتعديل هناك لمرة واحدة فقط.'
+          : 'ערך ברירת המחדל (₪ לכל קוב שלא שולם) שמתמלא אוטומטית בעת פתיחת חלון "החלת קנס איחור" בעמוד הקריאות — וניתן לשינוי חד-פעמי שם.'}
+      </p>
+      {success && <div className="alert alert-success mb-16">{success}</div>}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', maxWidth: 260 }}>
+        <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
+          <label>₪ {ar ? 'لكل كوب غير مدفوع' : 'לכל קוב שלא שולם'}</label>
+          <input type="number" step="any" min="0"
+            value={rate} onChange={e => setRate(e.target.value)} placeholder="0.5" />
         </div>
         <button className="btn btn-primary" onClick={save} disabled={saving || prices === null}>💾</button>
       </div>

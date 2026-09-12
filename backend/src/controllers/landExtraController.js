@@ -18,6 +18,8 @@ const serialize = (e) => ({
   amount:        e.amount || 0,
   paid:          e.paid   || 0,
   catalogItemId: e.catalogItemId ? e.catalogItemId.toString() : null,
+  // ✅ 'manual' (افتراضي، إضافات قديمة وجديدة عادية) أو 'penalty' (غرامة تأخير تلقائية)
+  kind:          e.kind || 'manual',
   createdAt:     e.createdAt,
   updatedAt:     e.updatedAt,
 });
@@ -32,7 +34,7 @@ const getLandExtras = async (req, res) => {
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
 
-// POST /admin/land-extras   { landId, note, amount, paid, catalogItemId? }
+// POST /admin/land-extras   { landId, note, amount, paid, catalogItemId?, kind? }
 // ✅ نسمح بإنشاء سجل فارغ (بدون سبب/مبلغ) عمداً: زر "+ إضافة جديدة" بالواجهة
 // (AdminReadings.js → addLandExtraForCurrentLand) يُنشئ صف إضافة فارغ أولاً، وبعدين
 // المستخدم يعبّي السبب/المبلغ تدريجياً ويُحفظ تلقائياً عند فقدان التركيز (blur) —
@@ -42,7 +44,7 @@ const getLandExtras = async (req, res) => {
 // بيجمعوا 0)، ويقدر المستخدم يحذفه بزر ✕ لو غيّر رأيه بدون ما يعبّيه.
 const createLandExtra = async (req, res) => {
   try {
-    const { landId, note, amount, paid, catalogItemId } = req.body;
+    const { landId, note, amount, paid, catalogItemId, kind } = req.body;
     if (!landId) return res.status(400).json({ error: 'الأرض مطلوبة' });
 
     const land = await Land.findById(landId).lean();
@@ -54,6 +56,8 @@ const createLandExtra = async (req, res) => {
       amount:        parseFloat(amount) || 0,
       paid:          parseFloat(paid)   || 0,
       catalogItemId: catalogItemId || null,
+      // ✅ 'penalty' فقط لما تنبعت صراحة (من شباك تطبيق غرامة التأخير) — غير هيك 'manual' دايماً
+      kind: kind === 'penalty' ? 'penalty' : 'manual',
     });
     return res.status(201).json({ success: true, id: extra._id.toString() });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم: ' + err.message }); }

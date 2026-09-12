@@ -107,8 +107,24 @@ function ExtraRow({ extra, onSave, onRemove, catalog, prices, ar, onUpdateCatalo
     ? (ar ? `قبل الضريبة: ₪${Math.round(beforeTaxHint).toLocaleString()}` : `לפני מע"מ: ₪${Math.round(beforeTaxHint).toLocaleString()}`)
     : undefined;
 
+  // ✅ إضافة من نوع "غرامة تأخير" (أُنشئت تلقائياً عبر شباك تطبيق غرامة التأخير) — تُميَّز
+  // بصرياً فقط (لون مختلف + شارة)، وباقي السلوك (تعديل/حذف/حفظ تلقائي) يبقى كما هو تماماً
+  const isPenalty = extra.kind === 'penalty';
+
   return (
-    <div style={{ background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: 10, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8, position: 'relative' }}>
+    <div style={{
+      background: isPenalty ? '#fef2f2' : '#fff7ed',
+      border: isPenalty ? '1.5px solid #fca5a5' : '1.5px solid #fed7aa',
+      borderRadius: 10, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8, position: 'relative',
+    }}>
+      {isPenalty && (
+        <div style={{
+          alignSelf: 'flex-start', fontSize: 10, fontWeight: 800, color: '#991b1b',
+          background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 6, padding: '2px 8px',
+        }}>
+          ⏰ {ar ? 'غرامة تأخير' : 'קנס איחור'}
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {/* اسم الإضافة — يُكتب حر أو يُختار من مخزن الإضافات */}
         <div style={{ flex: 1, position: 'relative' }}>
@@ -584,6 +600,396 @@ function BulkExtraModal({ farmers, lands, regions, readings, onClose, onApplied,
   );
 }
 
+// ════════════════════════════════════════════════════════════
+//  PenaltyModal — تطبيق "غرامة تأخير" تلقائياً على الأراضي الغير مدفوعة
+//  ✅ الفكرة: لكل أرض مختارة، نحسب الأكواب الغير مدفوعة حالياً (بكل سنواتها)
+//  × سعر لكل كوب (يُقترح من prices.latePenaltyRate، قابل للتعديل هالمرة بس)،
+//  وننشئ إضافة (LandExtra) عادية بـkind:'penalty' بهالمبلغ. هيك الغرامة
+//  بتنعكس تلقائياً بكل مكان بالتطبيق (تقارير، لوحة مزارع، كشف واتساب...)
+//  بدون أي تعديل على أي حساب موجود — وإلغاؤها = حذف هالإضافة بالذات (بنفس
+//  زر ✕ العادي) فيرجع المبلغ لطبيعته بالضبط.
+//  ✅ أي أرض عندها غرامة سابقة لسا موجودة (ما انحذفت) — ما تظهر أصلاً
+//  بقائمة الاختيار، منعاً لتكرار الغرامة فوق بعضها.
+// ════════════════════════════════════════════════════════════
+function PenaltyModal({ farmers, lands, regions, readings, landExtrasByLand, prices, onClose, onApplied, ar }) {
+  const [step, setStep] = useState(1);
+  const [rate, setRate] = useState(String(prices?.latePenaltyRate ?? 0.5));
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState({}); // key: farmerId_landId -> true
+  const [excluded, setExcluded] = useState({}); // key -> true (أُزيل يدوياً من المعاينة)
+  const [applying, setApplying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [result, setResult] = useState(null); // {success, fail}
+
+  // ✅ لتفادي إغلاق النافذة عند السحب (تحديد نص) من الداخل للخارج
+  const backdropMouseDown = useRef(false);
+
+  const cbStyle = { width: 16, height: 16, minWidth: 16, flexShrink: 0, accentColor: '#dc2626', cursor: 'pointer' };
+
+  const farmerName = id => {
+    const f = farmers.find(x => String(x.id) === String(id));
+    if (!f) return '—';
+    return `${f.lastName || ''} ${f.firstName || ''}`.trim() || f.nameHeb || f.name || '—';
+  };
+
+  const landLabel = (land) => {
+    if (!land) return '—';
+    if (land.regionId) {
+      const reg = regions.find(r => String(r.id) === String(land.regionId));
+      if (reg?.nameHeb && reg.nameHeb !== reg.name) return reg.nameHeb;
+      if (reg?.name) return reg.name;
+    }
+    return land.description || '—';
+  };
+
+  // ✅ عندها غرامة نشطة أصلاً؟ (kind='penalty' موجودة، بغض النظر عن حالة دفعها — المعيار
+  // هو الحذف مو الدفع؛ طالما ما انحذفت فهي "لسا موجودة")
+  const hasActivePenalty = (landId) => (landExtrasByLand[String(landId)] || []).some(e => e.kind === 'penalty');
+
+  // ✅ إجمالي الأكواب الغير مدفوعة حالياً لهذه الأرض — عبر كل قراءاتها/سنواتها، فترة
+  // فترة حسب paidPeriods (نفس تعريف "الفترة النشطة" المستخدم بكل مكان تاني بالتطبيق)
+  const cupsUnpaid = (farmerId, landId) => {
+    const rs = readings.filter(x => String(x.farmerId) === String(farmerId) && String(x.landId) === String(landId));
+    let total = 0;
+    rs.forEach(r => {
+      const vals = r.readings || [];
+      const changes = r.meterChanges || [];
+      const periodsCount = Math.max(0, vals.length - 1);
+      for (let i = 0; i < periodsCount; i++) {
+        const active = vals[i] != null && vals[i] !== '';
+        if (!active) continue;
+        if (r.paidPeriods && r.paidPeriods[i]) continue; // مدفوعة — ما تُحسب
+        const c = cupsPositive(vals, i, changes);
+        if (c && c > 0) total += c;
+      }
+    });
+    return total;
+  };
+
+  // ✅ فقط الأراضي: (أ) عندها أكواب غير مدفوعة، و(ب) ما عندها غرامة سابقة لسا موجودة
+  const farmersWithLands = farmers
+    .map(f => ({
+      farmer: f,
+      farmerLands: lands
+        .filter(l => String(l.farmerId) === String(f.id))
+        .filter(l => !hasActivePenalty(l.id))
+        .map(l => ({ ...l, unpaidCups: cupsUnpaid(l.farmerId, l.id) }))
+        .filter(l => l.unpaidCups > 0),
+    }))
+    .filter(x => x.farmerLands.length > 0)
+    .sort((a, b) => (a.farmer.nameHeb || a.farmer.name || '').localeCompare(b.farmer.nameHeb || b.farmer.name || '', 'ar'));
+
+  const filteredFarmers = farmersWithLands.filter(x => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (x.farmer.nameHeb || x.farmer.name || '').toLowerCase().includes(q);
+  });
+
+  const selectedCount = Object.values(selected).filter(Boolean).length;
+
+  const toggleLand = (key) => setSelected(prev => ({ ...prev, [key]: !prev[key] }));
+
+  const toggleFarmerAll = (farmerLands, checked) => {
+    setSelected(prev => {
+      const next = { ...prev };
+      farmerLands.forEach(l => { next[`${l.farmerId}_${l.id}`] = checked; });
+      return next;
+    });
+  };
+
+  const selectAllVisible = () => {
+    setSelected(prev => {
+      const next = { ...prev };
+      filteredFarmers.forEach(({ farmerLands }) => {
+        farmerLands.forEach(l => { next[`${l.farmerId}_${l.id}`] = true; });
+      });
+      return next;
+    });
+  };
+
+  const clearAll = () => setSelected({});
+
+  const rateNum = parseFloat(rate) || 0;
+
+  const applyRows = Object.keys(selected).filter(k => selected[k] && !excluded[k]).map(key => {
+    const [farmerId, landId] = key.split('_');
+    const land = lands.find(l => String(l.id) === String(landId));
+    const unpaidCups = cupsUnpaid(farmerId, landId);
+    return { key, farmerId, landId, land, unpaidCups, amount: unpaidCups * rateNum };
+  });
+
+  const applyPenalties = async () => {
+    if (applyRows.length === 0 || rateNum <= 0) return;
+    if (!window.confirm(
+      ar
+        ? `تطبيق غرامة تأخير (₪${rateNum}/كوب) على ${applyRows.length} أرض؟`
+        : `להחיל קנס איחור (₪${rateNum}/קוב) על ${applyRows.length} קרקעות?`
+    )) return;
+    setApplying(true); setProgress(0);
+    let success = 0, fail = 0;
+    for (const row of applyRows) {
+      try {
+        const noteTxt = ar
+          ? `⏰ غرامة تأخير — ${Math.round(row.unpaidCups).toLocaleString()} كوب غير مدفوع × ₪${rateNum}`
+          : `⏰ קנס איחור — ${Math.round(row.unpaidCups).toLocaleString()} קוב שלא שולם × ₪${rateNum}`;
+        await adminAPI.createLandExtra({
+          landId: row.landId,
+          note: noteTxt,
+          amount: row.amount,
+          paid: 0,
+          kind: 'penalty',
+        });
+        success++;
+      } catch (e) { console.error(e); fail++; }
+      setProgress(p => p + 1);
+    }
+    setApplying(false);
+    setResult({ success, fail });
+    onApplied();
+  };
+
+  return (
+    <div
+      onMouseDown={(e) => { backdropMouseDown.current = (e.target === e.currentTarget); }}
+      onClick={(e) => {
+        if (backdropMouseDown.current && e.target === e.currentTarget && !applying) onClose();
+        backdropMouseDown.current = false;
+      }}
+      style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 720, maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
+
+        {/* الرأس */}
+        <div style={{ padding: '14px 20px', background: '#7f1d1d', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 18 }}>⏰</span>
+            <span style={{ color: '#fff', fontWeight: 800, fontSize: 15 }}>
+              {ar ? 'تطبيق غرامة تأخير' : 'החלת קנס איחור'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ color: '#fecaca', fontSize: 12 }}>{ar ? `الخطوة ${step} من 3` : `שלב ${step} מתוך 3`}</span>
+            {!applying && (
+              <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 26, height: 26, borderRadius: '50%', cursor: 'pointer' }}>✕</button>
+            )}
+          </div>
+        </div>
+
+        {/* شريط التقدّم */}
+        <div style={{ display: 'flex', gap: 4, padding: '10px 20px 0' }}>
+          {[1, 2, 3].map(n => (
+            <div key={n} style={{ height: 4, flex: 1, borderRadius: 4, background: n <= step ? '#dc2626' : '#e5e7eb' }} />
+          ))}
+        </div>
+
+        <div style={{ padding: 20, overflowY: 'auto', flex: 1 }}>
+
+          {/* ── خطوة 1: السعر لكل كوب ── */}
+          {step === 1 && (
+            <div>
+              <div className="form-group">
+                <label>₪ {ar ? 'السعر لكل كوب غير مدفوع *' : 'מחיר לכל קוב שלא שולם *'}</label>
+                <input type="number" min="0" step="any" value={rate} onChange={e => setRate(e.target.value)}
+                  placeholder="0.5" style={{ width: '100%', fontWeight: 700 }} />
+                <small style={{ color: 'var(--text-muted)' }}>
+                  {ar
+                    ? 'معبّى تلقائياً من الإعدادات — تقدر تغيّره هلق لهالمرة بس، بدون ما يغيّر الإعداد الافتراضي.'
+                    : 'מולא אוטומטית מההגדרות — ניתן לשנות עכשיו חד-פעמית, מבלי לשנות את ברירת המחדל.'}
+                </small>
+              </div>
+              <div style={{ fontSize: 12, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 12px', color: '#991b1b', fontWeight: 600 }}>
+                ⚠️ {ar
+                  ? 'الغرامة بتُحسب على كل الأكواب الغير مدفوعة حالياً لكل أرض تختارها بالخطوة الجاية، وبتُضاف كإضافة منفصلة تقدر تحذفها بأي وقت لترجيع السعر الطبيعي.'
+                  : 'הקנס יחושב על כל הקוב שלא שולם כרגע לכל חלקה שתבחר בשלב הבא, ויתווסף כתוספת נפרדת שניתן למחוק בכל עת כדי לחזור למחיר הרגיל.'}
+              </div>
+            </div>
+          )}
+
+          {/* ── خطوة 2: اختيار الأراضي الغير مدفوعة ── */}
+          {step === 2 && (
+            <div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center' }}>
+                <input value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder={ar ? '🔍 بحث عن مزارع...' : '🔍 חיפוש חקלאי...'} style={{ flex: 1 }} />
+                <button type="button" className="btn btn-outline btn-sm" onClick={selectAllVisible}>
+                  {ar ? 'تحديد الكل' : 'בחר הכל'}
+                </button>
+                <button type="button" className="btn btn-outline btn-sm" onClick={clearAll}>
+                  {ar ? 'إلغاء التحديد' : 'נקה בחירה'}
+                </button>
+              </div>
+
+              <div style={{ border: '1.5px solid var(--border)', borderRadius: 10, maxHeight: 380, overflowY: 'auto' }}>
+                <div style={{
+                  display: 'grid', gridTemplateColumns: '26px 90px 1fr 110px',
+                  gap: 8, padding: '7px 12px', background: '#fef2f2',
+                  fontSize: 11, fontWeight: 800, color: '#991b1b',
+                  position: 'sticky', top: 0, zIndex: 1, borderBottom: '1px solid #fecaca',
+                }}>
+                  <span></span>
+                  <span style={{ textAlign: 'center' }}>{ar ? 'المحطة' : 'עמדה'}</span>
+                  <span>{ar ? 'الأرض / المنطقة' : 'קרקע / אזור'}</span>
+                  <span style={{ textAlign: 'center' }}>{ar ? 'كوب غير مدفوع' : 'קוב לא שולם'}</span>
+                </div>
+
+                {filteredFarmers.length === 0 && (
+                  <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                    {ar ? 'لا توجد أراضٍ غير مدفوعة (أو كلها عندها غرامة مطبّقة أصلاً)' : 'אין קרקעות שלא שולמו (או שכולן כבר עם קנס)'}
+                  </div>
+                )}
+
+                {filteredFarmers.map(({ farmer, farmerLands }) => {
+                  const allChecked = farmerLands.every(l => selected[`${l.farmerId}_${l.id}`]);
+                  const someChecked = farmerLands.some(l => selected[`${l.farmerId}_${l.id}`]);
+                  return (
+                    <div key={farmer.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '9px 12px', background: someChecked ? '#fef2f2' : '#fafafa',
+                      }}>
+                        <input type="checkbox" checked={allChecked}
+                          ref={el => { if (el) el.indeterminate = someChecked && !allChecked; }}
+                          onChange={e => toggleFarmerAll(farmerLands, e.target.checked)}
+                          style={cbStyle} />
+                        <span style={{ fontWeight: 800, fontSize: 13, fontFamily: 'Heebo,sans-serif', flex: 1 }}>
+                          {farmer.nameHeb || farmer.name}
+                        </span>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                          {farmerLands.length} {ar ? 'أرض' : 'קרקעות'}
+                        </span>
+                      </div>
+
+                      {farmerLands.map(l => {
+                        const key = `${l.farmerId}_${l.id}`;
+                        const checked = !!selected[key];
+                        return (
+                          <label key={l.id} onClick={() => toggleLand(key)} style={{
+                            display: 'grid', gridTemplateColumns: '26px 90px 1fr 110px',
+                            gap: 8, alignItems: 'center',
+                            padding: '7px 12px 7px 30px', cursor: 'pointer',
+                            background: checked ? '#fef2f2' : '#fff',
+                            borderTop: '1px solid #f8f8f8',
+                          }}>
+                            <input type="checkbox" checked={checked} readOnly style={cbStyle} />
+                            <code style={{
+                              background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '2px 6px',
+                              borderRadius: 5, fontWeight: 900, fontSize: 12, textAlign: 'center',
+                            }}>{l.stationNumber || '—'}</code>
+                            <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontFamily: 'Heebo,sans-serif' }}>
+                              {landLabel(l)}
+                            </span>
+                            <span style={{ fontSize: 11, fontWeight: 700, textAlign: 'center', color: '#dc2626' }}>
+                              🪣 {Math.round(l.unpaidCups).toLocaleString()}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div style={{ marginTop: 10, fontSize: 13, fontWeight: 700, color: '#991b1b' }}>
+                {selectedCount} {ar ? 'أرض محددة' : 'קרקעות נבחרו'}
+              </div>
+            </div>
+          )}
+
+          {/* ── خطوة 3: معاينة قبل التطبيق ── */}
+          {step === 3 && (
+            <div>
+              {result ? (
+                <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                  <div style={{ fontSize: 40, marginBottom: 10 }}>{result.fail === 0 ? '✅' : '⚠️'}</div>
+                  <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 6 }}>
+                    {ar
+                      ? `تم تطبيق الغرامة على ${result.success} أرض بنجاح`
+                      : `הקנס הוחל על ${result.success} קרקעות בהצלחה`}
+                  </div>
+                  {result.fail > 0 && (
+                    <div style={{ color: '#dc2626', fontSize: 13, fontWeight: 700 }}>
+                      {ar ? `فشل تطبيقها على ${result.fail} أرض` : `נכשל עבור ${result.fail} קרקעות`}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>
+                    {ar ? `سيتم تطبيق غرامة (₪${rateNum}/كوب) — ` : `יוחל קנס (₪${rateNum}/קוב) — `}
+                    <strong style={{ color: '#991b1b' }}>{applyRows.length}</strong> {ar ? 'أرض' : 'קרקעות'}
+                  </div>
+
+                  <div style={{ border: '1.5px solid var(--border)', borderRadius: 10, maxHeight: 320, overflowY: 'auto' }}>
+                    {applyRows.length === 0 && (
+                      <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                        {ar ? 'لا توجد أراضٍ محدَّدة' : 'אין קרקעות שנבחרו'}
+                      </div>
+                    )}
+                    {applyRows.map(row => (
+                      <div key={row.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderBottom: '1px solid #f3f4f6' }}>
+                        <div style={{ fontSize: 13 }}>
+                          <span style={{ fontWeight: 700, fontFamily: 'Heebo,sans-serif' }}>{farmerName(row.farmerId)}</span>
+                          <span style={{ color: 'var(--text-muted)' }}> — {row.land?.stationNumber || '—'}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                            🪣 {Math.round(row.unpaidCups).toLocaleString()}
+                          </span>
+                          <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 6, fontWeight: 800, color: '#991b1b', background: '#fef2f2' }}>
+                            ₪{Math.round(row.amount).toLocaleString()}
+                          </span>
+                          <button type="button" onClick={() => setExcluded(prev => ({ ...prev, [row.key]: true }))}
+                            style={{ width: 22, height: 22, borderRadius: 6, border: '1.5px solid #fca5a5', background: '#fff1f2', color: '#dc2626', cursor: 'pointer', fontSize: 11 }}>✕</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {applying && (
+                    <div style={{ marginTop: 14 }}>
+                      <div style={{ height: 6, borderRadius: 3, background: '#fee2e2', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', background: '#dc2626', width: `${Math.round(progress / Math.max(1, applyRows.length) * 100)}%`, transition: 'width 0.2s' }} />
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, textAlign: 'center' }}>
+                        {progress} / {applyRows.length}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* الفوتر */}
+        <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
+          <button type="button" className="btn btn-outline" disabled={step === 1 || applying}
+            onClick={() => setStep(s => Math.max(1, s - 1))} style={{ visibility: step === 1 ? 'hidden' : 'visible' }}>
+            {ar ? 'رجوع' : 'חזור'}
+          </button>
+          {result ? (
+            <button type="button" className="btn btn-primary" onClick={onClose}>
+              {ar ? 'إغلاق' : 'סגור'}
+            </button>
+          ) : step < 3 ? (
+            <button type="button" className="btn btn-primary"
+              disabled={(step === 1 && rateNum <= 0) || (step === 2 && selectedCount === 0)}
+              onClick={() => setStep(s => Math.min(3, s + 1))}
+              style={{ background: '#dc2626', borderColor: '#dc2626' }}>
+              {ar ? 'التالي' : 'הבא'}
+            </button>
+          ) : (
+            <button type="button" className="btn btn-primary" disabled={applying || applyRows.length === 0}
+              onClick={applyPenalties} style={{ background: '#dc2626', borderColor: '#dc2626' }}>
+              {applying ? `⏳ ${ar ? 'جاري التطبيق...' : 'מחיל...'}` : `✓ ${ar ? 'تطبيق نهائي' : 'החלה סופית'} (${applyRows.length})`}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminReadings({ adminRole = 'admin' }) {
   const isViewer = adminRole === 'viewer';
   const { lang } = useLang();
@@ -623,6 +1029,8 @@ export default function AdminReadings({ adminRole = 'admin' }) {
 
   // ✅ شباك الإضافة الجماعية
   const [showBulkModal, setShowBulkModal] = useState(false);
+  // ✅ شباك تطبيق غرامة التأخير
+  const [showPenaltyModal, setShowPenaltyModal] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1124,6 +1532,21 @@ export default function AdminReadings({ adminRole = 'admin' }) {
         />
       )}
 
+      {/* ══ شباك تطبيق غرامة التأخير ══ */}
+      {showPenaltyModal && (
+        <PenaltyModal
+          farmers={farmers}
+          lands={lands}
+          regions={regions}
+          readings={readings}
+          landExtrasByLand={landExtrasByLand}
+          prices={prices}
+          ar={ar}
+          onClose={() => setShowPenaltyModal(false)}
+          onApplied={() => { load(); }}
+        />
+      )}
+
       {/* ✅ ترويسة طباعة أنيقة — تظهر فقط عند الطباعة (مخفية على الشاشة) */}
       <div className="print-letterhead">
         <div className="print-letterhead-brand">🌿 الشلالة — نظام إدارة مياه الري</div>
@@ -1313,6 +1736,12 @@ export default function AdminReadings({ adminRole = 'admin' }) {
             <button className="btn" style={{ background: '#4c1d95', color: '#fff', border: '1.5px solid #4c1d95' }}
               onClick={() => setShowBulkModal(true)}>
               👥 {ar ? 'إضافة جماعية' : 'הוספה קבוצתית'}
+            </button>
+          )}
+          {!isViewer && (
+            <button className="btn" style={{ background: '#dc2626', color: '#fff', border: '1.5px solid #dc2626' }}
+              onClick={() => setShowPenaltyModal(true)}>
+              ⏰ {ar ? 'غرامة تأخير' : 'קנס איחור'}
             </button>
           )}
           {!isViewer && <button className="btn btn-primary" onClick={openAddR}>+ {ar ? 'إضافة قراءة' : 'הוסף קריאה'}</button>}

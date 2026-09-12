@@ -334,17 +334,27 @@ const deleteReading = async (req, res) => {
 const getPrices = async (req, res) => {
   try {
     const doc = await Prices.findOne({ key: 'prices' }).lean();
-    if (!doc) return res.json({ globalPrice: 0, yearPrices: {}, landPrices: {}, vatRate: 18 });
-    return res.json({ globalPrice: doc.globalPrice || 0, yearPrices: doc.yearPrices || {}, landPrices: doc.landPrices || {}, vatRate: doc.vatRate ?? 18 });
+    if (!doc) return res.json({ globalPrice: 0, yearPrices: {}, landPrices: {}, vatRate: 18, latePenaltyRate: 0.5 });
+    return res.json({
+      globalPrice: doc.globalPrice || 0,
+      yearPrices:  doc.yearPrices  || {},
+      landPrices:  doc.landPrices  || {},
+      vatRate:     doc.vatRate ?? 18,
+      // ✅ السعر الافتراضي لكل كوب غير مدفوع عند تطبيق غرامة تأخير
+      latePenaltyRate: doc.latePenaltyRate ?? 0.5,
+    });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 };
 
 const updatePrices = async (req, res) => {
   try {
-    const { globalPrice, yearPrices, landPrices, vatRate } = req.body;
+    const { globalPrice, yearPrices, landPrices, vatRate, latePenaltyRate } = req.body;
     const doc = await Prices.findOneAndUpdate({ key: 'prices' }, { $set: { globalPrice: parseFloat(globalPrice) || 0 } }, { upsert: true, new: true });
     doc.yearPrices = yearPrices || {}; doc.landPrices = landPrices || {};
     if (vatRate !== undefined && vatRate !== null && vatRate !== '') doc.vatRate = parseFloat(vatRate) || 0;
+    // ✅ نحدّث السعر الافتراضي للغرامة فقط لو انبعت صراحة بالطلب — حتى نداءات updatePrices
+    // القديمة (بدون هالحقل) ما تصفّره بالغلط
+    if (latePenaltyRate !== undefined && latePenaltyRate !== null && latePenaltyRate !== '') doc.latePenaltyRate = parseFloat(latePenaltyRate) || 0;
     doc.markModified('yearPrices'); doc.markModified('landPrices');
     await doc.save();
     return res.json({ success: true });

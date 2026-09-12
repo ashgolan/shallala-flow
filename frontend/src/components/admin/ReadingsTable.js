@@ -404,19 +404,21 @@ export default function ReadingsTable({
                             const paid = parseFloat(ex.paid)||0;
                             const rem  = amt - paid;
                             const done = rem <= 0;
+                            // ✅ إضافة من نوع "غرامة تأخير" — تُميَّز بلون أحمر بدل البرتقالي المعتاد
+                            const isPenalty = ex.kind === 'penalty';
                             return (
-                              <div key={ei} style={{borderRadius:6,overflow:'hidden',border:`1px solid ${done?'#d1d5db':'#fed7aa'}`}}>
+                              <div key={ei} style={{borderRadius:6,overflow:'hidden',border:`1px solid ${done?'#d1d5db':(isPenalty?'#fca5a5':'#fed7aa')}`}}>
                                 {ex.note && (
-                                  <div style={{background:done?'#f3f4f6':'#fef3c7',padding:'1px 5px',fontSize:10,fontWeight:700,color:done?'#9ca3af':'#92400e',textAlign:'center', maxWidth:110, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}
+                                  <div style={{background:done?'#f3f4f6':(isPenalty?'#fee2e2':'#fef3c7'),padding:'1px 5px',fontSize:10,fontWeight:700,color:done?'#9ca3af':(isPenalty?'#991b1b':'#92400e'),textAlign:'center', maxWidth:110, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}
                                     title={ex.note}>
-                                    {ex.note}
+                                    {isPenalty && !done ? '⏰ ' : ''}{ex.note}
                                   </div>
                                 )}
-                                <div style={{padding:'2px 5px',background:done?'#f9fafb':'#fff7ed',display:'flex',gap:3,alignItems:'center',justifyContent:'center'}}>
+                                <div style={{padding:'2px 5px',background:done?'#f9fafb':(isPenalty?'#fef2f2':'#fff7ed'),display:'flex',gap:3,alignItems:'center',justifyContent:'center'}}>
                                   {done
                                     ? <span style={{color:'#9ca3af',textDecoration:'line-through',fontSize:10}}>₪{amt.toLocaleString()}</span>
                                     : <>
-                                        <span style={{fontWeight:800,color:'#e65100',fontSize:12}}>₪{rem.toLocaleString()}</span>
+                                        <span style={{fontWeight:800,color:isPenalty?'#dc2626':'#e65100',fontSize:12}}>₪{rem.toLocaleString()}</span>
                                         {paid > 0 && <span style={{color:'#16a34a',fontSize:10,fontWeight:600}}>✓{paid.toLocaleString()}</span>}
                                       </>
                                   }
@@ -551,15 +553,20 @@ export default function ReadingsTable({
                                   const paid = parseFloat(ex.paid)||0;
                                   const rem  = amt - paid;
                                   const done = rem <= 0;
+                                  // ✅ إضافة من نوع "غرامة تأخير" — تُميَّز بلون أحمر + شارة ⏰
+                                  const isPenalty = ex.kind === 'penalty';
                                   return (
-                                    <div key={ei} style={{background:done?'#f3f4f6':'#fff3e0',border:`1.5px solid ${done?'#d1d5db':'#fed7aa'}`,borderRadius:8,padding:'6px 12px',fontSize:12,opacity:done?0.75:1}}>
+                                    <div key={ei} style={{background:done?'#f3f4f6':(isPenalty?'#fef2f2':'#fff3e0'),border:`1.5px solid ${done?'#d1d5db':(isPenalty?'#fca5a5':'#fed7aa')}`,borderRadius:8,padding:'6px 12px',fontSize:12,opacity:done?0.75:1}}>
+                                      {isPenalty && !done && (
+                                        <div style={{fontSize:10,fontWeight:800,color:'#991b1b',marginBottom:2}}>⏰ {ar?'غرامة تأخير':'קנס איחור'}</div>
+                                      )}
                                       {ex.note && (
-                                        <div style={{fontWeight:700,color:done?'#9ca3af':'#92400e',marginBottom:3,textDecoration:done?'line-through':'none'}}>
+                                        <div style={{fontWeight:700,color:done?'#9ca3af':(isPenalty?'#991b1b':'#92400e'),marginBottom:3,textDecoration:done?'line-through':'none'}}>
                                           {ex.note}
                                         </div>
                                       )}
                                       <div style={{display:'flex',gap:8,alignItems:'center'}}>
-                                        <span style={{fontWeight:700,color:done?'#9ca3af':'#e65100',textDecoration:done?'line-through':'none'}}>₪{amt.toLocaleString()}</span>
+                                        <span style={{fontWeight:700,color:done?'#9ca3af':(isPenalty?'#dc2626':'#e65100'),textDecoration:done?'line-through':'none'}}>₪{amt.toLocaleString()}</span>
                                         {paid > 0 && <span style={{color:'#16a34a',fontWeight:600,fontSize:11}}>✓ ₪{paid.toLocaleString()}</span>}
                                         {!done && <span style={{color:'#dc2626',fontWeight:800,fontSize:12}}>⟵ ₪{rem.toLocaleString()}</span>}
                                         {done && <span style={{color:'#16a34a',fontSize:11}}>✅ {ar?'مدفوعة':'שולם'}</span>}

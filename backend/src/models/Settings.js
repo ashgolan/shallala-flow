@@ -6,6 +6,9 @@ const pricesSchema = new mongoose.Schema({
   yearPrices:  { type: mongoose.Schema.Types.Mixed, default: {} },
   landPrices:  { type: mongoose.Schema.Types.Mixed, default: {} },
   vatRate:     { type: Number, default: 18 }, // ✅ نسبة الضريبة (מע"מ) %
+  // ✅ السعر الافتراضي لكل كوب غير مدفوع — يُستخدم كقيمة مبدئية عند فتح شباك
+  // "تطبيق غرامة تأخير"، وقابل للتعديل هناك لهالمرة بس بدون ما يغيّر هالإعداد
+  latePenaltyRate: { type: Number, default: 0.5 },
 }, { collection: 'settings_prices', timestamps: true });
 
 const announcementSchema = new mongoose.Schema({
