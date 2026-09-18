@@ -139,6 +139,10 @@ export const regionsAPI = {
 // ── Reading actions ────────────────────────────────────────────
 // ✅ الآن يأخذ periodIndex — تبديل حالة الدفع لفترة محددة، مو للسطر كامل
 export const togglePaid = (id, periodIndex) => req(`/admin/readings/${id}/paid/${periodIndex}`, { method: 'POST' });
+// ✅ (2026-09-18) — تبديل حالة "قطع فاتورة (חشبونية)" لفترة محددة — مستقلة تماماً عن
+// حالة الدفع نفسها. تُستخدم لتمييز القراءات التي صدرت لها فاتورة لتثبيت الحساب (مثلاً
+// عند تطبيق غرامة تأخير) رغم إنها لسا غير مدفوعة.
+export const toggleInvoiced = (id, periodIndex) => req(`/admin/readings/${id}/invoiced/${periodIndex}`, { method: 'POST' });
 export const toggleExtraStatus = id => req(`/admin/readings/${id}/extra-status`, { method: 'POST' });
 export const updateNote = (id, note) => req(`/admin/readings/${id}/note`, { method: 'POST', body: JSON.stringify({ note }) });
 

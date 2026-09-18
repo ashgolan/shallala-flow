@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { togglePaid, updateNote } from '../../api';
+import { togglePaid, toggleInvoiced, updateNote } from '../../api';
 import { getPrice } from '../../utils/pricing'; // ✅ سعر موحّد شامل الضريبة (מע"מ)
 import { cupsDiff, cupsPositive, getMeterChange } from '../../utils/cups'; // ✅ فرق أكواب موحّد (يدمج تبديل العداد ضمن نفس الفترة)
 import { getExtrasNet, getExtrasGross } from '../../utils/extras'; // ✅ إضافات موحّدة — الآن تابعة للأرض (landId) لا للقراءة
@@ -15,6 +15,18 @@ const PaidBtn = ({ paid, loading, onClick, size = 17 }) => (
   </button>
 );
 
+// ✅ (2026-09-18) — زر "قطع فاتورة" لفترة محددة — مستقل تماماً عن زر الدفع (PaidBtn) أعلاه.
+// شكل مربّع صغير بدل الدائرة حتى يتميّز بصرياً عن زر الدفع رغم قربه منه بنفس الخانة.
+const InvoiceBtn = ({ invoiced, loading, onClick, size = 14, ar }) => (
+  <button onClick={onClick} disabled={loading}
+    title={invoiced ? (ar?'تم قطع فاتورة — اضغط للإلغاء':'הופקה חשבונית — לחץ לביטול') : (ar?'قطع فاتورة (بدون دفع بعد)':'הפק חשבונית (טרם שולם)')}
+    style={{ width:size, height:size, borderRadius:4, border: invoiced ? '2px solid #f97316' : '2px solid #fdba74', background: 'transparent', cursor: loading ? 'wait' : 'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', transition:'all 0.25s', opacity: loading ? 0.5 : 1, flexShrink:0 }}
+    onMouseEnter={e => { if(!loading) e.currentTarget.style.transform='scale(1.15)'; }}
+    onMouseLeave={e => { e.currentTarget.style.transform='scale(1)'; }}>
+    <span style={{ width: invoiced ? size*0.5 : size*0.35, height: invoiced ? size*0.5 : size*0.35, borderRadius:1, background: invoiced ? '#f97316' : '#fed7aa', display:'block', transition:'all 0.25s' }}/>
+  </button>
+);
+
 const IconBtn = ({ onClick, title, bg, hoverBg, color, hoverColor, border, children }) => (
   <button onClick={onClick} title={title}
     style={{ width:28, height:28, borderRadius:7, border, background: bg, color, cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:13, transition:'all 0.18s', flexShrink:0 }}
@@ -24,8 +36,13 @@ const IconBtn = ({ onClick, title, bg, hoverBg, color, hoverColor, border, child
 );
 
 // ✅ يحدد الفترات "النشطة" لقراءة معينة (أي فترة بدأت فعلاً بقراءة أولى — vals[i] موجودة)
-// وحالة الدفع الإجمالية للسطر: full (الكل مدفوع) / partial (دفع جزئي) / unpaid (ولا شي مدفوع)
+// وحالة الدفع الإجمالية للسطر: full (الكل مدفوع) / invoiced (كل المتبقي غير المدفوع
+// صدرت له فاتورة) / partial (دفع جزئي بدون فوترة كاملة للباقي) / unpaid (ولا شي مدفوع
+// ولا مفوتر)
 // ✅ فترات تبديل العداد تبقى قابلة للدفع تماماً كأي فترة عادية (الاستهلاك مدموج فيها)
+// ✅ (2026-09-18) — أضفنا حالة "invoiced": فترة صدرت لها فاتورة (חشبونية) لتثبيت الحساب
+// (مثلاً مع غرامة تأخير) بس لسا ما انسددت. مستقلة تماماً عن الدفع، وتُحسب على مستوى
+// كل فترة لحالها بالضبط متل الدفع.
 const getPayStatus = (r) => {
   const vals = r.readings || [];
   const periodsCount = Math.max(0, vals.length - 1);
@@ -35,15 +52,19 @@ const getPayStatus = (r) => {
   }
   if (active.length === 0) return 'unpaid';
   const pp = r.paidPeriods || [];
+  const ip = r.invoicedPeriods || [];
   const paidCount = active.filter(i => pp[i]).length;
   if (paidCount === active.length) return 'full';
+  // ✅ الفترات النشطة غير المدفوعة — لو كلها صدرت لها فاتورة، السطر يصير "invoiced" (برتقالي)
+  const unpaidActive = active.filter(i => !pp[i]);
+  if (unpaidActive.length > 0 && unpaidActive.every(i => ip[i])) return 'invoiced';
   if (paidCount === 0) return 'unpaid';
   return 'partial';
 };
 
 const payRank = (r) => {
   const s = getPayStatus(r);
-  return s === 'full' ? 2 : s === 'partial' ? 1 : 0;
+  return s === 'full' ? 3 : s === 'invoiced' ? 2 : s === 'partial' ? 1 : 0;
 };
 
 export default function ReadingsTable({
@@ -123,6 +144,23 @@ export default function ReadingsTable({
     finally { setTogglingId(null); }
   };
 
+  // ✅ (2026-09-18) — تبديل حالة "قطع فاتورة" لفترة محددة — مستقل تماماً عن handlePaid
+  // أعلاه. نستخدم بادئة `inv_` بمفتاح togglingId حتى ما يتعارض مع مفتاح زر الدفع لنفس
+  // الفترة (ممكن الاثنين يكونوا loading بنفس الوقت لو ضغط المستخدم عليهم بسرعة).
+  const handleInvoiced = async (e, r, periodIndex) => {
+    e.stopPropagation();
+    const key = `inv_${r.id}_${periodIndex}`;
+    if (togglingId) return;
+    setTogglingId(key);
+    try {
+      const res = await toggleInvoiced(r.id, periodIndex);
+      setReadings(prev => prev.map(x => x.id===r.id
+        ? { ...x, invoicedPeriods: res.invoicedPeriods }
+        : x));
+    } catch(err) { alert(ar?'خطأ':'שגיאה'); }
+    finally { setTogglingId(null); }
+  };
+
   const openNote = (e,r) => { e.stopPropagation(); setEditNoteId(r.id); setNoteText(r.note||''); };
   const saveNote = async (e,r) => {
     e.stopPropagation(); setSavingNote(true);
@@ -139,10 +177,11 @@ export default function ReadingsTable({
   const grandCups   = sorted.reduce((s,r)=>s+(r.readings||[]).slice(1).reduce((ss,_,i)=>ss+cupsPositive(r.readings,i,r.meterChanges||[]),0),0);
   const grandAmount = sorted.reduce((s,r)=>s+(r.readings||[]).slice(1).reduce((ss,_,i)=>ss+cupsPositive(r.readings,i,r.meterChanges||[])*getPrice(prices,r.year,r.landId,i+1),0),0);
 
-  // ✅ عدّاد ملخّص الدفع بـ 3 حالات بدل حالتين
+  // ✅ عدّاد ملخّص الدفع — 4 حالات هلأ بعد إضافة "مفوتر بدون دفع" (2026-09-18)
   const fullPaidCount    = readings.filter(r=>getPayStatus(r)==='full').length;
+  const invoicedCount    = readings.filter(r=>getPayStatus(r)==='invoiced').length;
   const partialPaidCount = readings.filter(r=>getPayStatus(r)==='partial').length;
-  const unpaidCount      = readings.length - fullPaidCount - partialPaidCount;
+  const unpaidCount      = readings.length - fullPaidCount - invoicedCount - partialPaidCount;
 
   // ✅ إجمالي الإضافات — الإضافات صارت تابعة للأرض (landId) وليست القراءة، وممكن نفس
   // الأرض تظهر بأكثر من صف (سنة) بالجدول. عشان ما نحسب نفس رصيد الإضافات أكثر من مرة
@@ -225,6 +264,9 @@ export default function ReadingsTable({
         <div className="flex-gap gap-12">
           <span style={{color:'var(--text-muted)',fontSize:13}}>{readings.length} {ar?'قراءة':'קריאות'}</span>
           <span style={{color:'#16a34a',fontWeight:700,fontSize:13}}>✓ {fullPaidCount} {ar?'مدفوع بالكامل':'שולם במלואו'}</span>
+          {invoicedCount > 0 && (
+            <span style={{color:'#c2410c',fontWeight:700,fontSize:13}}>🧾 {invoicedCount} {ar?'مفوتر — غير مدفوع':'הופקה חשבונית — לא שולם'}</span>
+          )}
           {partialPaidCount > 0 && (
             <span style={{color:'#d97706',fontWeight:700,fontSize:13}}>⚠️ {partialPaidCount} {ar?'دفع جزئي':'שולם חלקית'}</span>
           )}
@@ -262,13 +304,15 @@ export default function ReadingsTable({
               const rowAmount     = cupsPerPeriod.reduce((s,c,i)=>s+(c && c>0 ? c : 0)*getPrice(prices,r.year,r.landId,i+1),0);
 
               // ✅ حالة الدفع الإجمالية للسطر — فترات تبديل العداد قابلة للدفع تماماً كأي فترة عادية
+              // ✅ (2026-09-18) — لون برتقالي جديد لحالة "invoiced": صدرت فاتورة لكل الباقي
+              // غير المدفوع (توثيق غرامة تأخير مثلاً) بس لسا ما انسدد الدفع فعلياً
               const payStatus = getPayStatus(r);
-              const rowBg   = payStatus==='full' ? 'rgba(220,252,231,0.5)' : payStatus==='partial' ? 'rgba(254,243,199,0.55)' : 'rgba(254,226,226,0.35)';
-              const borderColor = payStatus==='full' ? '#16a34a' : payStatus==='partial' ? '#f59e0b' : '#ef4444';
-              const cupsBg  = payStatus==='full' ? '#d1fae5' : payStatus==='partial' ? '#fef3c7' : '#fee2e2';
-              const totalBg = payStatus==='full' ? '#a7f3d0' : payStatus==='partial' ? '#fde68a' : '#fecaca';
-              const amtBg   = payStatus==='full' ? '#fef9c3' : '#fef3c7';
-              const stickyBg = payStatus==='full' ? '#f0fdf4' : payStatus==='partial' ? '#fffbeb' : '#fff5f5';
+              const rowBg   = payStatus==='full' ? 'rgba(220,252,231,0.5)' : payStatus==='invoiced' ? 'rgba(255,237,213,0.6)' : payStatus==='partial' ? 'rgba(254,243,199,0.55)' : 'rgba(254,226,226,0.35)';
+              const borderColor = payStatus==='full' ? '#16a34a' : payStatus==='invoiced' ? '#f97316' : payStatus==='partial' ? '#f59e0b' : '#ef4444';
+              const cupsBg  = payStatus==='full' ? '#d1fae5' : payStatus==='invoiced' ? '#ffedd5' : payStatus==='partial' ? '#fef3c7' : '#fee2e2';
+              const totalBg = payStatus==='full' ? '#a7f3d0' : payStatus==='invoiced' ? '#fed7aa' : payStatus==='partial' ? '#fde68a' : '#fecaca';
+              const amtBg   = payStatus==='full' ? '#fef9c3' : payStatus==='invoiced' ? '#fed7aa' : '#fef3c7';
+              const stickyBg = payStatus==='full' ? '#f0fdf4' : payStatus==='invoiced' ? '#fff7ed' : payStatus==='partial' ? '#fffbeb' : '#fff5f5';
 
               // ✅ إضافات هذه الأرض — تُقرأ من landExtrasByLand (تابعة للأرض، تظهر بنفس الشكل
               // بجانب كل قراءة/سنة لنفس الأرض حتى يعرف المستخدم فوراً إن كان الاشتراك/التجهيزات
@@ -284,10 +328,10 @@ export default function ReadingsTable({
               const farmerUnpaidProjects = (unpaidProjectsByFarmer[r.farmerId] || [])
                 .filter(p => !p.stationNumber || String(p.stationNumber).trim() === String(r.stationNumber || '').trim());
 
-              // ✅ نص التلميح (tooltip) لأيقونة الدفع الملخّصة
+              // ✅ نص التلميح (tooltip) لأيقونة الدفع الملخّصة — صار يميّز حالة "مفوتر غير مدفوع" كمان
               const paidTooltip = cupsPerPeriod
                 .map((_, i) => (vals[i] != null && vals[i] !== '')
-                  ? `${ar?`ف${i+1}`:`ת${i+1}`}: ${r.paidPeriods?.[i] ? (ar?'مدفوع':'שולם') : (ar?'غير مدفوع':'לא שולם')}${getMeterChange(meterChanges,i)?' 🔄':''}`
+                  ? `${ar?`ف${i+1}`:`ת${i+1}`}: ${r.paidPeriods?.[i] ? (ar?'مدفوع':'שולם') : r.invoicedPeriods?.[i] ? (ar?'مفوتر — غير مدفوع':'הופקה חשבונית — לא שולם') : (ar?'غير مدفوع':'לא שולם')}${getMeterChange(meterChanges,i)?' 🔄':''}`
                   : null)
                 .filter(Boolean)
                 .join('\n');
@@ -305,7 +349,7 @@ export default function ReadingsTable({
 
                     <td className="print-col-paid" style={{textAlign:'center'}} onClick={e=>e.stopPropagation()} title={paidTooltip}>
                       <span style={{fontSize:16}}>
-                        {payStatus==='full' ? '✅' : payStatus==='partial' ? '⚠️' : '❌'}
+                        {payStatus==='full' ? '✅' : payStatus==='invoiced' ? '🧾' : payStatus==='partial' ? '⚠️' : '❌'}
                       </span>
                     </td>
                     <td className="print-col-farmer" style={{whiteSpace:'nowrap'}}>
@@ -348,6 +392,8 @@ export default function ReadingsTable({
                       const change = getMeterChange(meterChanges, i); // ✅ تبديل عداد مسجّل بهذه الفترة (إن وُجد)
                       const periodActive = vals[i] != null && vals[i] !== ''; // ✅ الفترة بدأت (قراءة بداية موجودة)
                       const periodPaid = !!(r.paidPeriods && r.paidPeriods[i]);
+                      // ✅ (2026-09-18) — حالة الفوترة لهالفترة، مستقلة عن periodPaid أعلاه
+                      const periodInvoiced = !!(r.invoicedPeriods && r.invoicedPeriods[i]);
                       return (
                         <td key={i} style={{textAlign:'center', background:cupsBg}} onClick={e=>e.stopPropagation()}>
                           <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:5}}>
@@ -372,10 +418,15 @@ export default function ReadingsTable({
                                 <span title={ar?'لا يمكن الدفع قبل معرفة عدد الأكواب لهذه الفترة':'לא ניתן לשלם לפני שידוע מספר הקוב לתקופה זו'}
                                   style={{ width:15, height:15, borderRadius:'50%', border:'2px solid #f87171', background:'transparent', display:'inline-flex', cursor:'not-allowed', flexShrink:0 }} />
                               ) : isViewer ? (
-                                <span style={{fontSize:11}}>{periodPaid?'✓':'○'}</span>
+                                <span style={{fontSize:11}}>{periodPaid?'✓':periodInvoiced?'🧾':'○'}</span>
                               ) : (
-                                <PaidBtn paid={periodPaid} loading={togglingId===`${r.id}_${i}`}
-                                  onClick={e=>handlePaid(e,r,i)} size={15}/>
+                                <>
+                                  <PaidBtn paid={periodPaid} loading={togglingId===`${r.id}_${i}`}
+                                    onClick={e=>handlePaid(e,r,i)} size={15}/>
+                                  {/* ✅ زر الفوترة — منفصل تماماً عن زر الدفع، قابل للتبديل بشكل مستقل بأي وقت */}
+                                  <InvoiceBtn invoiced={periodInvoiced} loading={togglingId===`inv_${r.id}_${i}`}
+                                    onClick={e=>handleInvoiced(e,r,i)} size={13} ar={ar}/>
+                                </>
                               )
                             )}
                           </div>
@@ -534,9 +585,18 @@ export default function ReadingsTable({
                                 const active = vals[i] != null && vals[i] !== '';
                                 if (!active) return null;
                                 const periodPaid = !!(r.paidPeriods && r.paidPeriods[i]);
+                                const periodInvoiced = !!(r.invoicedPeriods && r.invoicedPeriods[i]);
+                                const badgeBg     = periodPaid ? '#f0fdf4' : periodInvoiced ? '#fff7ed' : '#fff1f2';
+                                const badgeBorder = periodPaid ? '#bbf7d0' : periodInvoiced ? '#fed7aa' : '#fca5a5';
+                                const badgeColor  = periodPaid ? '#16a34a' : periodInvoiced ? '#c2410c' : '#dc2626';
+                                const badgeLabel  = periodPaid
+                                  ? `✅ ${ar?'مدفوع':'שולם'}`
+                                  : periodInvoiced
+                                    ? `🧾 ${ar?'مفوتر — غير مدفوع':'הופקה חשבונית — לא שולם'}`
+                                    : `❌ ${ar?'غير مدفوع':'לא שולם'}`;
                                 return (
-                                  <span key={i} style={{background:periodPaid?'#f0fdf4':'#fff1f2', border:`1px solid ${periodPaid?'#bbf7d0':'#fca5a5'}`, borderRadius:6, padding:'3px 10px', fontSize:12, fontWeight:700, color:periodPaid?'#16a34a':'#dc2626'}}>
-                                    {ar?`ف${i+1}`:`ת${i+1}`}: {periodPaid ? `✅ ${ar?'مدفوع':'שולם'}` : `❌ ${ar?'غير مدفوع':'לא שולם'}`}
+                                  <span key={i} style={{background:badgeBg, border:`1px solid ${badgeBorder}`, borderRadius:6, padding:'3px 10px', fontSize:12, fontWeight:700, color:badgeColor}}>
+                                    {ar?`ف${i+1}`:`ת${i+1}`}: {badgeLabel}
                                   </span>
                                 );
                               })}

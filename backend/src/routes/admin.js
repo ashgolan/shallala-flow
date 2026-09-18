@@ -268,6 +268,32 @@ router.post('/readings/:readingId/paid/:periodIndex', async (req, res) => {
   } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
 });
 
+// ✅ (2026-09-18) — تبديل حالة "قطع فاتورة (חשبونية)" لفترة محددة — مستقلة تماماً عن
+// حالة الدفع (paidPeriods أعلاه). بدون أي علاقة بها: ممكن تكون الفترة مفوترة وغير
+// مدفوعة (للتوثيق عند تطبيق غرامة تأخير)، أو مدفوعة بدون فوترة، أو الاثنين معاً.
+router.post('/readings/:readingId/invoiced/:periodIndex', async (req, res) => {
+  try {
+    const Reading = require('../models/Reading');
+    const r = await Reading.findById(req.params.readingId);
+    if (!r) return res.status(404).json({ error: 'غير موجود' });
+
+    const idx = parseInt(req.params.periodIndex, 10);
+    const periodsCount = Math.max(0, (r.readings?.length || 1) - 1);
+    if (isNaN(idx) || idx < 0 || idx >= periodsCount) {
+      return res.status(400).json({ error: 'فهرس فترة غير صالح' });
+    }
+
+    const ip = [...(r.invoicedPeriods || [])];
+    while (ip.length < periodsCount) ip.push(false);
+    ip[idx] = !ip[idx];
+    r.invoicedPeriods = ip;
+    r.markModified('invoicedPeriods');
+
+    await r.save();
+    return res.json({ success: true, invoicedPeriods: r.invoicedPeriods });
+  } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
+});
+
 router.post('/readings/:readingId/extra-status', async (req, res) => {
   try {
     const Reading = require('../models/Reading');
