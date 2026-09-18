@@ -417,8 +417,13 @@ tr:hover td { background: var(--surface); }
      nth-child الذي ينكسر مع أي خلية مدموجة colSpan مثل صف "الإجمالي الكلي") —
      هذا يضمن عدم التأثر إطلاقاً على صف الإجمالي، فتبقى كل قيمه في مكانها الصحيح */
   .print-col-paid,
-  .print-col-station,
-  .print-col-note {
+  .print-col-station {
+    display: none !important;
+  }
+  /* ✅ (2026-09-18) — الملاحظة صارت خط أفقي تحت السطر بدل عمود مستقل (print-col-note
+     القديم انشال). نفس المنطق: تُخفى وقت الطباعة لأنها ملاحظة داخلية إدارية، مو
+     جزء من كشف الحساب المطبوع للمزارع */
+  .print-hide-note-row {
     display: none !important;
   }
   .print-col-farmer {

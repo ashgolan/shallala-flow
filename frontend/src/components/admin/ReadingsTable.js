@@ -290,7 +290,8 @@ export default function ReadingsTable({
               <STh col="total"  style={thTotal}>🪣 {ar?'الكل':'כלל'}</STh>
               <th className="print-col-extras" style={{ ...thBase, minWidth:90, background:'#fff3e0', color:'#e65100', textAlign:'center' }}>➕ {ar?'إضافات الأرض':'תוספות'}</th>
               <STh col="amount" style={{...thAmount, minWidth:100}}>💰 {ar?'الإجمالي':'סה"כ'}</STh>
-              <th className="print-col-note" style={{...thBase, minWidth:90, textAlign:'center', position:'sticky', left:70, background:'var(--surface-2)', zIndex:2, boxShadow:'2px 0 4px rgba(0,0,0,0.06)'}}>💬</th>
+              {/* ✅ (2026-09-18) — شلنا عمود "💬" المنفصل — الملاحظة هلأ بتظهر كخط أفقي تحت
+                  السطر نفسه (بس إذا فيه ملاحظة فعلاً)، بدل ما تاخذ عمود ثابت دايماً */}
               <th style={{...thBase, minWidth:70, textAlign:'center', position:'sticky', left:0, background:'var(--surface-2)', zIndex:2, boxShadow:'2px 0 4px rgba(0,0,0,0.06)'}}></th>
             </tr>
           </thead>
@@ -487,43 +488,54 @@ export default function ReadingsTable({
                       </strong>
                     </td>
 
-                    <td className="print-col-note" style={{textAlign:'center', position:'sticky', left:70, background:stickyBg, zIndex:1, boxShadow:'2px 0 4px rgba(0,0,0,0.06)'}} onClick={e=>e.stopPropagation()}>
-                      {isViewer ? (
-                        r.note
-                          ? <span style={{background:'#fef9c3',border:'1px solid #fde047',borderRadius:6,padding:'2px 8px',fontSize:12,color:'#78350f',fontWeight:600}}>💬 {r.note}</span>
-                          : <span style={{color:'var(--border)'}}>—</span>
-                      ) : editNoteId===r.id ? (
-                        <div style={{display:'flex',gap:4,alignItems:'center'}}>
-                          <input value={noteText} onChange={e=>setNoteText(e.target.value)}
-                            style={{width:100,fontSize:12,padding:'3px 6px'}} autoFocus
-                            onKeyDown={e=>{if(e.key==='Enter')saveNote(e,r);if(e.key==='Escape')setEditNoteId(null);}}/>
-                          <IconBtn onClick={e=>saveNote(e,r)} title="حفظ" bg="#dcfce7" hoverBg="#16a34a" color="#16a34a" hoverColor="#fff" border="1.5px solid #16a34a">✓</IconBtn>
-                          <IconBtn onClick={e=>{e.stopPropagation();setEditNoteId(null)}} title="إلغاء" bg="#fff1f2" hoverBg="#dc2626" color="#dc2626" hoverColor="#fff" border="1.5px solid #fca5a5">✕</IconBtn>
-                        </div>
-                      ) : r.note ? (
-                        <div style={{display:'flex',alignItems:'center',gap:4,justifyContent:'center'}}>
-                          <span style={{background:'#fef9c3',border:'1px solid #fde047',borderRadius:6,padding:'2px 8px',fontSize:12,color:'#78350f',fontWeight:600,maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:'pointer'}}
-                            onClick={e=>openNote(e,r)} title={r.note}>
-                            💬 {r.note}
-                          </span>
-                          <IconBtn onClick={async e=>{e.stopPropagation();await updateNote(r.id,'');setReadings(prev=>prev.map(x=>x.id===r.id?{...x,note:''}:x));}}
-                            title={ar?'حذف الملاحظة':'מחק הערה'} bg="#fff1f2" hoverBg="#dc2626" color="#dc2626" hoverColor="#fff" border="1.5px solid #fca5a5">✕</IconBtn>
-                        </div>
-                      ) : (
-                        <IconBtn onClick={e=>openNote(e,r)} title={ar?'إضافة ملاحظة':'הוסף הערה'}
-                          bg="var(--surface-2)" hoverBg="#fef08a" color="var(--text-muted)" hoverColor="#78350f" border="1.5px solid var(--border)">💬</IconBtn>
-                      )}
-                    </td>
-
                     <td style={{textAlign:'center', position:'sticky', left:0, background: stickyBg, zIndex:1, boxShadow:'2px 0 4px rgba(0,0,0,0.06)'}} onClick={e=>e.stopPropagation()}>
                       {!isViewer && (
                         <div className="flex-gap gap-4">
+                          {/* ✅ (2026-09-18) — زر إضافة ملاحظة انتقل هون (بدل عمود مستقل) — يظهر بس
+                              لما ما في ملاحظة أصلاً؛ لو فيه ملاحظة، الخط الأفقي تحت السطر هو يلي
+                              بيسمح بالتعديل/الحذف مباشرة (تحت) */}
+                          {!r.note && (
+                            <IconBtn onClick={e=>openNote(e,r)} title={ar?'إضافة ملاحظة':'הוסף הערה'}
+                              bg="var(--surface-2)" hoverBg="#fef08a" color="var(--text-muted)" hoverColor="#78350f" border="1.5px solid var(--border)">💬</IconBtn>
+                          )}
                           <IconBtn onClick={e=>{e.stopPropagation();onEdit(r)}} title={ar?'تعديل':'עריכה'} bg="var(--surface-2)" hoverBg="var(--primary)" color="var(--primary)" hoverColor="#fff" border="1.5px solid var(--border)">✏</IconBtn>
                           <IconBtn onClick={e=>{e.stopPropagation();onDelete(r.id)}} title={ar?'حذف':'מחיקה'} bg="#fff1f2" hoverBg="#dc2626" color="#dc2626" hoverColor="#fff" border="1.5px solid #fca5a5">✕</IconBtn>
                         </div>
                       )}
                     </td>
                   </tr>
+
+                  {/* ✅ (2026-09-18) — الملاحظة صارت خط أفقي تحت السطر (بدل عمود ثابت دايماً) —
+                      يظهر بس إذا فيه ملاحظة فعلاً أو المستخدم عم يضيف/يعدّل وحدة هلأ، وهيك
+                      اختصرنا عمود كامل من الجدول (أقل تمرير يمين/يسار). مخفي وقت الطباعة
+                      (print-hide-note-row) بنفس منطق عمود الملاحظة القديم. */}
+                  {(r.note || editNoteId===r.id) && (
+                    <tr className="print-hide-note-row" style={{background: stickyBg}} onClick={e=>e.stopPropagation()}>
+                      <td colSpan={99} style={{padding:'4px 18px 8px', borderTop:'1px dashed var(--border)'}}>
+                        {isViewer ? (
+                          <span style={{fontSize:12,color:'#78350f',fontWeight:600}}>💬 {r.note}</span>
+                        ) : editNoteId===r.id ? (
+                          <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                            <span style={{fontSize:12}}>💬</span>
+                            <input value={noteText} onChange={e=>setNoteText(e.target.value)}
+                              style={{flex:1,maxWidth:320,fontSize:12,padding:'3px 6px'}} autoFocus
+                              onKeyDown={e=>{if(e.key==='Enter')saveNote(e,r);if(e.key==='Escape')setEditNoteId(null);}}/>
+                            <IconBtn onClick={e=>saveNote(e,r)} title="حفظ" bg="#dcfce7" hoverBg="#16a34a" color="#16a34a" hoverColor="#fff" border="1.5px solid #16a34a">✓</IconBtn>
+                            <IconBtn onClick={e=>{e.stopPropagation();setEditNoteId(null)}} title="إلغاء" bg="#fff1f2" hoverBg="#dc2626" color="#dc2626" hoverColor="#fff" border="1.5px solid #fca5a5">✕</IconBtn>
+                          </div>
+                        ) : (
+                          <div style={{display:'flex',alignItems:'center',gap:6}}>
+                            <span style={{fontSize:12,color:'#78350f',fontWeight:600,cursor:'pointer'}}
+                              onClick={e=>openNote(e,r)} title={ar?'اضغط للتعديل':'לחץ לעריכה'}>
+                              💬 {r.note}
+                            </span>
+                            <IconBtn onClick={async e=>{e.stopPropagation();await updateNote(r.id,'');setReadings(prev=>prev.map(x=>x.id===r.id?{...x,note:''}:x));}}
+                              title={ar?'حذف الملاحظة':'מחק הערה'} bg="#fff1f2" hoverBg="#dc2626" color="#dc2626" hoverColor="#fff" border="1.5px solid #fca5a5">✕</IconBtn>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
 
                   {expanded && (
                     <tr style={{background: stickyBg}}>
@@ -685,7 +697,6 @@ export default function ReadingsTable({
                     ₪{Math.round(grandAmount + grandExtrasRem).toLocaleString()}
                   </span>
                 </td>
-                <td className="print-col-note" style={{position:'sticky', left:70, background:'#166534', zIndex:1, boxShadow:'2px 0 4px rgba(0,0,0,0.06)'}}></td>
                 <td></td>
               </tr>
             )}
