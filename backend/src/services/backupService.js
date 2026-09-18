@@ -1,23 +1,34 @@
+const fs       = require('fs');
+const path     = require('path');
 const archiver   = require('archiver');
 const nodemailer = require('nodemailer');
+const mongoose    = require('mongoose');
 
-const Farmer     = require('../models/Farmer');
-const FarmerNote = require('../models/FarmerNote');
-const Land       = require('../models/Land');
-const Reading    = require('../models/Reading');
-const Payment    = require('../models/Payment');
-const Project    = require('../models/Project');
-const { Prices, Announcement, Gallery, Video, Region, Privileged } = require('../models/Settings');
+// ✅ (2026-09-18) — النسخة الاحتياطية صارت ديناميكية بالكامل: بدل لائحة موديلز
+// ثابتة كنا لازم نحدّثها يدوياً كل ما نضيف/نمسح موديل (وهاد بالضبط سبب نسيان
+// LandExtra و ExtraCatalogItem و Task من النسخ الاحتياطية السابقة رغم إنهم
+// موديلز فعلية بقاعدة البيانات)، هلأ منحمّل كل ملفات مجلد models/ تلقائياً،
+// وبعدين مناخد كل الموديلز المسجّلة فعلياً بـmongoose. أي موديل جديد بالمستقبل
+// (أو أي موديل نمسحه) بينعكس هون أوتوماتيكياً بدون ما نلمس هالملف نهائياً.
+const MODELS_DIR = path.join(__dirname, '..', 'models');
+fs.readdirSync(MODELS_DIR)
+  .filter(f => f.endsWith('.js'))
+  .forEach(f => require(path.join(MODELS_DIR, f)));
 
-const COLLECTIONS = [
-  { name: 'farmers',     Model: Farmer     },
-  { name: 'farmerNotes', Model: FarmerNote },
-  { name: 'lands',       Model: Land       },
-  { name: 'readings',    Model: Reading    },
-  { name: 'payments',    Model: Payment    },
-  { name: 'projects',    Model: Project    },
-  { name: 'regions',     Model: Region     },
-];
+// ✅ بعض الملفات (زي Settings.js) بتصدّر أكتر من موديل بملف واحد (Prices,
+// Announcement, Gallery, Video, Admin, Region, Privileged) — بما إنو كل واحد
+// فيهم مسجَّل بـmongoose.model() لحاله، بيطلع هون تلقائياً بدون أي معاملة خاصة.
+// اسم الملف جوا الـZIP = اسم الـcollection الفعلي بقاعدة البيانات (زي
+// settings_prices, settings_admin, regions...) — نفس الأسماء المعتادة تماماً.
+function getAllCollections() {
+  return mongoose.modelNames()
+    .map(name => {
+      const Model = mongoose.model(name);
+      return { name: Model.collection.name, Model };
+    })
+    // ترتيب أبجدي بس حتى تبقى لائحة الملفات جوا الـZIP ثابتة ومرتبة
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
 
 async function createBackupZip() {
   return new Promise(async (resolve, reject) => {
@@ -27,38 +38,26 @@ async function createBackupZip() {
     archive.on('end',   () => resolve(Buffer.concat(chunks)));
     archive.on('error', reject);
 
+    const collections = getAllCollections();
+
     // ملف meta
     archive.append(JSON.stringify({
       createdAt: new Date().toISOString(),
-      version: '2.0',
+      version: '3.0',
       app: 'الشلالة — מערכת ניהול מים',
+      // ✅ لائحة كل الـcollections يلي انأخذلها نسخة هالمرة — مفيدة للتأكد
+      // لاحقاً إنه ما في موديل ناقص، بدل ما نتفاجئ زي المرة السابقة.
+      collections: collections.map(c => c.name),
     }, null, 2), { name: 'meta.json' });
 
-    // الموديلز الرئيسية
-    for (const { name, Model } of COLLECTIONS) {
+    // ✅ كل الموديلز المسجّلة — تلقائياً، بدون لائحة يدوية
+    for (const { name, Model } of collections) {
       try {
         const data = await Model.find().lean();
         archive.append(JSON.stringify(data, null, 2), { name: `${name}.json` });
       } catch (e) {
-        archive.append(JSON.stringify([]), { name: `${name}.json` });
+        archive.append(JSON.stringify({ error: e.message }), { name: `${name}.json` });
       }
-    }
-
-    // الإعدادات — كل مجموعة Settings منفصلة
-    try {
-      const prices       = await Prices.findOne({ key: 'prices' }).lean();
-      const announcement = await Announcement.findOne({ key: 'announcement' }).lean();
-      const gallery      = await Gallery.findOne({ key: 'gallery' }).lean();
-      const video        = await Video.findOne({ key: 'video' }).lean();
-      const privileged   = await Privileged.findOne({ key: 'privileged' }).lean();
-
-      archive.append(JSON.stringify(prices       || {}, null, 2), { name: 'settings_prices.json'       });
-      archive.append(JSON.stringify(announcement || {}, null, 2), { name: 'settings_announcement.json' });
-      archive.append(JSON.stringify(gallery      || {}, null, 2), { name: 'settings_gallery.json'      });
-      archive.append(JSON.stringify(video        || {}, null, 2), { name: 'settings_video.json'        });
-      archive.append(JSON.stringify(privileged   || {}, null, 2), { name: 'settings_privileged.json'   });
-    } catch (e) {
-      console.error('Settings backup error:', e.message);
     }
 
     archive.finalize();
@@ -73,6 +72,7 @@ async function sendBackupEmail() {
     }
 
     console.log('📦 Creating backup ZIP...');
+    const collections = getAllCollections();
     const zipBuffer = await createBackupZip();
 
     const date = new Date().toLocaleDateString('he-IL', {
@@ -81,9 +81,9 @@ async function sendBackupEmail() {
       timeZone: 'Asia/Jerusalem',
     });
 
-    // إحصائيات لكل موديل
+    // إحصائيات لكل موديل — نفس اللائحة الديناميكية
     const counts = {};
-    for (const { name, Model } of COLLECTIONS) {
+    for (const { name, Model } of collections) {
       try { counts[name] = await Model.countDocuments(); }
       catch { counts[name] = '—'; }
     }
@@ -126,7 +126,7 @@ async function sendBackupEmail() {
           </div>
           <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:14px;margin-bottom:16px;">
             <p style="color:#c2410c;font-size:12px;margin:0;">
-              📁 הגיבוי כולל: מגדלים, הערות, קרקעות, קריאות, תשלומים, פרויקטים, אזורים, והגדרות מערכת
+              📁 הגיבוי כולל את כל ${collections.length} האוספים (collections) במערכת — מתעדכן אוטומטית בכל שינוי במודלים, בלי צורך לגעת בקוד הגיבוי
             </p>
           </div>
           <p style="color:#9ca3af;font-size:11px;text-align:center;">
@@ -149,4 +149,4 @@ async function sendBackupEmail() {
   }
 }
 
-module.exports = { createBackupZip, sendBackupEmail };
+module.exports = { createBackupZip, sendBackupEmail, getAllCollections };
