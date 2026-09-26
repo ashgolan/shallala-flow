@@ -3,6 +3,7 @@ import { LangProvider } from './contexts/LangContext';
 import LoginPage       from './pages/LoginPage';
 import FarmerDashboard from './pages/FarmerDashboard';
 import AdminDashboard  from './pages/AdminDashboard';
+import FloatingCalculator from './components/shared/FloatingCalculator'; // ✅ حاسبة عائمة (عادية + ضريبة) بكل التطبيق
 import './styles/global.css';
 
 // ✅ مدة الخمول قبل تسجيل الخروج التلقائي (8 ساعات)
@@ -111,12 +112,14 @@ export default function App() {
   if (view === 'farmer') return (
     <LangProvider>
       <FarmerDashboard farmer={farmer} onLogout={handleLogout} />
+      <FloatingCalculator />
     </LangProvider>
   );
 
   if (view === 'admin') return (
     <LangProvider>
       <AdminDashboard adminRole={adminRole} allowedProjectIds={allowedProjectIds} onLogout={handleLogout} />
+      <FloatingCalculator />
     </LangProvider>
   );
 

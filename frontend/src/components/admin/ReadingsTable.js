@@ -4,6 +4,10 @@ import { getPrice } from '../../utils/pricing'; // ✅ سعر موحّد شام�
 import { cupsDiff, cupsPositive, getMeterChange } from '../../utils/cups'; // ✅ فرق أكواب موحّد (يدمج تبديل العداد ضمن نفس الفترة)
 import { getExtrasNet, getExtrasGross } from '../../utils/extras'; // ✅ إضافات موحّدة — الآن تابعة للأرض (landId) لا للقراءة
 
+// ✅ عرض المبالغ بالأغورات (رقمين عشريين) — مثل برنامج المحاسبة بالضبط.
+// الإجمالي الكلي يُقرّب لأقرب 10 أغورات (نفس "עיגול" الفاتورة بالمحاسبة).
+const fmtAg = (n) => (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 const PaidBtn = ({ paid, loading, onClick, size = 17 }) => (
   <button onClick={onClick} disabled={loading}
     title={paid ? 'שולם ✓' : 'לא שולם'}
@@ -484,7 +488,7 @@ export default function ReadingsTable({
 
                     <td style={{textAlign:'center', background:amtBg}}>
                       <strong style={{fontSize:14,color:'#854d0e'}}>
-                        ₪{Math.round(rowAmount + rowExtrasTotal).toLocaleString()}
+                        ₪{fmtAg(rowAmount + rowExtrasTotal)}
                       </strong>
                     </td>
 
@@ -694,7 +698,7 @@ export default function ReadingsTable({
                 </td>
                 <td style={{textAlign:'center',padding:'11px 8px',borderLeft:'2px solid #a3e635'}}>
                   <span style={{fontWeight:900,color:'#fde68a',fontSize:19}}>
-                    ₪{Math.round(grandAmount + grandExtrasRem).toLocaleString()}
+                    ₪{fmtAg(Math.round((grandAmount + grandExtrasRem) * 10) / 10)}
                   </span>
                 </td>
                 <td></td>

@@ -715,7 +715,11 @@ function PenaltyModal({ farmers, lands, regions, readings, landExtrasByLand, pri
     const [farmerId, landId] = key.split('_');
     const land = lands.find(l => String(l.id) === String(landId));
     const unpaidCups = cupsUnpaid(farmerId, landId);
-    return { key, farmerId, landId, land, unpaidCups, amount: unpaidCups * rateNum };
+    // ✅ نفس طريقة برنامج المحاسبة بالضبط: السعر لكل كوب يُدخل **قبل الضريبة** (مثل 0.42)،
+    // سطر صافٍ مقرّب لأغورة (أكواب × سعر)، وبعدين تُضاف الضريبة (מע"מ) ويُقرّب لأغورة.
+    const net = Math.round(unpaidCups * rateNum * 100) / 100;
+    const amount = Math.round(net * (1 + getVatRate(prices)) * 100) / 100;
+    return { key, farmerId, landId, land, unpaidCups, amount };
   });
 
   const applyPenalties = async () => {
@@ -788,7 +792,7 @@ function PenaltyModal({ farmers, lands, regions, readings, landExtrasByLand, pri
           {step === 1 && (
             <div>
               <div className="form-group">
-                <label>₪ {ar ? 'السعر لكل كوب غير مدفوع *' : 'מחיר לכל קוב שלא שולם *'}</label>
+                <label>₪ {ar ? 'السعر لكل كوب غير مدفوع (قبل الضريبة) *' : 'מחיר לכל קוב שלא שולם (לפני מע"מ) *'}</label>
                 <input type="number" min="0" step="any" value={rate} onChange={e => setRate(e.target.value)}
                   placeholder="0.5" style={{ width: '100%', fontWeight: 700 }} />
                 <small style={{ color: 'var(--text-muted)' }}>
@@ -936,7 +940,7 @@ function PenaltyModal({ farmers, lands, regions, readings, landExtrasByLand, pri
                             🪣 {Math.round(row.unpaidCups).toLocaleString()}
                           </span>
                           <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 6, fontWeight: 800, color: '#991b1b', background: '#fef2f2' }}>
-                            ₪{Math.round(row.amount).toLocaleString()}
+                            ₪{row.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                           <button type="button" onClick={() => setExcluded(prev => ({ ...prev, [row.key]: true }))}
                             style={{ width: 22, height: 22, borderRadius: 6, border: '1.5px solid #fca5a5', background: '#fff1f2', color: '#dc2626', cursor: 'pointer', fontSize: 11 }}>✕</button>
