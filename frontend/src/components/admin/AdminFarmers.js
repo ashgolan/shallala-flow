@@ -149,6 +149,22 @@ export default function AdminFarmers({ adminRole = 'admin' }) {
     return readingsTotal + extrasTotal + projectsUnpaidTotal(farmerId);
   };
 
+  // ✅ عدد الفترات اللي صدرت لها فاتورة (invoicedPeriods) ولسا ما انسدد دفعها (paidPeriods)
+  // — نفس تعريف "الفترة النشطة" المستخدم بصفحة القراءات. يُستخدم لشارة 🧾 جنب اسم المزارع
+  const countInvoicedUnpaid = farmerId => readings
+    .filter(r => String(r.farmerId).trim() === String(farmerId).trim())
+    .reduce((count, r) => {
+      const vals = r.readings || [];
+      const pp = r.paidPeriods || [];
+      const ip = r.invoicedPeriods || [];
+      const periodsCount = Math.max(0, vals.length - 1);
+      for (let i = 0; i < periodsCount; i++) {
+        const active = vals[i] != null && vals[i] !== '';
+        if (active && ip[i] && !pp[i]) count++;
+      }
+      return count;
+    }, 0);
+
   const openAdd = () => { setEdit(null); setForm(EMPTY_FARMER); setNewCode(null); setError(''); setShowForm(true); };
   const openEdit = f => { setEdit(f); setForm({ firstName: f.firstName || '', lastName: f.lastName || '', idNumber: f.idNumber || '', phone: f.phone || '', notes: f.notes || '' }); setNewCode(null); setError(''); setShowForm(true); };
 
@@ -1148,6 +1164,7 @@ export default function AdminFarmers({ adminRole = 'admin' }) {
                     return nameA.localeCompare(nameB, 'ar');
                   }).map(f => {
                     const unpaid = calcUnpaid(f.id);
+                    const invoicedUnpaid = countInvoicedUnpaid(f.id);
                     const isOpen = expandedFarmer === f.id;
                     return (
                       <React.Fragment key={f.id}>
@@ -1161,6 +1178,14 @@ export default function AdminFarmers({ adminRole = 'admin' }) {
                             <div style={{ fontFamily: 'Heebo,sans-serif' }}>
                               <span style={{ fontWeight: 900, fontSize: 15, color: 'var(--primary)' }}>{f.lastName || f.nameHeb || f.name} </span>
                               <span style={{ fontWeight: 700, fontSize: 15 }}>{f.firstName || ''}</span>
+                              {invoicedUnpaid > 0 && (
+                                <span
+                                  title={ar ? `صدرت فاتورة ولم تُدفع بعد (${invoicedUnpaid} فترة)` : `הופקה חשבונית — טרם שולם (${invoicedUnpaid} תקופות)`}
+                                  style={{ display: 'inline-flex', alignItems: 'center', marginInlineStart: 6, background: '#ffedd5', border: '1px solid #f97316', color: '#c2410c', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 800, verticalAlign: 'middle', whiteSpace: 'nowrap' }}
+                                >
+                                  🧾{invoicedUnpaid > 1 ? ` ${invoicedUnpaid}` : ''}
+                                </span>
+                              )}
                             </div>
                           </td>
                           <td>
