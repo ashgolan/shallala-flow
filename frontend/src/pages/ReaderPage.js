@@ -402,8 +402,16 @@ export default function ReaderPage({ onLogout, embedded = false, manageCycle = f
 
   // ── الإدخال ──────────────────────────────────────────────
   const value = input === '' ? null : Number(input);
-  const liveConsumption = curMeter ? calcConsumption(curMeter, value, cycle) : null;
-  const liveStatus = curMeter && value !== null ? classify(liveConsumption, curMeter.expected) : null;
+  // ✅ الفحص الكامل (يُستخدم عند الحفظ دائماً)
+  const fullConsumption = curMeter ? calcConsumption(curMeter, value, cycle) : null;
+  const fullStatus = curMeter && value !== null ? classify(fullConsumption, curMeter.expected) : null;
+  // ✅ أثناء الكتابة: ما منحكم على الرقم قبل ما يوصل لعدد خانات القراءة السابقة
+  //    (أول رقم أو رقمين دايماً "أقل من السابقة" — كان يظهر تنبيه أحمر غلط)
+  const prevDigits = curMeter && curMeter.prevValue !== null && curMeter.prevValue !== undefined
+    ? String(Math.trunc(Math.abs(curMeter.prevValue))).length : 0;
+  const typingIncomplete = value !== null && input.length < prevDigits;
+  const liveConsumption = typingIncomplete ? null : fullConsumption;
+  const liveStatus = typingIncomplete ? null : fullStatus;
 
   const press = k => {
     if (!curMeter?.editable) return;
@@ -415,9 +423,9 @@ export default function ReaderPage({ onLogout, embedded = false, manageCycle = f
 
   const doSave = () => {
     if (!curMeter || value === null || !curMeter.editable || !cycle?.open) return;
-    if (WARN.includes(liveStatus) && !confirming) { setConfirming(true); setReason(''); return; }
-    if (liveStatus === 'decrease' && !reason) return;
-    const item = { clientId: uid(), landId: curMeter.landId, value, reason: WARN.includes(liveStatus) ? reason : '', note: note.trim(), at: Date.now() };
+    if (WARN.includes(fullStatus) && !confirming) { setConfirming(true); setReason(''); return; }
+    if (fullStatus === 'decrease' && !reason) return;
+    const item = { clientId: uid(), landId: curMeter.landId, value, reason: WARN.includes(fullStatus) ? reason : '', note: note.trim(), at: Date.now() };
     const q = [...safeGet(QUEUE_KEY, []).filter(x => x.landId !== item.landId), item];
     safeSet(QUEUE_KEY, q);
     setQueue(q);
@@ -530,14 +538,17 @@ export default function ReaderPage({ onLogout, embedded = false, manageCycle = f
   // ════════════════ شاشة العداد ════════════════
   if (curStation && curMeter) {
     const idxInStation = curStation.meters.findIndex(m => m.landId === curMeter.landId);
-    const st = liveStatus || (curMeter.currentValue !== null ? curMeter.status : null);
+    // ✅ أثناء التنبيه نعرض الفحص الكامل، وأثناء الكتابة ما منحكم قبل ما يكتمل الرقم
+    const dispStatus = confirming ? fullStatus : liveStatus;
+    const dispCons   = confirming ? fullConsumption : liveConsumption;
+    const st = value !== null ? dispStatus : (curMeter.currentValue !== null ? curMeter.status : null);
     const ss = STATUS_STYLE[st] || null;
-    const shownCons = value !== null ? liveConsumption : curMeter.consumption;
+    const shownCons = value !== null ? dispCons : curMeter.consumption;
     const name = ar ? curMeter.farmerName : (curMeter.farmerNameHeb || curMeter.farmerName);
     const sub = curMeter.description || curMeter.landName;
     const exp = curMeter.expected;
-    const needReason = confirming && liveStatus === 'decrease' && !reason;
-    const reasons = REASONS[liveStatus] || [];
+    const needReason = confirming && fullStatus === 'decrease' && !reason;
+    const reasons = REASONS[fullStatus] || [];
     const stationNoLoc = curStation.lat === null;
 
     return (
@@ -615,13 +626,13 @@ export default function ReaderPage({ onLogout, embedded = false, manageCycle = f
         {/* الأكواب + فحص المنطقية */}
         {(shownCons !== null || st) && (
           <div style={{ margin: '10px 16px 0', background: ss?.bg || '#eef2ef', border: `${confirming ? 2 : 1}px solid ${ss?.line || C.line}`, borderRadius: 18, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, color: ss?.fg || C.greyText }}>
-                <Num style={{ fontSize: 50, fontWeight: 900, lineHeight: 1 }}>{fmt(shownCons)}</Num>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, color: ss?.fg || C.greyText, minWidth: 0 }}>
+                <Num style={{ fontSize: fmt(shownCons).length > 7 ? 36 : fmt(shownCons).length > 5 ? 42 : 50, fontWeight: 900, lineHeight: 1 }}>{fmt(shownCons)}</Num>
                 <span style={{ fontSize: 18, fontWeight: 700 }}>{t('cubic')}</span>
               </div>
               {st && (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 12px', borderRadius: 17, background: ss.chip, color: '#fff', fontSize: 15, fontWeight: 800, whiteSpace: 'nowrap' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 12px', borderRadius: 17, background: ss.chip, color: '#fff', fontSize: 15, fontWeight: 800, whiteSpace: 'nowrap', maxWidth: '100%' }}>
                   <Icon d={st === 'ok' ? IC.check : IC.warn} size={17} sw={2.6} />
                   {STATUS_LABEL[st][ar ? 0 : 1]}
                 </span>
@@ -662,7 +673,7 @@ export default function ReaderPage({ onLogout, embedded = false, manageCycle = f
           <div style={{ margin: '10px 16px 0', background: C.card, border: `1px solid ${C.line}`, borderRadius: 18, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div>
               <div style={{ fontSize: 17, fontWeight: 800 }}>{t('checkAgain')}</div>
-              <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.5 }}>{liveStatus === 'decrease' ? t('decreaseHint') : t('checkHint')}</div>
+              <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.5 }}>{fullStatus === 'decrease' ? t('decreaseHint') : t('checkHint')}</div>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {reasons.map(([k, a, h]) => (
@@ -725,7 +736,7 @@ export default function ReaderPage({ onLogout, embedded = false, manageCycle = f
             confirming ? (
               <>
                 <button type="button" onClick={doSave} disabled={needReason}
-                  style={{ ...btnReset, height: 58, borderRadius: 16, border: 0, background: liveStatus === 'decrease' ? C.err : C.warnBtn, color: '#fff', fontSize: 18, fontWeight: 800, opacity: needReason ? 0.5 : 1 }}>
+                  style={{ ...btnReset, height: 58, borderRadius: 16, border: 0, background: fullStatus === 'decrease' ? C.err : C.warnBtn, color: '#fff', fontSize: 18, fontWeight: 800, opacity: needReason ? 0.5 : 1 }}>
                   {t('confirmSave')}
                 </button>
                 <button type="button" onClick={() => setConfirming(false)}
@@ -886,13 +897,13 @@ function RangeBar({ consumption, expected, t, basis }) {
 // ── آخر الفترات مقابل الحالية ───────────────────────────────
 function HistoryBars({ history, current, t }) {
   const items = [...(history || []).map(h => ({ v: h.value, label: `${String(h.year).slice(2)}/${h.period}` })), { v: current, label: t('now'), now: true }];
-  const max = Math.max(1, ...items.map(i => Math.abs(i.v || 0)));
+  const max = Math.max(1, ...items.map(i => Math.max(0, i.v || 0)));
   return (
     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, height: 92 }}>
       {items.map((i, k) => (
         <div key={k} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
           <Num style={{ fontSize: 12, fontWeight: i.now ? 800 : 500, color: i.now ? C.warnText : '#6b5a3f' }}>{fmt(i.v)}</Num>
-          <div style={{ width: '100%', height: Math.max(4, (Math.abs(i.v || 0) / max) * 52), borderRadius: 4, background: i.now ? '#e9a23b' : '#d9c7a3' }} />
+          <div style={{ width: '100%', height: Math.max(4, (Math.max(0, i.v || 0) / max) * 52), borderRadius: 4, background: i.now ? '#e9a23b' : '#d9c7a3' }} />
           <Num style={{ fontSize: 12, fontWeight: i.now ? 800 : 500, color: i.now ? C.warnText : '#6b5a3f' }}>{i.label}</Num>
         </div>
       ))}
