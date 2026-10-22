@@ -35,10 +35,14 @@ const getCycleDoc = async () => {
   return doc;
 };
 
+// ✅ phase = رقم الفترة متل "ف1/ف2" بجدول القراءات بالضبط:
+//    phase = k  → قراءة نهاية الفترة k = الخانة readings[k]
+//    phase = 0  → قراءة بداية السنة   = الخانة readings[0]
+const hasPhase = c => c.phase !== null && c.phase !== undefined && !isNaN(Number(c.phase));
 const cycleOut = c => ({
   year:  c.year  ?? null,
-  phase: c.phase ?? null,
-  open:  !!(c.open && c.year && c.phase),
+  phase: hasPhase(c) ? Number(c.phase) : null,
+  open:  !!(c.open && c.year && hasPhase(c)),
   updatedAt: c.updatedAt || null,
 });
 
@@ -157,13 +161,16 @@ const buildMeterRow = ({ land, farmer, docsAsc, year, idx, lastEntry }) => {
     readingId:     cur ? cur._id.toString() : null,
     prevValue:     prev ? prev.value : null,
     prevYear:      prev ? prev.year : null,
-    prevPeriod:    prev ? prev.idx + 1 : null,
+    prevSlot:      prev ? prev.idx : null,   // 0 = قراءة البداية، k = نهاية الفترة k
     currentValue,
     consumption,
     editable,
     byReader,
     lockedReason,
     meterChange:   cur ? ((cur.meterChanges || []).find(c => c.period === idx - 1) || null) : null,
+    // ✅ تبديل العداد بيدخل بالحساب فقط إذا القراءة السابقة هي بداية نفس الفترة
+    meterChangeApplies: !!(cur && prev && prev.year === year && prev.idx === idx - 1
+      && (cur.meterChanges || []).some(c => c.period === idx - 1)),
     history:       history.slice(-HISTORY_LEN),
     expected,
     expectedBasis: basis,
@@ -181,7 +188,7 @@ const loadContext = async (landFilter = {}) => {
   const farmerIds = [...new Set(lands.map(l => l.farmerId.toString()))];
   const [farmers, readings] = await Promise.all([
     Farmer.find({ _id: { $in: farmerIds } }).select('name nameHeb firstName lastName').lean(),
-    Reading.find({ landId: { $in: landIds } }).select('landId year readings meterChanges').sort({ year: 1 }).lean(),
+    Reading.find({ landId: { $in: landIds } }).select('landId year readings meterChanges').sort({ year: 1, _id: 1 }).lean(),
   ]);
   const farmersById = new Map(farmers.map(f => [f._id.toString(), f]));
   const readingsByLand = new Map();
@@ -223,11 +230,11 @@ const updateCycle = async (req, res) => {
     const phase = parseInt(req.body.phase, 10);
     const open  = !!req.body.open;
     if (!year || year < 2000 || year > 2100) return res.status(400).json({ error: 'السنة غير صالحة' });
-    if (!phase || phase < 1 || phase > 24)    return res.status(400).json({ error: 'رقم الفترة غير صالح' });
+    if (isNaN(phase) || phase < 0 || phase > 24) return res.status(400).json({ error: 'رقم الفترة غير صالح' });
     const doc = await ReaderCycle.findOneAndUpdate(
       { key: 'readerCycle' },
       { $set: { year, phase, open, openedBy: req.readerLabel || '' } },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     ).lean();
     return res.json({ success: true, cycle: cycleOut(doc) });
   } catch (err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
@@ -241,9 +248,9 @@ const getMeters = async (req, res) => {
     const c = cycleOut(await getCycleDoc());
     const regions = (await Region.find().sort({ name: 1 }).lean())
       .map(r => ({ id: r._id.toString(), name: r.name || '', nameHeb: r.nameHeb || '' }));
-    if (!c.year || !c.phase) return res.json({ cycle: c, regions, meters: [] });
+    if (!c.year || c.phase === null) return res.json({ cycle: c, regions, meters: [] });
 
-    const idx = c.phase - 1;
+    const idx = c.phase;   // ✅ الفترة k → الخانة readings[k] (متل ف1/ف2 بجدول القراءات)
     const { lands, farmersById, readingsByLand } = await loadContext();
     const entries = await latestEntriesMap(lands.map(l => l._id), c.year, idx);
 
@@ -280,7 +287,7 @@ const saveEntry = async (req, res) => {
     const c = cycleOut(await getCycleDoc());
     if (!c.open) return res.status(403).json({ error: 'لا توجد دورة قراءة مفتوحة', code: 'closed' });
     const year = c.year;
-    const idx  = c.phase - 1;
+    const idx  = c.phase;   // ✅ الفترة k → الخانة readings[k]
     const cleanValue = Math.round(value * 100) / 100;
 
     // ✅ منع التكرار — نفس الإدخال وصل مرتين (مزامنة بعد انقطاع)
@@ -296,7 +303,7 @@ const saveEntry = async (req, res) => {
     if (!land || !land.farmerId || !land.stationNumber)
       return res.status(404).json({ error: 'العداد غير موجود' });
 
-    let doc = await Reading.findOne({ landId: land._id, year }).lean();
+    let doc = await Reading.findOne({ landId: land._id, year }).sort({ _id: 1 }).lean();
     const lastEntry = doc
       ? await ReaderEntry.findOne({ landId: land._id, year, idx }).sort({ createdAt: -1 }).lean()
       : null;
@@ -325,30 +332,37 @@ const saveEntry = async (req, res) => {
       });
       doc = created.toObject();
     } else {
-      // ✅ كتابة ذرية مشروطة: ما بتنجح إلا إذا الخانة لسا بنفس الحالة اللي فحصناها
-      const filter = { _id: doc._id, [`readings.${idx}`]: currentValue === null ? null : currentValue };
-      const upd = await Reading.updateOne(filter, { $set: { [`readings.${idx}`]: cleanValue } });
+      // ✅ كتابة ذرية مشروطة على المصفوفة كاملة: ما بتنجح إلا إذا مصفوفة القراءات
+      //    لسا بالضبط متل ما قرأناها (لا أحد غيّرها بنفس اللحظة).
+      //    ⚠️ ما منفحص الخانة لحالها (readings.N = null) لأنها غالباً مش موجودة بعد
+      //    (المصفوفة أقصر) — وهالفحص بـ MongoDB ما بيطابق، فكان الحفظ يُرفض بالغلط.
+      const oldReadings = Array.isArray(doc.readings) ? doc.readings : [];
+      const newReadings = oldReadings.map(v => (v === undefined ? null : v));
+      while (newReadings.length <= idx) newReadings.push(null);
+      newReadings[idx] = cleanValue;
+      while (newReadings.length < 2) newReadings.push(null);
+
+      // ✅ مصفوفة الدفع: منطوّلها بس (بدون لمس أي قيمة موجودة) — نفس الاستيراد من الإكسل
+      const periodsCount = Math.max(0, newReadings.length - 1);
+      const oldPaid = Array.isArray(doc.paidPeriods) ? doc.paidPeriods : [];
+      const set = { readings: newReadings, updatedAt: new Date() };
+      if (oldPaid.length < periodsCount) {
+        const pp = [];
+        for (let i = 0; i < periodsCount; i++) pp.push(!!oldPaid[i]);
+        set.paidPeriods = pp;
+      }
+
+      const upd = await Reading.collection.updateOne(
+        { _id: doc._id, readings: oldReadings },
+        { $set: set }
+      );
       if (!upd.matchedCount)
         return res.status(409).json({ error: 'تغيّرت هذه القراءة قبل لحظات — حدّث الصفحة', code: 'changed' });
-
-      // ✅ توحيد الطول ومصفوفة الدفع (بدون لمس أي قيمة موجودة)
-      const fresh = await Reading.findById(doc._id);
-      let touched = false;
-      while (fresh.readings.length < 2) { fresh.readings.push(null); touched = true; }
-      const periodsCount = Math.max(0, fresh.readings.length - 1);
-      if ((fresh.paidPeriods || []).length < periodsCount) {
-        const pp = [];
-        for (let i = 0; i < periodsCount; i++) pp.push(!!fresh.paidPeriods?.[i]);
-        fresh.paidPeriods = pp;
-        fresh.markModified('paidPeriods');
-        touched = true;
-      }
-      if (touched) { fresh.markModified('readings'); await fresh.save(); }
-      doc = fresh.toObject();
+      doc = { ...doc, ...set };
     }
 
     // ✅ حساب الحالة على السيرفر (مش معتمدين على الهاتف)
-    const docsAsc = await Reading.find({ landId: land._id }).select('landId year readings meterChanges').sort({ year: 1 }).lean();
+    const docsAsc = await Reading.find({ landId: land._id }).select('landId year readings meterChanges').sort({ year: 1, _id: 1 }).lean();
     const prev = findPrevious(docsAsc, year, idx);
     const history = buildHistory(docsAsc, year, idx);
     const { expected } = computeExpected(history, year, idx);

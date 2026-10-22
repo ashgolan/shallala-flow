@@ -100,7 +100,10 @@ const L = {
   savedOffline: { ar: 'حُفظت على الهاتف — ستُرسل عند عودة الإنترنت', he: 'נשמרה בטלפון — תישלח כשיחזור החיבור' },
   cycleSettings:{ ar: 'إعدادات دورة القراءة', he: 'הגדרות מחזור קריאה' },
   year:         { ar: 'السنة', he: 'שנה' },
-  phaseHint:    { ar: 'نفس رقم الفترة المستخدم بملف الإكسل', he: 'אותו מספר תקופה כמו בקובץ האקסל' },
+  phaseHint:    { ar: 'متل ف1/ف2 بجدول القراءات — الناطور بيدخل قراءة نهاية هالفترة', he: 'כמו ת1/ת2 בטבלת הקריאות — הקורא מזין את קריאת סוף התקופה' },
+  yearStart:    { ar: 'بداية السنة', he: 'תחילת שנה' },
+  pShort:       { ar: 'ف', he: 'ת' },
+  excelCol:     { ar: 'بالإكسل: عمود', he: 'באקסל: עמודה' },
   open:         { ar: 'مفتوحة للناطور', he: 'פתוח לקורא' },
   closed:       { ar: 'مغلقة', he: 'סגור' },
   save:         { ar: 'حفظ', he: 'שמור' },
@@ -140,7 +143,7 @@ const distM = (a, b) => {
 
 const calcConsumption = (m, value, cycle) => {
   if (value === null || m.prevValue === null || m.prevValue === undefined) return null;
-  const mc = m.meterChange && m.prevYear === cycle?.year && m.prevPeriod === (cycle?.phase || 0) - 1 ? m.meterChange : null;
+  const mc = m.meterChangeApplies ? m.meterChange : null;
   const c = mc ? (mc.oldFinal - m.prevValue) + (value - mc.newInitial) : value - m.prevValue;
   return Math.round(c * 100) / 100;
 };
@@ -504,7 +507,7 @@ export default function ReaderPage({ onLogout, embedded = false, manageCycle = f
     <div style={{ padding: '18px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
         <div style={{ fontSize: 14, color: C.muted }}>
-          {cycle?.year ? <>{t('cycle')} · <Num>{cycle.year}</Num> · {t('period')} <Num>{cycle.phase}</Num></> : t('title')}
+          {cycle?.year ? <>{t('cycle')} · <Num>{cycle.year}</Num> · {cycle.phase === 0 ? t('yearStart') : <>{t('period')} <Num>{cycle.phase}</Num></>}</> : t('title')}
         </div>
         <h1 style={{ margin: 0, fontSize: 26, fontWeight: 900, lineHeight: 1.2 }}>{t('title')}</h1>
       </div>
@@ -602,7 +605,7 @@ export default function ReaderPage({ onLogout, embedded = false, manageCycle = f
         <div style={{ margin: '0 16px', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
           <div style={{ background: '#e9efeb', borderRadius: 16, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ fontSize: 13, color: C.muted }}>
-              {t('previous')}{curMeter.prevYear ? <> · <Num>{curMeter.prevYear}</Num>/<Num>{curMeter.prevPeriod}</Num></> : ''}
+              {t('previous')}{curMeter.prevYear ? <> · <Num>{curMeter.prevYear}</Num> · {curMeter.prevSlot === 0 ? t('yearStart') : <>{t('pShort')}<Num>{curMeter.prevSlot}</Num></>}</> : ''}
             </div>
             <Num style={{ fontSize: 34, fontWeight: 800, color: C.greyText, textAlign: 'right' }}>{fmt(curMeter.prevValue)}</Num>
           </div>
@@ -914,7 +917,7 @@ function HistoryBars({ history, current, t }) {
 // ── إعدادات الدورة (للمدير) ─────────────────────────────────
 function CyclePanel({ cycle, t, onSaved }) {
   const [year, setYear]   = useState(cycle?.year || new Date().getFullYear());
-  const [phase, setPhase] = useState(cycle?.phase || 1);
+  const [phase, setPhase] = useState(cycle?.phase ?? 1);
   const [open, setOpen]   = useState(!!cycle?.open);
   const [busy, setBusy]   = useState(false);
   const [msg, setMsg]     = useState('');
@@ -922,7 +925,7 @@ function CyclePanel({ cycle, t, onSaved }) {
   useEffect(() => {
     if (!cycle) return;
     if (cycle.year) setYear(cycle.year);
-    if (cycle.phase) setPhase(cycle.phase);
+    if (cycle.phase !== null && cycle.phase !== undefined) setPhase(cycle.phase);
     setOpen(!!cycle.open);
   }, [cycle]);
 
@@ -947,7 +950,12 @@ function CyclePanel({ cycle, t, onSaved }) {
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: C.muted }}>
           {t('period')}
-          <input type="number" min={1} value={phase} onChange={e => setPhase(e.target.value)} style={{ width: 72, height: 40, borderRadius: 10, border: `1px solid ${C.line}`, padding: '0 10px', fontSize: 16, fontFamily: 'inherit' }} />
+          <select value={phase} onChange={e => setPhase(Number(e.target.value))} style={{ height: 40, borderRadius: 10, border: `1px solid ${C.line}`, padding: '0 10px', fontSize: 16, fontFamily: 'inherit', background: '#fff' }}>
+            <option value={0}>{t('yearStart')}</option>
+            {Array.from({ length: 12 }, (_, i) => i + 1).map(k => (
+              <option key={k} value={k}>{t('period')} {k} ({t('pShort')}{k})</option>
+            ))}
+          </select>
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, height: 40, fontSize: 15, fontWeight: 700, color: open ? C.ok : C.greyText, cursor: 'pointer' }}>
           <input type="checkbox" checked={open} onChange={e => setOpen(e.target.checked)} style={{ width: 20, height: 20 }} />
@@ -955,7 +963,7 @@ function CyclePanel({ cycle, t, onSaved }) {
         </label>
         <button type="button" className="btn btn-primary btn-sm" onClick={save} disabled={busy} style={{ height: 40 }}>{t('save')}</button>
       </div>
-      <div style={{ fontSize: 12, color: C.muted }}>{t('phaseHint')}</div>
+      <div style={{ fontSize: 12, color: C.muted }}>{t('phaseHint')} · {t('excelCol')} ת{Number(phase) + 1}</div>
       {msg && <div style={{ fontSize: 14, fontWeight: 700 }}>{msg}</div>}
     </div>
   );
