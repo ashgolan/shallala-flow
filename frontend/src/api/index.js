@@ -154,6 +154,16 @@ export const privilegedAPI = {
   remove: id => req(`/admin/privileged/${id}`, { method: 'DELETE' }),
 };
 
+// ── Reader API (صفحة إدخال القراءات — الناطور) ────────────────
+// ✅ الناطور بيكتب بس بخانة الدورة المفتوحة — أي رقم سابق للقراءة فقط (الفحص على السيرفر)
+export const readerAPI = {
+  getCycle:     ()     => req('/reader/cycle'),
+  updateCycle:  d      => req('/reader/cycle', { method: 'PUT', body: JSON.stringify(d) }),
+  getMeters:    ()     => req('/reader/meters'),
+  saveEntry:    d      => req('/reader/entries', { method: 'POST', body: JSON.stringify(d) }),
+  saveLocation: (station, d) => req(`/reader/stations/${encodeURIComponent(station)}/location`, { method: 'POST', body: JSON.stringify(d) }),
+};
+
 // ── Tasks API (المهام والاستفسارات) ────────────────────────────
 export const tasksAPI = {
   getAll:          params => req('/tasks' + (params ? '?' + new URLSearchParams(params) : '')),

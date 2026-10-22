@@ -61,6 +61,7 @@ app.use('/api/admin',    require('./src/routes/admin'));
 app.use('/api/payments', require('./src/routes/payments'));
 app.use('/api/tasks',    require('./src/routes/tasks'));
 app.use('/api/push',     require('./src/routes/push'));
+app.use('/api/reader',   require('./src/routes/reader')); // ✅ صفحة إدخال القراءات (الناطور)
 
 // Health check
 app.get('/health', (req, res) => {

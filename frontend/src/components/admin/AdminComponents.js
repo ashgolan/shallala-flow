@@ -823,6 +823,8 @@ function PrivilegedUsers({ lang, ar }) {
   const [newPass, setNewPassPriv] = useState('');
   // ✅ قائمة المشاريع الجاري تعديلها بمودال تغيير كلمة المرور/الصلاحيات
   const [editAllowedIds, setEditAllowedIds] = useState([]);
+  // ✅ مراقب وناطور معاً (تبويب "إدخال قراءات" بلوحة الإدارة)
+  const [editCanRead, setEditCanRead] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -830,6 +832,8 @@ function PrivilegedUsers({ lang, ar }) {
   const ROLES = {
     admin: ar ? '🔐 مدير رئيسي' : '🔐 מנהל ראשי',
     viewer: ar ? '👁 مراقب' : '👁 צופה',
+    // ✅ ناطور: يدخل فقط على صفحة إدخال القراءات (الدورة المفتوحة)
+    reader: ar ? '📟 ناطور (إدخال قراءات)' : '📟 קורא מונים',
   };
 
   const load = () => privilegedAPI.getAll().then(d => setUsers(d.users || [])).catch(() => { });
@@ -842,6 +846,7 @@ function PrivilegedUsers({ lang, ar }) {
     setEditUser(u);
     setNewPassPriv('');
     setEditAllowedIds(u.allowedProjectIds || []);
+    setEditCanRead(!!u.canEnterReadings);
     setError('');
   };
 
@@ -860,8 +865,9 @@ function PrivilegedUsers({ lang, ar }) {
     }));
   };
   const saveEdit = async () => {
-    if (!newPass) { setError(ar ? 'أدخل كلمة المرور الجديدة' : 'הזן סיסמה חדשה'); return; }
-    if (newPass.length < 6) { setError(t('passMin', lang)); return; }
+    // ✅ للمراقب: كلمة المرور اختيارية (فارغة = تبقى الحالية) حتى يمكن تعديل الصلاحيات وحدها
+    if (!newPass && editUser.role !== 'viewer') { setError(ar ? 'أدخل كلمة المرور الجديدة' : 'הזן סיסמה חדשה'); return; }
+    if (newPass && newPass.length < 6) { setError(t('passMin', lang)); return; }
     setSaving(true);
     setError('');
     try {
@@ -870,8 +876,10 @@ function PrivilegedUsers({ lang, ar }) {
       const cleanedAllowedIds = editAllowedIds.filter(id => validProjectIds.includes(id));
 
       await privilegedAPI.update(editUser.id, {
-        password: newPass, label: editUser.label, role: editUser.role,
+        ...(newPass ? { password: newPass } : {}),
+        label: editUser.label, role: editUser.role,
         allowedProjectIds: editUser.role === 'viewer' ? cleanedAllowedIds : [],
+        canEnterReadings: editUser.role === 'viewer' ? editCanRead : false,
       });
       setEditUser(null);
       setNewPassPriv('');
@@ -945,6 +953,7 @@ function PrivilegedUsers({ lang, ar }) {
               <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value, allowedProjectIds: e.target.value === 'viewer' ? form.allowedProjectIds : [] })}>
                 <option value="admin">{ROLES.admin}</option>
                 <option value="viewer">{ROLES.viewer}</option>
+                <option value="reader">{ROLES.reader}</option>
               </select>
             </div>
             <div className="form-group">
@@ -986,6 +995,16 @@ function PrivilegedUsers({ lang, ar }) {
             </div>
           )}
 
+          {/* ✅ مراقب وناطور معاً */}
+          {form.role === 'viewer' && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 10, padding: '10px 14px', marginBottom: 8, fontSize: 13, fontWeight: 700, color: '#065f46', cursor: 'pointer' }}>
+              <input type="checkbox" checked={!!form.canEnterReadings}
+                onChange={e => setForm({ ...form, canEnterReadings: e.target.checked })}
+                style={{ width: 16, height: 16, cursor: 'pointer' }} />
+              📟 {ar ? 'ناطور أيضاً — يظهر له تبويب "إدخال قراءات" بلوحة الإدارة' : 'גם קורא מונים — תוצג לו לשונית "הזנת קריאות" בלוח הניהול'}
+            </label>
+          )}
+
           {error && <div className="alert alert-error mb-8">{error}</div>}
           <div className="flex-gap gap-8">
             <button type="submit" className="btn btn-primary" disabled={saving}>
@@ -1019,7 +1038,12 @@ function PrivilegedUsers({ lang, ar }) {
             {users.map(u => (
               <tr key={u.id}>
                 <td><code style={{ background: 'var(--surface-2)', padding: '2px 8px', borderRadius: 4 }}>{u.idNumber}</code></td>
-                <td><span className="badge badge-blue">{ROLES[u.role] || u.role}</span></td>
+                <td>
+                  <span className="badge badge-blue">{ROLES[u.role] || u.role}</span>
+                  {u.role === 'viewer' && u.canEnterReadings && (
+                    <span className="badge badge-blue" style={{ marginInlineStart: 4, background: '#ecfdf5', color: '#065f46' }}>+ 📟 {ar ? 'ناطور' : 'קורא מונים'}</span>
+                  )}
+                </td>
                 <td style={{ fontFamily: 'Heebo,sans-serif', fontWeight: 600 }}>{u.label || '—'}</td>
                 <td style={{ fontSize: 12 }}>
                   {u.role === 'viewer' && (u.allowedProjectIds || []).length > 0
@@ -1055,11 +1079,20 @@ function PrivilegedUsers({ lang, ar }) {
               {editUser.label || editUser.idNumber} — <span className="badge badge-blue">{ROLES[editUser.role]}</span>
             </p>
             <div className="form-group">
-              <label>{t('newPassword', lang)} *</label>
+              <label>{t('newPassword', lang)} {editUser.role === 'viewer' ? `(${ar ? 'اتركها فارغة للإبقاء على الحالية' : 'השאר ריק כדי לשמור את הנוכחית'})` : '*'}</label>
               <input type="password" value={newPass}
                 onChange={e => setNewPassPriv(e.target.value)}
                 placeholder="••••••••" autoFocus />
             </div>
+
+            {/* ✅ مراقب وناطور معاً */}
+            {editUser.role === 'viewer' && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 13, fontWeight: 700, color: '#065f46', cursor: 'pointer' }}>
+                <input type="checkbox" checked={editCanRead} onChange={e => setEditCanRead(e.target.checked)}
+                  style={{ width: 16, height: 16, cursor: 'pointer' }} />
+                📟 {ar ? 'ناطور أيضاً (تبويب "إدخال قراءات")' : 'גם קורא מונים (לשונית "הזנת קריאות")'}
+              </label>
+            )}
 
             {/* ✅ تعديل المشاريع المسموحة — فقط للمراقب */}
             {editUser.role === 'viewer' && (
@@ -1099,7 +1132,7 @@ function PrivilegedUsers({ lang, ar }) {
               <button className="btn btn-primary" onClick={saveEdit} disabled={saving}>
                 {saving ? t('saving', lang) : t('changeBtn', lang)}
               </button>
-              <button className="btn btn-outline" onClick={() => { setEditUser(null); setError(''); setEditAllowedIds([]); }}>
+              <button className="btn btn-outline" onClick={() => { setEditUser(null); setError(''); setEditAllowedIds([]); setEditCanRead(false); }}>
                 {t('cancel', lang)}
               </button>
             </div>

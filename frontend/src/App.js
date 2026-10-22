@@ -3,6 +3,7 @@ import { LangProvider } from './contexts/LangContext';
 import LoginPage       from './pages/LoginPage';
 import FarmerDashboard from './pages/FarmerDashboard';
 import AdminDashboard  from './pages/AdminDashboard';
+import ReaderPage      from './pages/ReaderPage'; // ✅ صفحة إدخال القراءات (الناطور)
 import FloatingCalculator from './components/shared/FloatingCalculator'; // ✅ حاسبة عائمة (عادية + ضريبة) بكل التطبيق
 import './styles/global.css';
 
@@ -15,6 +16,8 @@ export default function App() {
   const [adminRole, setAdminRole] = useState('admin');
   // ✅ قائمة المشاريع المسموح للمراقب بإدارتها بالكامل (فارغة للمدير الرئيسي أو المراقب العادي)
   const [allowedProjectIds, setAllowedProjectIds] = useState([]);
+  // ✅ مراقب وناطور معاً — يظهر له تبويب "إدخال قراءات" بلوحة الإدارة
+  const [canEnterReadings, setCanEnterReadings] = useState(false);
   const idleTimer = useRef(null);
 
   const handleLogout = useCallback(() => {
@@ -22,9 +25,11 @@ export default function App() {
     localStorage.removeItem('shl_farmer');
     localStorage.removeItem('shl_admin');
     localStorage.removeItem('shl_allowed_projects');
+    localStorage.removeItem('shl_can_read');
     setFarmer(null);
     setAdminRole('admin');
     setAllowedProjectIds([]);
+    setCanEnterReadings(false);
     setView('login');
     if (idleTimer.current) clearTimeout(idleTimer.current);
   }, []);
@@ -57,11 +62,15 @@ export default function App() {
 
     if (!token) { setView('login'); return; }
 
+    // ✅ الناطور: صفحة إدخال القراءات فقط
+    if (savedAdmin === 'reader') { setView('reader'); return; }
+
     if (savedAdmin) {
       setAdminRole(savedAdmin);
       if (savedAllowed) {
         try { setAllowedProjectIds(JSON.parse(savedAllowed)); } catch { setAllowedProjectIds([]); }
       }
+      setCanEnterReadings(localStorage.getItem('shl_can_read') === '1');
       setView('admin');
     } else if (savedFarmer) {
       try {
@@ -77,7 +86,7 @@ export default function App() {
 
   // ✅ تشغيل/إيقاف مراقبة الخمول حسب حالة الـ view
   useEffect(() => {
-    if (view === 'admin' || view === 'farmer') {
+    if (view === 'admin' || view === 'farmer' || view === 'reader') {
       return startIdleWatch();
     }
   }, [view, startIdleWatch]);
@@ -92,11 +101,15 @@ export default function App() {
   };
 
   // ✅ يستقبل الآن allowedProjectIds كمان (فارغة افتراضياً)
-  const handleAdminLogin = (token, role = 'admin', projectIds = []) => {
+  const handleAdminLogin = (token, role = 'admin', projectIds = [], canRead = false) => {
     localStorage.setItem('shl_token', token);
     localStorage.setItem('shl_admin', role);
     localStorage.setItem('shl_allowed_projects', JSON.stringify(projectIds || []));
+    localStorage.setItem('shl_can_read', canRead ? '1' : '0');
+    setCanEnterReadings(!!canRead);
     localStorage.removeItem('shl_farmer');
+    // ✅ الناطور ما بيدخل لوحة الإدارة إطلاقاً — صفحته لحالها
+    if (role === 'reader') { setView('reader'); return; }
     setAdminRole(role);
     setAllowedProjectIds(projectIds || []);
     setView('admin');
@@ -116,9 +129,15 @@ export default function App() {
     </LangProvider>
   );
 
+  if (view === 'reader') return (
+    <LangProvider>
+      <ReaderPage onLogout={handleLogout} />
+    </LangProvider>
+  );
+
   if (view === 'admin') return (
     <LangProvider>
-      <AdminDashboard adminRole={adminRole} allowedProjectIds={allowedProjectIds} onLogout={handleLogout} />
+      <AdminDashboard adminRole={adminRole} allowedProjectIds={allowedProjectIds} canEnterReadings={canEnterReadings} onLogout={handleLogout} />
       <FloatingCalculator />
     </LangProvider>
   );

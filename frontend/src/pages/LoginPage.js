@@ -61,7 +61,7 @@ export default function LoginPage({ onFarmerLogin, onAdminLogin }) {
       const res = await authAPI.adminLogin(idNumber, code, password);
       if (res.token) {
         // ✅ نمرر أيضاً قائمة المشاريع المسموح للمراقب بإدارتها بالكامل (فارغة للمدير الرئيسي)
-        onAdminLogin(res.token, res.role || 'admin', res.allowedProjectIds || []);
+        onAdminLogin(res.token, res.role || 'admin', res.allowedProjectIds || [], !!res.canEnterReadings);
       } else {
         setError(ar ? 'خطأ في الدخول' : 'שגיאה בכניסה');
       }
@@ -69,9 +69,11 @@ export default function LoginPage({ onFarmerLogin, onAdminLogin }) {
     finally { setLoading(false); }
   };
 
+  // ✅ reader = ناطور (صفحة إدخال القراءات)
   const roleLabel = ar
-    ? (choiceData?.role === 'admin' ? 'مدير رئيسي' : 'مراقب')
-    : (choiceData?.role === 'admin' ? 'מנהל ראשי' : 'צופה');
+    ? (choiceData?.role === 'admin' ? 'مدير رئيسي' : choiceData?.role === 'reader' ? 'ناطور' : 'مراقب')
+    : (choiceData?.role === 'admin' ? 'מנהל ראשי' : choiceData?.role === 'reader' ? 'קורא מונים' : 'צופה');
+  const roleIcon = choiceData?.role === 'admin' ? '🔐' : choiceData?.role === 'reader' ? '📟' : '👁️';
 
   return (
     <div style={{
@@ -373,7 +375,7 @@ export default function LoginPage({ onFarmerLogin, onAdminLogin }) {
                 }}
                 onMouseEnter={e => e.currentTarget.style.background = '#e0f2fe'}
                 onMouseLeave={e => e.currentTarget.style.background = '#f0f9ff'}>
-                <span style={{ fontSize: 24 }}>{choiceData?.role === 'admin' ? '🔐' : '👁️'}</span>
+                <span style={{ fontSize: 24 }}>{roleIcon}</span>
                 <div style={{ textAlign: 'right' }}>
                   <div>{ar ? `دخول ك${roleLabel}` : `כניסה כ${roleLabel}`}</div>
                   <div style={{ fontSize: 11, fontWeight: 400, opacity: 0.7 }}>
@@ -398,7 +400,7 @@ export default function LoginPage({ onFarmerLogin, onAdminLogin }) {
           <form onSubmit={handleAdminLogin}>
             <div style={{ textAlign: 'center', marginBottom: 20 }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>
-                {choiceData?.role === 'admin' ? '🔐' : '👁️'}
+                {roleIcon}
               </div>
               <h3 style={{ margin: 0, fontFamily: 'Heebo,sans-serif' }}>
                 {ar ? `دخول ك${roleLabel}` : `כניסה כ${roleLabel}`}

@@ -143,6 +143,8 @@ router.get('/privileged', async (req, res) => {
       label:    u.label,
       // ✅ المشاريع المسموح بإدارتها بالكامل (للمراقبين فقط)
       allowedProjectIds: u.allowedProjectIds || [],
+      // ✅ مراقب وناطور معاً
+      canEnterReadings: u.role === 'viewer' && !!u.canEnterReadings,
     }));
     return res.json({ users });
   } catch(err) { return res.status(500).json({ error: 'خطأ في الخادم' }); }
@@ -151,9 +153,9 @@ router.get('/privileged', async (req, res) => {
 router.post('/privileged', async (req, res) => {
   try {
     const { Privileged } = require('../models/Settings');
-    const { idNumber, role, label, password, allowedProjectIds } = req.body;
+    const { idNumber, role, label, password, allowedProjectIds, canEnterReadings } = req.body;
     if (!idNumber || !role || !password) return res.status(400).json({ error: 'رقم الهوية والدور وكلمة المرور مطلوبة' });
-    if (!['admin','viewer'].includes(role)) return res.status(400).json({ error: 'الدور غير صالح' });
+    if (!['admin','viewer','reader'].includes(role)) return res.status(400).json({ error: 'الدور غير صالح' });
     if (password.length < 6) return res.status(400).json({ error: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' });
     let doc = await Privileged.findOne({ key: 'privileged' });
     if (!doc) doc = new Privileged({ key: 'privileged', users: [] });
@@ -164,6 +166,7 @@ router.post('/privileged', async (req, res) => {
       idNumber: idNumber.trim(), role, label: label||'', password: hashedPassword,
       // ✅ نخزن قائمة المشاريع فقط إذا كان الدور مراقب
       allowedProjectIds: role === 'viewer' ? (allowedProjectIds || []) : [],
+      canEnterReadings:  role === 'viewer' ? !!canEnterReadings : false,
     });
     doc.markModified('users');
     await doc.save();
@@ -174,7 +177,7 @@ router.post('/privileged', async (req, res) => {
 router.put('/privileged/:userId', async (req, res) => {
   try {
     const { Privileged } = require('../models/Settings');
-    const { password, label, role, allowedProjectIds } = req.body;
+    const { password, label, role, allowedProjectIds, canEnterReadings } = req.body;
     const doc = await Privileged.findOne({ key: 'privileged' });
     if (!doc) return res.status(404).json({ error: 'غير موجود' });
     const user = doc.users.id(req.params.userId);
@@ -186,6 +189,7 @@ router.put('/privileged/:userId', async (req, res) => {
     if (label !== undefined) user.label = label;
     if (role) user.role = role;
     if (allowedProjectIds !== undefined) user.allowedProjectIds = allowedProjectIds;
+    if (canEnterReadings !== undefined) user.canEnterReadings = user.role === 'viewer' ? !!canEnterReadings : false;
     doc.markModified('users');
     await doc.save();
     return res.json({ success: true });

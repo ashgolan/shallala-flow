@@ -1,7 +1,7 @@
 const bcrypt  = require('bcryptjs');
 const Farmer  = require('../models/Farmer');
 const { Admin, Privileged } = require('../models/Settings');
-const { generateFarmerToken, generateAdminToken, generateViewerToken } = require('../utils/jwt');
+const { generateFarmerToken, generateAdminToken, generateViewerToken, generateReaderToken } = require('../utils/jwt');
 const { recordFailedAttempt, recordSuccess } = require('../middleware/loginProtection');
 
 // ✅ helper — يبني الاسم الكامل من أي مصدر متاح
@@ -73,7 +73,7 @@ const checkIdentity = async (req, res) => {
         farmerId:   farmer._id.toString(),
         farmerName: fullName(farmer),
         role:       privilegedUser.role,
-        label:      privilegedUser.label || (privilegedUser.role === 'admin' ? 'מנהל ראשי' : 'צופה'),
+        label:      privilegedUser.label || (privilegedUser.role === 'admin' ? 'מנהל ראשי' : privilegedUser.role === 'reader' ? 'קורא מונים' : 'צופה'),
       });
     }
 
@@ -160,13 +160,20 @@ const adminLogin = async (req, res) => {
     // ✅ للأدمن أيضاً: نحقن هويته (userId/label) حتى نقدر نميّزه عن باقي حسابات الأدمن
     //    (تُستخدم مثلاً بميزة "المهام والاستفسارات" لمعرفة مين أرسل/أنجز الطلب بالضبط)
     const allowedProjectIds = privilegedUser.allowedProjectIds || [];
+    // ✅ الناطور (reader): توكن منفصل يفتح صفحة إدخال القراءات فقط
     const token = privilegedUser.role === 'admin'
       ? generateAdminToken({
           userId: privilegedUser._id.toString(),
           label:  privilegedUser.label || '',
         })
+      : privilegedUser.role === 'reader'
+      ? generateReaderToken({
+          userId: privilegedUser._id.toString(),
+          label:  privilegedUser.label || '',
+        })
       : generateViewerToken({
           userId: privilegedUser._id.toString(),
+          label:  privilegedUser.label || '',
           allowedProjectIds,
         });
 
@@ -175,6 +182,8 @@ const adminLogin = async (req, res) => {
       token,
       role: privilegedUser.role,
       allowedProjectIds: privilegedUser.role === 'viewer' ? allowedProjectIds : [],
+      // ✅ مراقب وناطور معاً — يظهر له تبويب "إدخال قراءات"
+      canEnterReadings: privilegedUser.role === 'viewer' && !!privilegedUser.canEnterReadings,
     });
 
   } catch (err) {

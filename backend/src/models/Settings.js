@@ -48,11 +48,14 @@ const privilegedSchema = new mongoose.Schema({
   key:      { type: String, default: 'privileged', unique: true },
   users: [{
     idNumber: { type: String, required: true },
-    role:     { type: String, enum: ['admin', 'viewer'], required: true },
+    // ✅ reader = ناطور: يدخل قراءات الدورة المفتوحة فقط من صفحة إدخال القراءات
+    role:     { type: String, enum: ['admin', 'viewer', 'reader'], required: true },
     label:    { type: String, default: '' },
     password: { type: String, required: true },
     // ✅ للمراقبين فقط: قائمة IDs المشاريع المسموح له بإدارة مشتركيها ودفعاتها بالكامل
     allowedProjectIds: { type: [String], default: [] },
+    // ✅ للمراقبين فقط: مراقب وناطور معاً — يظهر له تبويب "إدخال قراءات" بلوحة الإدارة
+    canEnterReadings: { type: Boolean, default: false },
   }],
 }, { collection: 'settings_privileged', timestamps: true });
 

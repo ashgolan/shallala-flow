@@ -9,11 +9,12 @@ import { AdminPrices, AdminGallery, AdminSettings, AdminReports } from '../compo
 import AdminPayments      from '../components/admin/AdminPayments';
 import AdminTasks         from '../components/admin/AdminTasks';
 import AdminDashboardPage from '../components/admin/AdminDashboardPage';
+import ReaderPage         from './ReaderPage'; // ✅ صفحة الناطور — للمدير: إعداد الدورة + معاينة/إدخال
 import LangToggle         from '../components/shared/LangToggle';
 import AnnouncementBanner from '../components/shared/AnnouncementBanner';
 import TasksBell          from '../components/shared/TasksBell';
 
-export default function AdminDashboard({ onLogout, adminRole='admin', allowedProjectIds=[] }) {
+export default function AdminDashboard({ onLogout, adminRole='admin', allowedProjectIds=[], canEnterReadings=false }) {
   const { lang }        = useLang();
   const ar              = lang === 'ar';
   const [tab, setTab]   = useState('farmers');
@@ -46,6 +47,8 @@ export default function AdminDashboard({ onLogout, adminRole='admin', allowedPro
     { key:'projects',  icon:'🏗️', label: ar?'المشاريع':'פרויקטים' },
     { key:'dashboard', icon:'📊', label: ar?'لوحة التحكم':'לוח בקרה' },
     { key:'tasks',     icon:'📨', label: ar?'المهام والاستفسارات':'משימות ופניות' },
+    // ✅ للمدير الرئيسي، وللمراقب المعلَّم "ناطور" بإدارة المخولين
+    ...(adminRole === 'admin' || canEnterReadings ? [{ key:'readerEntry', icon:'📟', label: ar?'إدخال قراءات (ناطور)':'הזנת קריאות (קורא)' }] : []),
     ...(adminRole === 'admin' ? [{ key:'settings', icon:'⚙️', label: t('settingsTab', lang) }] : []),
   ];
 
@@ -53,7 +56,7 @@ export default function AdminDashboard({ onLogout, adminRole='admin', allowedPro
   // العادي أصلاً يشوفه بوضع قراءة فقط، والمراقب المُصرّح له بمشروع يشوفه بصلاحيات كاملة عليه)
   // ✅ تبويب "المهام والاستفسارات" متاح دايماً للمراقب — هو أصلاً وسيلة التواصل معه
   const TABS = adminRole === 'viewer'
-    ? allTabs.filter(t => ['reports','payments','projects','dashboard','tasks'].includes(t.key))
+    ? allTabs.filter(t => ['reports','payments','projects','dashboard','tasks','readerEntry'].includes(t.key))
     : allTabs;
 
   const current = TABS.find(tb => tb.key === tab);
@@ -157,6 +160,7 @@ export default function AdminDashboard({ onLogout, adminRole='admin', allowedPro
           {tab === 'projects'  && <AdminProjects  adminRole={adminRole} allowedProjectIds={allowedProjectIds} />}
           {tab === 'dashboard' && <AdminDashboardPage adminRole={adminRole} />}
           {tab === 'tasks'     && <AdminTasks adminRole={adminRole} onChanged={bumpTaskRefresh} />}
+          {tab === 'readerEntry' && (adminRole === 'admin' || canEnterReadings) && <ReaderPage embedded manageCycle={adminRole === 'admin'} />}
           {tab === 'settings'  && adminRole === 'admin' && <AdminSettings />}
         </div>
 
