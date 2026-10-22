@@ -104,6 +104,11 @@ const L = {
   yearStart:    { ar: 'بداية السنة', he: 'תחילת שנה' },
   pShort:       { ar: 'ف', he: 'ת' },
   excelCol:     { ar: 'بالإكسل: عمود', he: 'באקסל: עמודה' },
+  newMeterStart:{ ar: 'بداية العداد الجديد', he: 'תחילת המונה החדש' },
+  meterReplaced:{ ar: 'تم تبديل العداد بهذه الفترة', he: 'המונה הוחלף בתקופה זו' },
+  oldMeterLast: { ar: 'آخر قراءة على القديم', he: 'קריאה אחרונה בישן' },
+  oldMeterUse:  { ar: 'استهلاكه', he: 'צריכתו' },
+  readNewMeter: { ar: 'اكتب الرقم الظاهر على العداد الجديد — الأكواب تشمل القديم + الجديد.', he: 'הזן את המספר שמופיע במונה החדש — הקוב כולל ישן + חדש.' },
   open:         { ar: 'مفتوحة للناطور', he: 'פתוח לקורא' },
   closed:       { ar: 'مغلقة', he: 'סגור' },
   save:         { ar: 'حفظ', he: 'שמור' },
@@ -147,9 +152,11 @@ const calcConsumption = (m, value, cycle) => {
   const c = mc ? (mc.oldFinal - m.prevValue) + (value - mc.newInitial) : value - m.prevValue;
   return Math.round(c * 100) / 100;
 };
-const classify = (consumption, expected) => {
+// ✅ المرجع للمقارنة: بداية العداد الجديد إذا انبدّل العداد بنفس الفترة، وإلا القراءة السابقة
+const refOf = m => (m.meterChangeApplies && m.meterChange ? m.meterChange.newInitial : m.prevValue);
+const classify = (consumption, expected, belowRef = false) => {
   if (consumption === null) return 'nohistory';
-  if (consumption < 0) return 'decrease';
+  if (belowRef || consumption < 0) return 'decrease';
   if (!expected) return consumption === 0 ? 'zero' : 'nohistory';
   if (consumption === 0) return 'zero';
   if (consumption > expected * HIGH_FACTOR) return 'high';
@@ -283,7 +290,7 @@ export default function ReaderPage({ onLogout, embedded = false, manageCycle = f
       const q = byLand.get(m.landId);
       if (!q) return m;
       const consumption = calcConsumption(m, q.value, cycle);
-      return { ...m, currentValue: q.value, consumption, status: classify(consumption, m.expected), byReader: true, editable: true, pending: true, reason: q.reason, note: q.note };
+      return { ...m, currentValue: q.value, consumption, status: classify(consumption, m.expected, refOf(m) !== null && refOf(m) !== undefined && q.value < refOf(m)), byReader: true, editable: true, pending: true, reason: q.reason, note: q.note };
     });
   }, [data, queue, cycle]);
 
@@ -407,11 +414,14 @@ export default function ReaderPage({ onLogout, embedded = false, manageCycle = f
   const value = input === '' ? null : Number(input);
   // ✅ الفحص الكامل (يُستخدم عند الحفظ دائماً)
   const fullConsumption = curMeter ? calcConsumption(curMeter, value, cycle) : null;
-  const fullStatus = curMeter && value !== null ? classify(fullConsumption, curMeter.expected) : null;
+  const refValue = curMeter ? refOf(curMeter) : null;
+  const fullStatus = curMeter && value !== null
+    ? classify(fullConsumption, curMeter.expected, refValue !== null && refValue !== undefined && value < refValue) : null;
   // ✅ أثناء الكتابة: ما منحكم على الرقم قبل ما يوصل لعدد خانات القراءة السابقة
   //    (أول رقم أو رقمين دايماً "أقل من السابقة" — كان يظهر تنبيه أحمر غلط)
-  const prevDigits = curMeter && curMeter.prevValue !== null && curMeter.prevValue !== undefined
-    ? String(Math.trunc(Math.abs(curMeter.prevValue))).length : 0;
+  //    (بعد تبديل العداد: عدد خانات بداية العداد الجديد، مش القديم)
+  const prevDigits = refValue !== null && refValue !== undefined
+    ? String(Math.trunc(Math.abs(refValue))).length : 0;
   const typingIncomplete = value !== null && input.length < prevDigits;
   const liveConsumption = typingIncomplete ? null : fullConsumption;
   const liveStatus = typingIncomplete ? null : fullStatus;
@@ -604,10 +614,19 @@ export default function ReaderPage({ onLogout, embedded = false, manageCycle = f
         {/* السابقة + الجديدة */}
         <div style={{ margin: '0 16px', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
           <div style={{ background: '#e9efeb', borderRadius: 16, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <div style={{ fontSize: 13, color: C.muted }}>
-              {t('previous')}{curMeter.prevYear ? <> · <Num>{curMeter.prevYear}</Num> · {curMeter.prevSlot === 0 ? t('yearStart') : <>{t('pShort')}<Num>{curMeter.prevSlot}</Num></>}</> : ''}
-            </div>
-            <Num style={{ fontSize: 34, fontWeight: 800, color: C.greyText, textAlign: 'right' }}>{fmt(curMeter.prevValue)}</Num>
+            {curMeter.meterChangeApplies ? (
+              <>
+                <div style={{ fontSize: 13, color: C.muted }}>{t('newMeterStart')}</div>
+                <Num style={{ fontSize: 34, fontWeight: 800, color: C.greyText, textAlign: 'right' }}>{fmt(curMeter.meterChange.newInitial)}</Num>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 13, color: C.muted }}>
+                  {t('previous')}{curMeter.prevYear ? <> · <Num>{curMeter.prevYear}</Num> · {curMeter.prevSlot === 0 ? t('yearStart') : <>{t('pShort')}<Num>{curMeter.prevSlot}</Num></>}</> : ''}
+                </div>
+                <Num style={{ fontSize: 34, fontWeight: 800, color: C.greyText, textAlign: 'right' }}>{fmt(curMeter.prevValue)}</Num>
+              </>
+            )}
           </div>
           <label style={{ background: C.card, border: `3px solid ${!curMeter.editable ? C.line : ss && confirming ? ss.line : C.primary}`, borderRadius: 16, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4, cursor: 'text' }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: curMeter.editable ? C.primary : C.muted, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -625,6 +644,18 @@ export default function ReaderPage({ onLogout, embedded = false, manageCycle = f
             />
           </label>
         </div>
+
+        {/* ✅ تبديل عداد بنفس الفترة */}
+        {curMeter.meterChangeApplies && (
+          <div style={{ margin: '10px 16px 0', background: '#f3e8ff', border: '1px solid #d8b4fe', borderRadius: 14, padding: '10px 14px', color: '#5b21b6', fontSize: 14, lineHeight: 1.6 }}>
+            <div style={{ fontWeight: 800 }}>🔄 {t('meterReplaced')}</div>
+            <div>
+              {t('oldMeterLast')} <Num style={{ fontWeight: 700 }}>{fmt(curMeter.meterChange.oldFinal)}</Num>
+              {' · '}{t('oldMeterUse')} <Num style={{ fontWeight: 700 }}>{fmt(curMeter.oldMeterPart)}</Num> {t('cubic')}
+            </div>
+            <div>{t('readNewMeter')}</div>
+          </div>
+        )}
 
         {/* الأكواب + فحص المنطقية */}
         {(shownCons !== null || st) && (

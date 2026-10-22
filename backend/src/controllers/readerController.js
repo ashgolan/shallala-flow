@@ -104,19 +104,28 @@ const computeExpected = (history, year, idx) => {
   return { expected: avg > 0 ? Math.round(avg * 10) / 10 : null, basis: 'average' };
 };
 
+// ✅ تبديل عداد مسجّل بنفس الفترة المستهدفة (الفترة اللي بتنتهي بالخانة idx هي idx-1)؟
+//    إذا نعم: الناطور بيقرأ العداد الجديد، فالمرجع هو "أول قراءة على العداد الجديد"
+//    مش آخر قراءة على القديم.
+const meterChangeFor = (curDoc, prev, idx) => (
+  curDoc && prev && prev.year === curDoc.year && prev.idx === idx - 1
+    ? ((curDoc.meterChanges || []).find(c => c.period === idx - 1) || null)
+    : null
+);
+// ✅ الرقم اللي لازم القراءة الجديدة ما تنزل عنه (للتنبيه "أقل من السابقة")
+const refValueFor = (prev, mc) => (mc ? mc.newInitial : (prev ? prev.value : null));
+
 const consumptionFor = (curDoc, prev, idx, value) => {
   if (prev === null || value === null) return null;
-  // تبديل عداد مسجّل لهالفترة؟ (الفترة اللي بتنتهي بالخانة idx هي idx-1)
-  const mc = curDoc && prev.year === curDoc.year && prev.idx === idx - 1
-    ? (curDoc.meterChanges || []).find(c => c.period === idx - 1)
-    : null;
+  const mc = meterChangeFor(curDoc, prev, idx);
   const c = mc ? (mc.oldFinal - prev.value) + (value - mc.newInitial) : value - prev.value;
   return Math.round(c * 100) / 100;
 };
 
-const classify = (consumption, expected) => {
+// belowRef = القراءة أقل من المرجع (السابقة، أو بداية العداد الجديد بعد التبديل)
+const classify = (consumption, expected, belowRef = false) => {
   if (consumption === null) return 'nohistory';
-  if (consumption < 0) return 'decrease';
+  if (belowRef || consumption < 0) return 'decrease';
   if (!expected) return consumption === 0 ? 'zero' : 'nohistory';
   if (consumption === 0) return 'zero';
   if (consumption > expected * HIGH_FACTOR) return 'high';
@@ -146,6 +155,8 @@ const buildMeterRow = ({ land, farmer, docsAsc, year, idx, lastEntry }) => {
   }
 
   const consumption = consumptionFor(cur, prev, idx, currentValue);
+  const mc = meterChangeFor(cur, prev, idx);
+  const refValue = refValueFor(prev, mc);
 
   return {
     landId:        land._id.toString(),
@@ -169,12 +180,13 @@ const buildMeterRow = ({ land, farmer, docsAsc, year, idx, lastEntry }) => {
     lockedReason,
     meterChange:   cur ? ((cur.meterChanges || []).find(c => c.period === idx - 1) || null) : null,
     // ✅ تبديل العداد بيدخل بالحساب فقط إذا القراءة السابقة هي بداية نفس الفترة
-    meterChangeApplies: !!(cur && prev && prev.year === year && prev.idx === idx - 1
-      && (cur.meterChanges || []).some(c => c.period === idx - 1)),
+    meterChangeApplies: !!mc,
+    refValue,                                              // المرجع للمقارنة (بداية العداد الجديد بعد التبديل)
+    oldMeterPart:  mc && prev ? Math.round((mc.oldFinal - prev.value) * 100) / 100 : null, // أكواب العداد القديم بهالفترة
     history:       history.slice(-HISTORY_LEN),
     expected,
     expectedBasis: basis,
-    status:        lastEntry && byReader ? lastEntry.status : (currentValue !== null ? classify(consumption, expected) : null),
+    status:        lastEntry && byReader ? lastEntry.status : (currentValue !== null ? classify(consumption, expected, refValue !== null && currentValue < refValue) : null),
     reason:        lastEntry && byReader ? lastEntry.reason : '',
     note:          lastEntry && byReader ? lastEntry.note   : '',
     enteredAt:     lastEntry && byReader ? lastEntry.createdAt : null,
@@ -368,7 +380,8 @@ const saveEntry = async (req, res) => {
     const { expected } = computeExpected(history, year, idx);
     const cur = docsAsc.find(r => r.year === year);
     const consumption = consumptionFor(cur, prev, idx, cleanValue);
-    const status = classify(consumption, expected);
+    const ref = refValueFor(prev, meterChangeFor(cur, prev, idx));
+    const status = classify(consumption, expected, ref !== null && cleanValue < ref);
 
     await ReaderEntry.create({
       readingId: doc._id, landId: land._id, year, idx,
